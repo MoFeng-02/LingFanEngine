@@ -1,0 +1,50 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net10.0</TargetFramework>
+		<!--If you are willing to use platform-specific APIs, use conditional compilation.
+    See https://docs.avaloniaui.net/docs/guides/platforms/platform-specific-code/dotnet for more details.-->
+		<!--<TargetFramework>net10.0</TargetFramework>-->
+		<Nullable>enable</Nullable>
+		<PublishAot>true</PublishAot>
+
+		<!-- 裁剪配置 -->
+		<TrimMode>partial</TrimMode>
+		<SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
+		<PublishTrimmed>true</PublishTrimmed>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="..\Stories\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Stories\" />
+		<None Include="..\Lang\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Lang\" />
+		<None Include="..\Images\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Images\" />
+		<None Include="..\Audio\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Audio\" />
+		<None Include="..\Video\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Video\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Remove="..\Lang\en-US.json" />
+		<None Remove="..\Lang\zh-CN.json" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Avalonia.Desktop" />
+		<PackageReference Include="AvaloniaUI.DiagnosticsSupport">
+			<IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+			<PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+		</PackageReference>
+		<PackageReference Include="ThisAssembly">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="LibVLCSharp.Avalonia" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\LingFanEngine.Entry\LingFanEngine.Entry.csproj" />
+	</ItemGroup>
+</Project>

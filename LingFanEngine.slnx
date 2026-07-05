@@ -1,0 +1,50 @@
+<Solution>
+  <Folder Name="/Demo/">
+    <Project Path="E:/Project/Engine/src/Demo/LingFanEngine.Android/LingFanEngine.Android.csproj">
+      <Deploy />
+    </Project>
+    <Project Path="E:/Project/Engine/src/Demo/LingFanEngine.Browser/LingFanEngine.Browser.csproj" />
+    <Project Path="E:/Project/Engine/src/Demo/LingFanEngine.Desktop/LingFanEngine.Desktop.csproj" />
+    <Project Path="E:/Project/Engine/src/Demo/LingFanEngine.Entry/LingFanEngine.Entry.csproj" />
+    <Project Path="E:/Project/Engine/src/Demo/LingFanEngine.iOS/LingFanEngine.iOS.csproj">
+      <Deploy />
+    </Project>
+    <Project Path="E:/Project/Engine/src/Demo/Test.Windows/Test.Windows.csproj" />
+  </Folder>
+  <Folder Name="/EngineCore/">
+    <Project Path="E:/Project/Engine/src/EngineCore/LingFanEngine.Abstractions/LingFanEngine.Abstractions.csproj" />
+    <Project Path="E:/Project/Engine/src/EngineCore/LingFanEngine/LingFanEngine.csproj" />
+  </Folder>
+  <Folder Name="/P/">
+    <Project Path="E:/Project/Engine/Pidgin/Pidgin.csproj" />
+    <Project Path="E:/Project/Engine/Tools/PackTool/PackTool.csproj" />
+    <Project Path="E:/Project/MyProject/ProjectLibrary/OpenSource/GitHub/Pidgin/Pidgin.Examples/Pidgin.Examples.csproj" />
+    <Project Path="E:/Project/MyProject/ProjectLibrary/OpenSource/GitHub/Pidgin/Pidgin.Tests/Pidgin.Tests.csproj" />
+  </Folder>
+  <Folder Name="/SDK_Toolkit/">
+    <Project Path="E:/Project/Engine/src/SDK_Toolkit/LingFanEngine.SDK.Android/LingFanEngine.SDK.Android.csproj" Id="5518a90b-abe9-46ad-80c7-6e0663bfa929">
+      <Deploy />
+    </Project>
+    <Project Path="E:/Project/Engine/src/SDK_Toolkit/LingFanEngine.SDK.Browser/LingFanEngine.SDK.Browser.csproj" Id="c4bc1001-1b9d-48d6-9567-3744eacc1445" />
+    <Project Path="E:/Project/Engine/src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj" Id="077f362d-3a8e-4634-bd46-c93e5b72d547" />
+    <Project Path="E:/Project/Engine/src/SDK_Toolkit/LingFanEngine.SDK.iOS/LingFanEngine.SDK.iOS.csproj" Id="17c80547-3b5b-4985-8231-2cd3aaa6dcb0">
+      <Deploy />
+    </Project>
+    <Project Path="E:/Project/Engine/src/SDK_Toolkit/LingFanEngine.SDK/LingFanEngine.SDK.csproj" Id="d3e10764-b6b1-4fd4-8a4f-ce65e70cee6f" />
+  </Folder>
+  <Folder Name="/Template/" />
+  <Folder Name="/Template/V1/">
+    <Project Path="E:/Project/Engine/src/Template/V1/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}.Android/{LingFanEngineTemplateTitle}.Android.csproj" Id="dc77b022-428d-487e-8b28-03c55c223e7d">
+      <Deploy />
+    </Project>
+    <Project Path="E:/Project/Engine/src/Template/V1/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}.Browser/{LingFanEngineTemplateTitle}.Browser.csproj" Id="d472ffdb-23c5-4b56-86d2-b76cd6aee9ac" />
+    <Project Path="E:/Project/Engine/src/Template/V1/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}.Desktop/{LingFanEngineTemplateTitle}.Desktop.csproj" Id="37b5270c-c9a1-4195-a044-b02cf1b03230" />
+    <Project Path="E:/Project/Engine/src/Template/V1/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}.iOS/{LingFanEngineTemplateTitle}.iOS.csproj" Id="2ec1d0c2-ad12-46fa-82d2-d2ac11cef151">
+      <Deploy />
+    </Project>
+    <Project Path="E:/Project/Engine/src/Template/V1/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}.csproj" Id="1dd96d3d-7eeb-4118-b302-727b5e8a08c6" />
+    <Project Path="src/Template/V1/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}.Desktop.Linux/{LingFanEngineTemplateTitle}.Desktop.Linux.csproj" />
+    <Project Path="src/Template/V1/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}.Desktop.Mac/{LingFanEngineTemplateTitle}.Desktop.Mac.csproj" />
+    <Project Path="src/Template/V1/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}.Desktop.Windows/{LingFanEngineTemplateTitle}.Desktop.Windows.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,43 @@
+<Project>
+  <!-- https://learn.microsoft.com/en-us/nuget/consume-packages/central-package-management -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- System.Text.Json (included with .NET, pinned for AOT stability) -->
+    <PackageVersion Include="LibVLCSharp" Version="3.10.0" />
+    <PackageVersion Include="LibVLCSharp.Avalonia" Version="3.10.0" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
+    <PackageVersion Include="NAudio" Version="2.3.0" />
+    <PackageVersion Include="System.Text.Json" Version="10.0.0" />
+    <!-- SkiaSharp -->
+    <PackageVersion Include="SkiaSharp" Version="4.148.0" />
+    <!-- Avalonia packages -->
+    <PackageVersion Include="Avalonia" Version="12.0.5" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.0.5" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.0.5" />
+    <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.0.5" />
+    <PackageVersion Include="Avalonia.iOS" Version="12.0.5" />
+    <PackageVersion Include="Avalonia.Browser" Version="12.0.5" />
+    <PackageVersion Include="Avalonia.Android" Version="12.0.5" />
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageVersion Include="MFToolkit.Abstractions" Version="1.0.20" />
+    <PackageVersion Include="MFToolkit.AutoGenerator" Version="1.0.20" />
+    <PackageVersion Include="MFToolkit.Routing" Version="1.1.1" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
+    <PackageVersion Include="ThisAssembly" Version="2.1.2" />
+    <PackageVersion Include="VideoLAN.LibVLC.Android" Version="3.6.5" />
+    <PackageVersion Include="VideoLAN.LibVLC.iOS" Version="3.6.1" />
+    <PackageVersion Include="VideoLAN.LibVLC.Mac" Version="3.1.3.1" />
+    <PackageVersion Include="VideoLAN.LibVLC.Windows" Version="3.0.23.1" />
+    <PackageVersion Include="Xamarin.AndroidX.Core.SplashScreen" Version="1.2.0.3" />
+    <!-- 测试包 -->
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.0.2" />
+    <PackageVersion Include="FluentAssertions" Version="7.2.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+  </ItemGroup>
+</Project>

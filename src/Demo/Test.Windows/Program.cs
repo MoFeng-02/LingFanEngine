@@ -1,0 +1,1 @@
+﻿LingFanEngine.Desktop.Program.Main(args);
