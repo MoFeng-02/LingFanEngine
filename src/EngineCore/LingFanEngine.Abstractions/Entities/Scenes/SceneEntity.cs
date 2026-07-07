@@ -24,10 +24,23 @@ public class SceneEntity : BaseEntity
     public required List<UIElementEntity> Elements { get; set; }
 
     /// <summary>
+    /// 场景布局模式：grid（默认）、canvas（绝对定位）、stack（流式）、panel（叠加层）
+    /// <para>对应 Avalonia 的 Grid/Canvas/StackPanel/Panel 根容器。</para>
+    /// </summary>
+    public string LayoutMode { get; set; } = "grid";
+
+    /// <summary>
     /// 场景入口脚本——进入场景时自动执行的命令列表
     /// <para>如 set/say/transition 等，在场景显示后自动按序执行。</para>
     /// </summary>
     public List<ICommand>? EntryCommands { get; set; }
+
+    /// <summary>
+    /// 场景级变量定义——进入场景时深合并到状态容器（补缺+修类型）
+    /// <para>等价于 C# StoryScript 的 InDefines()，支持嵌套字典递归合并。</para>
+    /// <para>DSL 语法：在 scene 块内使用 define "key" value once</para>
+    /// </summary>
+    public Dictionary<string, object?>? Defines { get; set; }
 
     /// <summary>
     /// 场景背景（图片/视频）

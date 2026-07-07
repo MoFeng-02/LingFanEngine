@@ -8,7 +8,7 @@ namespace LingFanEngine.Services.Core;
 /// <para>AOT 兼容：使用显式注册，不依赖反射。</para>
 /// <para>线程安全：使用 ConcurrentDictionary 支持运行时注册自定义命令。</para>
 /// </summary>
-public class CommandDispatcher
+public class CommandDispatcher : ICommandDispatcher
 {
     private readonly ConcurrentDictionary<Type, Action<ICommand, ICommandContext>> _handlers = new();
 

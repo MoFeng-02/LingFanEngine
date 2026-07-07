@@ -1,3 +1,5 @@
+using LingFanEngine.Abstractions.Entities.UIs;
+
 namespace LingFanEngine.Services.Scripting;
 
 /// <summary>
@@ -130,6 +132,15 @@ public sealed partial class MenuStmt : DslStatement
     public required string Prompt { get; init; }
 }
 
+/// <summary>
+/// 菜单选项行："选项文本" -> target_label
+/// </summary>
+public sealed partial class MenuOptionStmt : DslStatement
+{
+    public required string Text { get; init; }
+    public required string TargetLabel { get; init; }
+}
+
 public sealed partial class SaveStmt : DslStatement
 {
     public required string SlotId { get; init; }
@@ -140,7 +151,7 @@ public sealed partial class LoadStmt : DslStatement
     public required string SlotId { get; init; }
 }
 
-// ====== 条件/循环块结构（行级标记）======
+// ====== 条件/循环块结构（缩进式，无 end 关键字）======
 
 public sealed partial class IfStmt : DslStatement
 {
@@ -159,6 +170,51 @@ public sealed partial class WhileStmt : DslStatement
     public required string Condition { get; init; }
 }
 
-public sealed partial class EndBlockStmt : DslStatement { }
-
+/// <summary>
+/// 已废弃：end 关键字不再用于块结束或 label 终止。
+/// 保留解析兼容性，编译时作为 no-op 跳过。
+/// </summary>
 public sealed partial class EndStmt : DslStatement { }
+
+// ====== 额外命令 ======
+
+public sealed partial class ShakeStmt : DslStatement
+{
+    public double? Intensity { get; init; }
+    public double? Duration { get; init; }
+}
+
+public sealed partial class ToggleSkipStmt : DslStatement { }
+
+public sealed partial class ToggleAutoStmt : DslStatement { }
+
+public sealed partial class GalleryUnlockStmt : DslStatement
+{
+    public required string Id { get; init; }
+    public required string ImagePath { get; init; }
+    public string? Title { get; init; }
+    public string? SceneName { get; init; }
+}
+
+public sealed partial class DebugLogStmt : DslStatement
+{
+    public required string Message { get; init; }
+    public string? Level { get; init; }
+}
+
+public sealed partial class NvlStmt : DslStatement
+{
+    public bool IsClear { get; init; }
+}
+
+// ====== 场景元素（按序揭示）======
+
+/// <summary>
+/// 场景元素显示语句——scene 块内的 UI 元素行（image/text/button 等）
+/// <para>编译为 ShowElementCommand，由 DslExecutor 按序追加到 Scene.Elements。</para>
+/// <para>阻塞命令（say/transition）之前的元素立即显示，之后的元素等阻塞完成才显示。</para>
+/// </summary>
+public sealed partial class ShowElementStmt : DslStatement
+{
+    public required UIElementEntity Element { get; init; }
+}

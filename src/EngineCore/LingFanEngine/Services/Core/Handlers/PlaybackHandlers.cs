@@ -9,7 +9,7 @@ namespace LingFanEngine.Services.Core.Handlers;
 /// <para>设置震动状态到状态容器，GameLoop 每帧推进震动计时并计算偏移。</para>
 /// <para>SceneView 读取 __shake_offset_x/y 应用 TranslateTransform。</para>
 /// </summary>
-public class ShakeHandler : ICommandHandler<ShakeCommand>
+public class ShakeHandler : ICommandHandler<ShakeCommand>, IDefaultCommandHandler
 {
     public void Handle(ShakeCommand sc, ICommandContext ctx)
     {
@@ -27,7 +27,7 @@ public class ShakeHandler : ICommandHandler<ShakeCommand>
 /// <para>开启时自动跳过对话等待（每帧检测后立即设置 dialog_complete）。</para>
 /// <para>关闭时恢复正常对话等待。</para>
 /// </summary>
-public class ToggleSkipHandler : ICommandHandler<ToggleSkipCommand>
+public class ToggleSkipHandler : ICommandHandler<ToggleSkipCommand>, IDefaultCommandHandler
 {
     public void Handle(ToggleSkipCommand _, ICommandContext ctx)
     {
@@ -49,7 +49,7 @@ public class ToggleSkipHandler : ICommandHandler<ToggleSkipCommand>
 /// <para>开启时对话完成后自动等待一段时间再推进。</para>
 /// <para>关闭时恢复正常对话等待。</para>
 /// </summary>
-public class ToggleAutoHandler : ICommandHandler<ToggleAutoCommand>
+public class ToggleAutoHandler : ICommandHandler<ToggleAutoCommand>, IDefaultCommandHandler
 {
     public void Handle(ToggleAutoCommand _, ICommandContext ctx)
     {

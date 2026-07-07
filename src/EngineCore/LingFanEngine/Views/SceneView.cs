@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Media;
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Entities.UIs;
@@ -14,8 +15,9 @@ public class SceneView : UserControl
 {
     private readonly IStateContainer _state;
     private readonly ICommandPipeline _pipeline;
-    private readonly LingFanEngine.Services.Entry.I18nService _i18n;
+    private readonly II18nService _i18n;
     private readonly ICommandService? _cmdService;
+    private readonly ISceneRegistry? _sceneRegistry;
     private string _lastSceneName = "";
     private string _lastDialogText = "";
     private string _lastLanguage = "";
@@ -26,18 +28,25 @@ public class SceneView : UserControl
     private Panel? _inputPanel;
     private TextBox? _inputBox;
 
+    // ── 布局追踪：窗口缩放时重算百分比定位/尺寸 ──
+    private bool _layoutDirty;
+    private string _currentLayoutMode = "grid";
+    private readonly List<(Control control, Dictionary<string, object> props)> _trackedControls = new();
+
     private int _varCheckCounter;
     private double _notifyRemainSeconds;
     private readonly Dictionary<string, object?> _lastVarValues = new();
 
     public SceneView(IStateContainer state, ICommandPipeline pipeline,
-        LingFanEngine.Services.Entry.I18nService? i18n = null,
-        ICommandService? cmdService = null)
+        II18nService i18n,
+        ICommandService? cmdService = null,
+        ISceneRegistry? sceneRegistry = null)
     {
         _state = state;
         _pipeline = pipeline;
-        _i18n = i18n ?? new LingFanEngine.Services.Entry.I18nService(state);
+        _i18n = i18n;
         _cmdService = cmdService;
+        _sceneRegistry = sceneRegistry;
         Background = Brushes.Transparent;
         // 预渲染占位 Grid：带标题的启动画面。首帧 Avalonia 渲染管线冷启动期间（~500ms-1s）
         // 用户看到的是这个占位 Grid 而非黑屏，ReplacedScene 后无缝替换
@@ -52,6 +61,8 @@ public class SceneView : UserControl
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
         });
         Content = splash;
+        // 窗口缩放时标记需要重布局
+        SizeChanged += (_, _) => _layoutDirty = true;
         // Keyboard shortcuts (Ren'Py style)
         KeyDown += (_, e) =>
         {
@@ -117,18 +128,18 @@ public void Update(double delta)
             var offsetX = _state.Get<double>(StateKeys.Transition.OffsetX);
             var offsetY = _state.Get<double>(StateKeys.Transition.OffsetY);
             var scale = _state.Get<double>(StateKeys.Transition.Scale);
-            if (Content is Grid grid && (offsetX != 0 || offsetY != 0 || scale != 1.0))
+            if (Content is Panel rootPanel && (offsetX != 0 || offsetY != 0 || scale != 1.0))
             {
                 var transform = new TransformGroup();
                 if (offsetX != 0 || offsetY != 0)
                     transform.Children.Add(new TranslateTransform(offsetX, offsetY));
                 if (scale != 1.0 && scale > 0)
                     transform.Children.Add(new ScaleTransform(scale, scale));
-                grid.RenderTransform = transform;
+                rootPanel.RenderTransform = transform;
             }
-            else if (Content is Grid g && transActive)
+            else if (Content is Panel rp && transActive)
             {
-                g.RenderTransform = null;
+                rp.RenderTransform = null;
             }
         }
 
@@ -136,12 +147,12 @@ public void Update(double delta)
         var shakeActive = _state.Get<bool>(StateKeys.Shake.Active);
         var shakeOffsetX = _state.Get<double>(StateKeys.Shake.OffsetX);
         var shakeOffsetY = _state.Get<double>(StateKeys.Shake.OffsetY);
-        if (Content is Grid shakeGrid)
+        if (Content is Panel shakePanel)
         {
             if (shakeActive && (shakeOffsetX != 0 || shakeOffsetY != 0))
             {
                 // 叠加震动偏移到现有变换之上
-                var existingTransform = shakeGrid.RenderTransform as TransformGroup;
+                var existingTransform = shakePanel.RenderTransform as TransformGroup;
                 var shakeTransform = new TransformGroup();
                 // 保留过渡变换
                 if (existingTransform != null)
@@ -150,12 +161,12 @@ public void Update(double delta)
                         shakeTransform.Children.Add(child);
                 }
                 shakeTransform.Children.Add(new TranslateTransform(shakeOffsetX, shakeOffsetY));
-                shakeGrid.RenderTransform = shakeTransform;
+                shakePanel.RenderTransform = shakeTransform;
             }
             else if (!shakeActive && !transActive)
             {
                 // 无震动无过渡时清除变换
-                shakeGrid.RenderTransform = null;
+                shakePanel.RenderTransform = null;
             }
         }
 
@@ -182,6 +193,14 @@ public void Update(double delta)
         {
             if (CheckVarChanges()) RefreshBoundTextBlocks();
         }
+
+        // 窗口缩放重布局：百分比定位/尺寸的控件需要重新计算
+        if (_layoutDirty)
+        {
+            _layoutDirty = false;
+            RelayoutAllControls();
+        }
+
         RefreshBoundTextBlocks();
 
         if (dialogText != _lastDialogText)
@@ -202,6 +221,7 @@ public void Update(double delta)
     private void RebuildScene(string sceneName)
     {
         _boundTextBlocks.Clear();
+        _trackedControls.Clear();
         _lastDialogText = ""; // 清除旧对话防止场景切换后残留在新 DialogBox
         _dialogBox?.Hide();
         var elements = _state.Get<List<UIElementEntity>>(StateKeys.Scene.Elements);
@@ -211,25 +231,71 @@ public void Update(double delta)
             return;
         }
 
-        var grid = new Grid { Background = Brushes.Black };
-        grid.PointerPressed += (_, _) =>
+        // 读取场景布局模式（从 SceneEntity 获取，默认 grid）
+        var sceneEntity = _sceneRegistry?.FindScene(sceneName);
+        _currentLayoutMode = sceneEntity?.LayoutMode ?? "grid";
+
+        var parentW = Bounds.Width > 0 ? Bounds.Width : 1280;
+        var parentH = Bounds.Height > 0 ? Bounds.Height : 720;
+
+        // 根据布局模式创建根容器
+        Panel rootPanel;
+        Grid? grid = null;
+
+        if (_currentLayoutMode == "canvas")
+        {
+            rootPanel = new Canvas { Background = Brushes.Black };
+        }
+        else if (_currentLayoutMode == "stack")
+        {
+            rootPanel = new StackPanel { Background = Brushes.Black };
+        }
+        else if (_currentLayoutMode == "panel")
+        {
+            rootPanel = new Panel { Background = Brushes.Black };
+        }
+        else
+        {
+            // 默认 Grid
+            grid = new Grid { Background = Brushes.Black };
+
+            // 如果第一个元素是 grid 类型且带 columns/rows 定义，使用它的定义
+            var gridDef = elements.FirstOrDefault(e =>
+                e.ElementType.Equals("grid", StringComparison.OrdinalIgnoreCase));
+            if (gridDef != null)
+            {
+                var cols = gridDef.Properties.GetValueOrDefault("columns")?.ToString();
+                var rows = gridDef.Properties.GetValueOrDefault("rows")?.ToString();
+                if (cols != null)
+                    grid.ColumnDefinitions = ColumnDefinitions.Parse(cols);
+                if (rows != null)
+                    grid.RowDefinitions = RowDefinitions.Parse(rows);
+            }
+            rootPanel = grid;
+        }
+
+        rootPanel.PointerPressed += (_, _) =>
         {
             // 任意点击推进对话/结束硬暂停（对标 Ren'Py click to advance）
             _state.Set(StateKeys.Dialog.WaitingSayComplete, true);
             _state.Set(StateKeys.Dialog.Complete, true);
         };
-        var parentW = Bounds.Width > 0 ? Bounds.Width : 1280;
-        var parentH = Bounds.Height > 0 ? Bounds.Height : 720;
 
         foreach (var element in elements.OrderBy(e => e.Order))
         {
-            var control = ConvertToControl(element, parentW, parentH);
+            // 跳过 grid 定义元素本身（它只提供 columns/rows 定义，不渲染为控件）
+            if (grid != null && element.ElementType.Equals("grid", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var control = ConvertToControl(element, parentW, parentH, _currentLayoutMode);
             if (control == null) continue;
-            ApplyLayout(control, element.Properties, parentW, parentH);
+            ApplyLayout(control, element.Properties, parentW, parentH, _currentLayoutMode);
             // 设置 Tag 用于动画匹配（AnimateCommand 通过 Tag 找到目标控件）
             if (element.Properties.TryGetValue(StateKeys.UiTags.Tag, out var tag) && tag is string s)
                 control.Tag = s;
-            grid.Children.Add(control);
+            // 追踪控件用于窗口缩放重布局
+            _trackedControls.Add((control, element.Properties));
+            rootPanel.Children.Add(control);
         }
 
         _dialogBox = new Views.DialogBox(_state);
@@ -248,27 +314,169 @@ public void Update(double delta)
             HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch
         };
 
-        if (_dialogBox != null) grid.Children.Add(_dialogBox);
-        grid.Children.Add(_transitionOverlay);
-        Content = grid;
+        if (_dialogBox != null) rootPanel.Children.Add(_dialogBox);
+        rootPanel.Children.Add(_transitionOverlay);
+        Content = rootPanel;
+    }
+
+    /// <summary>
+    /// 窗口缩放时重新计算所有追踪控件的百分比定位/尺寸
+    /// </summary>
+    private void RelayoutAllControls()
+    {
+        if (_trackedControls.Count == 0) return;
+        var parentW = Bounds.Width > 0 ? Bounds.Width : 1280;
+        var parentH = Bounds.Height > 0 ? Bounds.Height : 720;
+        foreach (var (control, props) in _trackedControls)
+        {
+            ApplyLayout(control, props, parentW, parentH, _currentLayoutMode);
+        }
+        ApplyDialogLayout(parentW, parentH);
     }
 
     // ========== 统一布局 ==========
 
-    /// <summary>直接映射到 Avalonia 原生布局属性（HorizontalAlignment / VerticalAlignment / Margin / Padding）</summary>
-    private static void ApplyLayout(Control control, Dictionary<string, object> props, double pw, double ph)
+    /// <summary>
+    /// 统一映射到 Avalonia 原生布局属性
+    /// <para>百分比精确定位：x=25% → Margin.Left = parentW * 0.25（窗口缩放时重算）</para>
+    /// <para>百分比尺寸：width=50% → control.Width = parentW * 0.5</para>
+    /// <para>Canvas 模式：x/y → Canvas.SetLeft/Top</para>
+    /// <para>锚点系统：xanchor=0.5 → 控件中心对齐到 xpos</para>
+    /// <para>偏移系统：xoffset=10 → 在 xpos 计算结果上额外加 10 像素</para>
+    /// <para>  col/row     → Grid.SetColumn / Grid.SetRow（Avalonia 原生）</para>
+    /// </summary>
+    private static void ApplyLayout(Control control, Dictionary<string, object> props, double pw, double ph,
+        string layoutMode = "grid")
     {
-        // 宽度/高度
-        var bw = ResolveSize(props, "width", pw);
-        var bh = ResolveSize(props, "height", ph);
-        if (bw > 0) control.Width = bw;
-        if (bh > 0) control.Height = bh;
+        // === Grid 附着属性（Avalonia 原生，最优先）===
+        var col = LayoutHelper.ParseInt(props, "col");
+        if (col.HasValue) Grid.SetColumn(control, col.Value);
+        var row = LayoutHelper.ParseInt(props, "row");
+        if (row.HasValue) Grid.SetRow(control, row.Value);
+        var colspan = LayoutHelper.ParseInt(props, "colspan");
+        if (colspan.HasValue) Grid.SetColumnSpan(control, colspan.Value);
+        var rowspan = LayoutHelper.ParseInt(props, "rowspan");
+        if (rowspan.HasValue) Grid.SetRowSpan(control, rowspan.Value);
 
-        // 对齐 — 仅在显式设了 halign/valign 时覆盖，否则保留控件原生默认值
-        if (props.ContainsKey("halign") || props.ContainsKey("textAlign"))
+        // === 尺寸：Width / Height（支持百分比）===
+        var widthStr = props.GetValueOrDefault("width")?.ToString();
+        var heightStr = props.GetValueOrDefault("height")?.ToString();
+
+        if (widthStr != null)
         {
-            var ha = (props.GetValueOrDefault("halign") ?? props.GetValueOrDefault("textAlign"))?.ToString();
-            control.HorizontalAlignment = ha switch
+            if (widthStr.TrimEnd('%') == "100" || widthStr == "*")
+            {
+                // 100% → Stretch，不设 Width
+                if (control.HorizontalAlignment == Avalonia.Layout.HorizontalAlignment.Stretch)
+                    { }
+                else if (!props.ContainsKey("halign") && !props.ContainsKey("align") && !props.ContainsKey("xalign"))
+                    control.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch;
+            }
+            else if (widthStr.EndsWith('%'))
+            {
+                // 百分比宽度 → 精确像素
+                var resolvedW = LayoutHelper.ResolvePercentSize(props.GetValueOrDefault("width"), pw);
+                if (!double.IsNaN(resolvedW) && resolvedW > 0)
+                    control.Width = resolvedW;
+            }
+            else
+            {
+                var w = LayoutHelper.ParseDouble(props, "width");
+                if (w > 0) control.Width = w;
+            }
+        }
+
+        if (heightStr != null)
+        {
+            if (heightStr.TrimEnd('%') == "100" || heightStr == "*")
+            {
+                if (!props.ContainsKey("valign") && !props.ContainsKey("yalign"))
+                    control.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Stretch;
+            }
+            else if (heightStr.EndsWith('%'))
+            {
+                // 百分比高度 → 精确像素
+                var resolvedH = LayoutHelper.ResolvePercentSize(props.GetValueOrDefault("height"), ph);
+                if (!double.IsNaN(resolvedH) && resolvedH > 0)
+                    control.Height = resolvedH;
+            }
+            else
+            {
+                var h = LayoutHelper.ParseDouble(props, "height");
+                if (h > 0) control.Height = h;
+            }
+        }
+
+        // MinWidth / MinHeight / MaxWidth / MaxHeight（支持百分比）
+        var minWVal = props.GetValueOrDefault("minWidth");
+        if (minWVal != null)
+        {
+            var minW = LayoutHelper.ResolvePercentSize(minWVal, pw);
+            if (!double.IsNaN(minW) && minW > 0) control.MinWidth = minW;
+        }
+        var minHVal = props.GetValueOrDefault("minHeight");
+        if (minHVal != null)
+        {
+            var minH = LayoutHelper.ResolvePercentSize(minHVal, ph);
+            if (!double.IsNaN(minH) && minH > 0) control.MinHeight = minH;
+        }
+        var maxWVal = props.GetValueOrDefault("maxWidth");
+        if (maxWVal != null)
+        {
+            var maxW = LayoutHelper.ResolvePercentSize(maxWVal, pw);
+            if (!double.IsNaN(maxW) && maxW > 0) control.MaxWidth = maxW;
+        }
+        var maxHVal = props.GetValueOrDefault("maxHeight");
+        if (maxHVal != null)
+        {
+            var maxH = LayoutHelper.ResolvePercentSize(maxHVal, ph);
+            if (!double.IsNaN(maxH) && maxH > 0) control.MaxHeight = maxH;
+        }
+
+        // === Canvas 绝对定位模式 ===
+        if (layoutMode == "canvas")
+        {
+            var xVal = props.GetValueOrDefault("x");
+            var yVal = props.GetValueOrDefault("y");
+            var xoffset = LayoutHelper.ParseDouble(props, "xoffset");
+            var yoffset = LayoutHelper.ParseDouble(props, "yoffset");
+
+            if (xVal != null)
+            {
+                var xPx = LayoutHelper.ResolvePercentPosition(xVal, pw) + xoffset;
+                // 锚点偏移：xanchor=0.5 → 减去控件宽度的一半
+                var xanchor = LayoutHelper.ParseDouble(props, "xanchor");
+                if (xanchor > 0 && !double.IsNaN(control.Width))
+                    xPx -= control.Width * xanchor;
+                Canvas.SetLeft(control, xPx);
+            }
+            if (yVal != null)
+            {
+                var yPx = LayoutHelper.ResolvePercentPosition(yVal, ph) + yoffset;
+                var yanchor = LayoutHelper.ParseDouble(props, "yanchor");
+                if (yanchor > 0 && !double.IsNaN(control.Height))
+                    yPx -= control.Height * yanchor;
+                Canvas.SetTop(control, yPx);
+            }
+
+            // Canvas 模式下也应用非定位属性
+            ApplyCommonProps(control, props);
+            return;
+        }
+
+        // === Grid/Panel/Stack 相对定位模式 ===
+
+        // 对齐：HorizontalAlignment / VerticalAlignment
+        // 支持 halign/align/xalign 和 valign/yalign
+        var halignKey = props.ContainsKey("halign") ? "halign"
+            : props.ContainsKey("align") ? "align"
+            : props.ContainsKey("xalign") ? "xalign" : null;
+
+        // 如果有 x 百分比且未显式设 halign，不自动推断对齐——改为用 Margin 精确定位
+        // 只有在没有 x 属性时才看 xalign 中的 align 值
+        if (halignKey != null)
+        {
+            control.HorizontalAlignment = props[halignKey]?.ToString()?.ToLowerInvariant() switch
             {
                 "center" => Avalonia.Layout.HorizontalAlignment.Center,
                 "right" => Avalonia.Layout.HorizontalAlignment.Right,
@@ -277,9 +485,15 @@ public void Update(double delta)
             };
         }
 
+        string? valignKey = null;
         if (props.ContainsKey("valign"))
+            valignKey = "valign";
+        else if (props.ContainsKey("yalign"))
+            valignKey = "yalign";
+
+        if (valignKey != null)
         {
-            control.VerticalAlignment = props["valign"]?.ToString() switch
+            control.VerticalAlignment = props[valignKey]?.ToString()?.ToLowerInvariant() switch
             {
                 "center" => Avalonia.Layout.VerticalAlignment.Center,
                 "bottom" => Avalonia.Layout.VerticalAlignment.Bottom,
@@ -288,25 +502,218 @@ public void Update(double delta)
             };
         }
 
-        // margin（x/y 仅当未显式设 margin 时生效）
+        // === 位置：百分比/像素 → Margin ===
+        // 百分比 x/y → 精确像素 Margin（窗口缩放时重算）
+        // 固定像素 x/y → 直接 Margin
         var marginStr = props.GetValueOrDefault("margin")?.ToString();
-        control.Margin = marginStr != null
-            ? ParseThickness(marginStr)
-            : new Thickness(
-                ResolveSize(props, "x", pw),
-                ResolveSize(props, "y", ph),
-                ResolveSize(props, "right", pw),
-                ResolveSize(props, "bottom", ph));
+        if (marginStr != null)
+        {
+            control.Margin = LayoutHelper.ParseThickness(marginStr);
+        }
+        else
+        {
+            var xVal = props.GetValueOrDefault("x");
+            var yVal = props.GetValueOrDefault("y");
+            var xoffset = LayoutHelper.ParseDouble(props, "xoffset");
+            var yoffset = LayoutHelper.ParseDouble(props, "yoffset");
 
-        // padding
+            double marginLeft = 0, marginTop = 0;
+            bool hasX = false, hasY = false;
+
+            if (xVal != null)
+            {
+                marginLeft = LayoutHelper.ResolvePercentPosition(xVal, pw) + xoffset;
+                hasX = true;
+                // 锚点偏移
+                var xanchor = LayoutHelper.ParseDouble(props, "xanchor");
+                if (xanchor > 0 && !double.IsNaN(control.Width))
+                    marginLeft -= control.Width * xanchor;
+            }
+            if (yVal != null)
+            {
+                marginTop = LayoutHelper.ResolvePercentPosition(yVal, ph) + yoffset;
+                hasY = true;
+                var yanchor = LayoutHelper.ParseDouble(props, "yanchor");
+                if (yanchor > 0 && !double.IsNaN(control.Height))
+                    marginTop -= control.Height * yanchor;
+            }
+
+            var rightVal = props.GetValueOrDefault("right");
+            var bottomVal = props.GetValueOrDefault("bottom");
+            double marginRight = 0, marginBottom = 0;
+            bool hasRight = false, hasBottom = false;
+
+            if (rightVal != null)
+            {
+                marginRight = LayoutHelper.ResolvePercentPosition(rightVal, pw);
+                hasRight = true;
+            }
+            if (bottomVal != null)
+            {
+                marginBottom = LayoutHelper.ResolvePercentPosition(bottomVal, ph);
+                hasBottom = true;
+            }
+
+            if (hasX || hasY || hasRight || hasBottom)
+                control.Margin = new Thickness(marginLeft, marginTop, marginRight, marginBottom);
+        }
+
+        // 通用属性（padding/opacity/visible/enabled/zindex/clip/cursor/transform/border/stack）
+        ApplyCommonProps(control, props);
+    }
+
+    /// <summary>
+    /// 应用通用属性（非定位类）——从 ApplyLayout 抽取，供 Canvas 和 Grid 模式共用
+    /// </summary>
+    private static void ApplyCommonProps(Control control, Dictionary<string, object> props)
+    {
+        // === 内边距：Padding ===
         var paddingStr = props.GetValueOrDefault("padding")?.ToString();
         if (paddingStr != null)
         {
-            var pad = ParseThickness(paddingStr);
-            if (control is TextBlock tb) tb.Padding = pad;
-            else if (control is Button bt) bt.Padding = pad;
-            else if (control is Border bd) bd.Padding = pad;
+            var pad = LayoutHelper.ParseThickness(paddingStr);
+            switch (control)
+            {
+                case TextBlock tb: tb.Padding = pad; break;
+                case Button bt: bt.Padding = pad; break;
+                case Border bd: bd.Padding = pad; break;
+                case TemplatedControl tc: tc.Padding = pad; break;
+            }
         }
+
+        // === 透明度：Opacity ===
+        var opacity = LayoutHelper.ParseDouble(props, "opacity");
+        if (opacity >= 0) control.Opacity = Math.Clamp(opacity, 0, 1);
+
+        // === 可见性：IsVisible ===
+        if (props.TryGetValue("visible", out var visVal))
+        {
+            control.IsVisible = visVal switch
+            {
+                bool b => b,
+                string s => !s.Equals("false", StringComparison.OrdinalIgnoreCase),
+                _ => true
+            };
+        }
+
+        // === 可用性：IsEnabled ===
+        if (props.TryGetValue("enabled", out var enVal))
+        {
+            control.IsEnabled = enVal switch
+            {
+                bool b => b,
+                string s => !s.Equals("false", StringComparison.OrdinalIgnoreCase),
+                _ => true
+            };
+        }
+
+        // === 层级：ZIndex ===
+        var zindex = LayoutHelper.ParseInt(props, "zindex");
+        if (zindex.HasValue) control.SetValue(ZIndexProperty, zindex.Value);
+
+        // === 裁剪：ClipToBounds ===
+        if (props.TryGetValue("clipToBounds", out var clipVal))
+        {
+            control.ClipToBounds = clipVal switch
+            {
+                bool b => b,
+                string s => s.Equals("true", StringComparison.OrdinalIgnoreCase),
+                _ => false
+            };
+        }
+
+        // === 光标：Cursor ===
+        var cursorStr = props.GetValueOrDefault("cursor")?.ToString()?.ToLowerInvariant();
+        if (cursorStr != null)
+        {
+            control.Cursor = cursorStr switch
+            {
+                "hand" or "pointer" => new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
+                "text" or "ibeam" => new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Ibeam),
+                "wait" or "loading" => new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Wait),
+                "cross" or "crosshair" => new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Cross),
+                "help" => new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Help),
+                "no" or "forbidden" => new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.No),
+                _ => new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Arrow)
+            };
+        }
+
+        // === 变换：RenderTransform（rotation / scale）===
+        var rotation = LayoutHelper.ParseDouble(props, "rotation");
+        var scale = LayoutHelper.ParseDouble(props, "scale");
+        var scaleX = LayoutHelper.ParseDouble(props, "scaleX");
+        var scaleY = LayoutHelper.ParseDouble(props, "scaleY");
+        if (rotation != 0 || scale != 1 || scaleX != 1 || scaleY != 1)
+        {
+            var transform = new TransformGroup();
+            if (rotation != 0)
+                transform.Children.Add(new RotateTransform(rotation));
+            if (scale != 1)
+                transform.Children.Add(new ScaleTransform(scale, scale));
+            else if (scaleX != 1 || scaleY != 1)
+                transform.Children.Add(new ScaleTransform(
+                    scaleX != 1 ? scaleX : 1,
+                    scaleY != 1 ? scaleY : 1));
+            if (transform.Children.Count > 0)
+                control.RenderTransform = transform;
+        }
+
+        // === Border 专属属性 ===
+        if (control is Border border)
+        {
+            var cornerRadius = LayoutHelper.ParseDouble(props, "cornerRadius");
+            if (cornerRadius > 0) border.CornerRadius = new CornerRadius(cornerRadius);
+
+            var borderBrushStr = props.GetValueOrDefault("borderBrush")?.ToString()
+                ?? props.GetValueOrDefault("borderColor")?.ToString();
+            if (borderBrushStr != null)
+                border.BorderBrush = new SolidColorBrush(Color.Parse(borderBrushStr));
+
+            var borderThickStr = props.GetValueOrDefault("borderThickness")?.ToString();
+            if (borderThickStr != null)
+                border.BorderThickness = LayoutHelper.ParseThickness(borderThickStr);
+        }
+
+        // === StackPanel 专属属性 ===
+        if (control is StackPanel stack)
+        {
+            var spacing = LayoutHelper.ParseDouble(props, "spacing");
+            if (spacing > 0) stack.Spacing = spacing;
+        }
+    }
+
+    /// <summary>安全解析 double 属性（支持 number 和 "50%" 字符串）</summary>
+    private static double ParseDouble(Dictionary<string, object> props, string key)
+    {
+        if (!props.TryGetValue(key, out var val)) return key switch
+        {
+            "opacity" => 1.0,  // 默认不透明
+            "scale" or "scaleX" or "scaleY" => 1.0,  // 默认不缩放
+            _ => 0
+        };
+        return val switch
+        {
+            double d => d,
+            int i => i,
+            float f => f,
+            string s => double.TryParse(s.TrimEnd('%'),
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.NumberFormatInfo.InvariantInfo, out var parsed) ? parsed : 0,
+            _ => 0
+        };
+    }
+
+    /// <summary>安全解析 int 属性</summary>
+    private static int? ParseInt(Dictionary<string, object> props, string key)
+    {
+        if (!props.TryGetValue(key, out var val)) return null;
+        return val switch
+        {
+            int i => i,
+            double d => (int)d,
+            string s => int.TryParse(s, out var parsed) ? parsed : null,
+            _ => null
+        };
     }
 
     /// <summary>解析 "10,5,0,0" 或 "10" 格式的 Thickness</summary>
@@ -347,7 +754,7 @@ public void Update(double delta)
 
     // ========== ConvertToControl ==========
 
-    private Control? ConvertToControl(UIElementEntity element, double parentW = 1280, double parentH = 720)
+    private Control? ConvertToControl(UIElementEntity element, double parentW = 1280, double parentH = 720, string layoutMode = "grid")
     {
         var props = element.Properties;
         var type = element.ElementType.ToLowerInvariant();
@@ -546,10 +953,34 @@ public void Update(double delta)
                     ?? props.GetValueOrDefault("src")?.ToString() ?? "";
                 if (string.IsNullOrEmpty(source)) return null;
                 var opacity = ParseOpacity(props);
+
+                // Stretch 模式：优先用 DSL stretch= 参数，否则自动检测
+                // - size=(100%, 100%) → UniformToFill（背景图铺满全屏，允许裁切）
+                // - 其他 → Uniform（立绘/图片保持比例不变形）
+                var stretch = Avalonia.Media.Stretch.Uniform;
+                var stretchStr = props.GetValueOrDefault("stretch")?.ToString()?.ToLowerInvariant();
+                if (stretchStr != null)
+                {
+                    stretch = stretchStr switch
+                    {
+                        "fill" => Avalonia.Media.Stretch.Fill,
+                        "uniformtofill" or "tofill" => Avalonia.Media.Stretch.UniformToFill,
+                        _ => Avalonia.Media.Stretch.Uniform
+                    };
+                }
+                else
+                {
+                    // 自动检测：宽高都是 100% → 背景图模式
+                    var wIsFullPct = props.TryGetValue("width", out var wVal) && wVal?.ToString() == "100%";
+                    var hIsFullPct = props.TryGetValue("height", out var hVal) && hVal?.ToString() == "100%";
+                    if (wIsFullPct && hIsFullPct)
+                        stretch = Avalonia.Media.Stretch.UniformToFill;
+                }
+
                 var img = new Image
                 {
                     Opacity = opacity,
-                    Stretch = Avalonia.Media.Stretch.Uniform
+                    Stretch = stretch
                 };
                 LoadSource(img, source);
                 return img;
@@ -576,15 +1007,190 @@ public void Update(double delta)
                     panel.Child = stack;
                     foreach (var child in element.Children)
                     {
-                        var childControl = ConvertToControl(child, parentW, parentH);
+                        var childControl = ConvertToControl(child, parentW, parentH, layoutMode);
                         if (childControl != null)
                         {
-                            ApplyLayout(childControl, child.Properties, parentW, parentH);
+                            ApplyLayout(childControl, child.Properties, parentW, parentH, layoutMode);
                             stack.Children.Add(childControl);
                         }
                     }
                 }
                 return panel;
+            }
+
+            // === Grid 容器（Avalonia 原生 Grid，支持 ColumnDefinitions/RowDefinitions）===
+            case "grid":
+            {
+                var g = new Grid();
+                var cols = props.GetValueOrDefault("columns")?.ToString();
+                var rows = props.GetValueOrDefault("rows")?.ToString();
+                if (cols != null)
+                    g.ColumnDefinitions = ColumnDefinitions.Parse(cols);
+                if (rows != null)
+                    g.RowDefinitions = RowDefinitions.Parse(rows);
+                if (element.Children != null)
+                {
+                    foreach (var child in element.Children)
+                    {
+                        var childControl = ConvertToControl(child, parentW, parentH, layoutMode);
+                        if (childControl != null)
+                        {
+                            ApplyLayout(childControl, child.Properties, parentW, parentH, layoutMode);
+                            g.Children.Add(childControl);
+                        }
+                    }
+                }
+                return g;
+            }
+
+            // === 独立 StackPanel（不包裹在 Border 中）===
+            case "stack" or "stackpanel":
+            {
+                var direction = props.GetValueOrDefault("direction")?.ToString()?.ToLowerInvariant() ?? "vertical";
+                var stack = new StackPanel
+                {
+                    Orientation = direction == "horizontal"
+                        ? Avalonia.Layout.Orientation.Horizontal
+                        : Avalonia.Layout.Orientation.Vertical
+                };
+                if (element.Children != null)
+                {
+                    foreach (var child in element.Children)
+                    {
+                        var childControl = ConvertToControl(child, parentW, parentH, layoutMode);
+                        if (childControl != null)
+                        {
+                            ApplyLayout(childControl, child.Properties, parentW, parentH, layoutMode);
+                            stack.Children.Add(childControl);
+                        }
+                    }
+                }
+                return stack;
+            }
+
+            // === ScrollViewer ===
+            case "scroll" or "scrollviewer":
+            {
+                var scroll = new ScrollViewer
+                {
+                    HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+                    VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+                };
+                if (element.Children != null && element.Children.Count > 0)
+                {
+                    var content = ConvertToControl(element.Children[0], parentW, parentH, layoutMode);
+                    if (content != null)
+                    {
+                        ApplyLayout(content, element.Children[0].Properties, parentW, parentH, layoutMode);
+                        scroll.Content = content;
+                    }
+                }
+                return scroll;
+            }
+
+            // === Slider ===
+            case "slider":
+            {
+                var min = ParseDouble(props, "min");
+                var max = ParseDouble(props, "max");
+                var val = ParseDouble(props, "value");
+                var slider = new Slider
+                {
+                    Minimum = min,
+                    Maximum = max > min ? max : 100,
+                    Value = Math.Clamp(val, min, max > min ? max : 100)
+                };
+                if (props.TryGetValue("orientation", out var orient))
+                    slider.Orientation = orient?.ToString()?.Equals("vertical", StringComparison.OrdinalIgnoreCase) == true
+                        ? Avalonia.Layout.Orientation.Vertical
+                        : Avalonia.Layout.Orientation.Horizontal;
+                return slider;
+            }
+
+            // === CheckBox ===
+            case "checkbox" or "check":
+            {
+                var rawText = props.GetValueOrDefault("text")?.ToString() ?? "";
+                var translatedText = _i18n.Translate(rawText);
+                var text = ReplaceExpressions(translatedText);
+                var cb = new CheckBox { Content = text };
+                if (props.TryGetValue("checked", out var chkVal))
+                {
+                    cb.IsChecked = chkVal switch
+                    {
+                        bool b => b,
+                        string s => s.Equals("true", StringComparison.OrdinalIgnoreCase),
+                        _ => false
+                    };
+                }
+                return cb;
+            }
+
+            // === Canvas（绝对定位容器）===
+            case "canvas":
+            {
+                var canvas = new Canvas();
+                if (element.Children != null)
+                {
+                    foreach (var child in element.Children)
+                    {
+                        var childControl = ConvertToControl(child, parentW, parentH, layoutMode);
+                        if (childControl != null)
+                        {
+                            ApplyLayout(childControl, child.Properties, parentW, parentH, "canvas");
+                            // Canvas 子元素用 Canvas.Left/Top 定位
+                            var cx = ResolveSize(child.Properties, "x", parentW);
+                            var cy = ResolveSize(child.Properties, "y", parentH);
+                            if (cx > 0) Canvas.SetLeft(childControl, cx);
+                            if (cy > 0) Canvas.SetTop(childControl, cy);
+                            canvas.Children.Add(childControl);
+                        }
+                    }
+                }
+                return canvas;
+            }
+
+            // === 独立 Border（仅边框/背景，不自动包含 StackPanel）===
+            case "border":
+            {
+                var border = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromArgb(60, 0, 0, 0)),
+                    BorderBrush = new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                };
+                if (element.Children != null && element.Children.Count > 0)
+                {
+                    var childControl = ConvertToControl(element.Children[0], parentW, parentH, layoutMode);
+                    if (childControl != null)
+                    {
+                        ApplyLayout(childControl, element.Children[0].Properties, parentW, parentH, layoutMode);
+                        border.Child = childControl;
+                    }
+                }
+                return border;
+            }
+
+            // === Separator ===
+            case "separator":
+            {
+                return new Separator
+                {
+                    Background = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255))
+                };
+            }
+
+            // === Spacer（空白占位）===
+            case "spacer":
+            {
+                var w = ResolveSize(props, "width", parentW);
+                var h = ResolveSize(props, "height", parentH);
+                return new Control
+                {
+                    Width = w > 0 ? w : 10,
+                    Height = h > 0 ? h : 10
+                };
             }
 
             default:
@@ -705,11 +1311,11 @@ public void Update(double delta)
         var parentH = Bounds.Height > 0 ? Bounds.Height : 720;
         foreach (var el in elements)
         {
-            var ctrl = ConvertToControl(el, parentW, parentH);
+            var ctrl = ConvertToControl(el, parentW, parentH, _currentLayoutMode);
             if (ctrl == null) continue;
             ctrl.Tag = el.Properties.TryGetValue(StateKeys.UiTags.Tag, out var tagVal) ? tagVal?.ToString() : StateKeys.UiTags.Runtime;
-            ctrl.SetValue(Grid.ZIndexProperty, 50); // 立绘在对话框下方
-            ApplyLayout(ctrl, el.Properties, parentW, parentH);
+            ctrl.SetValue(ZIndexProperty, 50); // 立绘在对话框下方
+            ApplyLayout(ctrl, el.Properties, parentW, parentH, _currentLayoutMode);
             root.Children.Add(ctrl);
         }
     }

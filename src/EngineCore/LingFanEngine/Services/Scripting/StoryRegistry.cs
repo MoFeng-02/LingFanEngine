@@ -3,6 +3,7 @@ using LingFanEngine.Abstractions.Entities.Scenes;
 using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Scripting;
+using LingFanEngine.Abstractions.Scripting;
 
 namespace LingFanEngine.Services.Scripting;
 
@@ -11,7 +12,7 @@ namespace LingFanEngine.Services.Scripting;
 /// <para>启动时扫描 Stories 目录建立 "场景名 → 文件路径" 映射。</para>
 /// <para>实际文件在第一次 navigate/scene 指令时才读取编译。</para>
 /// </summary>
-public class StoryRegistry
+public class StoryRegistry : IStoryRegistry
 {
     private readonly ISceneRegistry _sceneRegistry;
     private readonly IScriptEngine _dslEngine;
@@ -52,9 +53,10 @@ public class StoryRegistry
         if (_scanned) return;
         _scanned = true;
 
-        if (!Directory.Exists(_storyRoot)) return;
+        var resolvedRoot = ResolveStoryRoot();
+        if (resolvedRoot == null) return;
 
-        var storyFiles = Directory.GetFiles(_storyRoot, "*.story", SearchOption.AllDirectories);
+        var storyFiles = Directory.GetFiles(resolvedRoot, "*.story", SearchOption.AllDirectories);
         foreach (var filePath in storyFiles)
         {
             // 扫描 scene "xxx" 定义（轻量，只提取场景名）
@@ -65,24 +67,41 @@ public class StoryRegistry
                 var trimmed = line.Trim();
                 if (trimmed.StartsWith("//") || trimmed.StartsWith('#')) continue;
 
-                // 匹配 scene "name"（顶层定义 scene "xxx"）
-                var scMatch = System.Text.RegularExpressions.Regex.Match(trimmed,
-                    @"^scene\s+""([^""]+)""$");
-                if (scMatch.Success)
+                // 计算原始行缩进（Tab 按 4 空格计算）——与 ExtractSceneBlocks 一致
+                // 仅顶格行（indent=0）的 scene/label 视为定义；
+                // 缩进的 scene 是 DSL 导航命令，缩进的 label 不存在（但防御性跳过）
+                var lineIndent = 0;
+                foreach (var ch in line)
                 {
-                    var sceneName = scMatch.Groups[1].Value;
-                    if (!_sceneToFile.ContainsKey(sceneName))
-                        _sceneToFile[sceneName] = filePath;
+                    if (ch == ' ') lineIndent++;
+                    else if (ch == '\t') lineIndent += 4;
+                    else break;
+                }
+                if (lineIndent != 0) continue;
+
+                // 匹配 scene "name"（支持 scene 行属性如 layout=canvas type=menu）
+                // 快速前缀过滤 + Pidgin 解析器
+                if (trimmed.StartsWith("scene ") || trimmed.StartsWith("scene\t"))
+                {
+                    var sceneHeader = DslParser.ParseSceneHeader(trimmed);
+                    if (sceneHeader != null)
+                    {
+                        var sceneName = sceneHeader.SceneName;
+                        if (!_sceneToFile.ContainsKey(sceneName))
+                            _sceneToFile[sceneName] = filePath;
+                    }
                 }
 
                 // 匹配 label xxx:（全局 label 索引）
-                var labelMatch = System.Text.RegularExpressions.Regex.Match(trimmed,
-                    @"^label\s+(\w[\w\d_]*)\s*:$");
-                if (labelMatch.Success)
+                // 快速前缀过滤 + Pidgin 解析器
+                if (trimmed.StartsWith("label ") || trimmed.StartsWith("label\t"))
                 {
-                    var labelName = labelMatch.Groups[1].Value;
-                    if (!_labelToFile.ContainsKey(labelName))
-                        _labelToFile[labelName] = filePath;
+                    var labelName = DslParser.ParseLabelLine(trimmed);
+                    if (labelName != null)
+                    {
+                        if (!_labelToFile.ContainsKey(labelName))
+                            _labelToFile[labelName] = filePath;
+                    }
                 }
             }
         }
@@ -118,17 +137,19 @@ public class StoryRegistry
 
             // 提取 scene 块并注册到 SceneRegistry
             var (sceneBlocks, flowScript) = ExtractSceneBlocksWithFlow(content);
-            foreach (var (name, elements, entryScript) in sceneBlocks)
+            var flowBuilder = new System.Text.StringBuilder(flowScript);
+            foreach (var (name, elements, entryScript, defines, layoutMode, sceneType) in sceneBlocks)
             {
                 if (_loadedScenes.Contains(name)) continue;
 
-                // 编译 entry script
-                List<ICommand>? entryCmds = null;
+                // 将 entryScript 追加到 flowScript 中作为 label <sceneName>:
+                // 这样 NavigateHandler 可以通过场景同名 label 启动 DslExecutor
+                // （与 StoryLoader.LoadFromFileAsync 的行为一致）
                 if (!string.IsNullOrWhiteSpace(entryScript))
                 {
-                    var entryResult = _dslEngine.Compile(entryScript);
-                    if (entryResult.Success && entryResult.Commands != null && entryResult.Commands.Count > 0)
-                        entryCmds = entryResult.Commands.ToList();
+                    flowBuilder.Append($"\nlabel {name}:\n");
+                    flowBuilder.Append(entryScript);
+                    flowBuilder.Append('\n');
                 }
 
                 _sceneRegistry.RegisterScene(name, new SceneEntity
@@ -136,14 +157,16 @@ public class StoryRegistry
                     SceneName = name,
                     Elements = elements,
                     IsTransient = false,
-                    EntryCommands = entryCmds
+                    Defines = defines,
+                    LayoutMode = layoutMode,
+                    SceneType = sceneType
                 });
                 _loadedScenes.Add(name);
-                System.Diagnostics.Debug.WriteLine($"[StoryRegistry] 注册场景: {name}, 元素数={elements.Count}, entryCmds={(entryCmds?.Count ?? 0)}");
+                System.Diagnostics.Debug.WriteLine($"[StoryRegistry] 注册场景: {name}, 元素数={elements.Count}, entry={(string.IsNullOrWhiteSpace(entryScript) ? 0 : entryScript.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length)} 行, defines={defines?.Count ?? 0}");
             }
 
-            // 编译剩余流程脚本
-            var result = _dslEngine.Compile(flowScript);
+            // 编译剩余流程脚本（含场景 entryScript 转为的 label）
+            var result = _dslEngine.Compile(flowBuilder.ToString());
             if (!result.Success)
             {
                 System.Diagnostics.Debug.WriteLine($"[StoryRegistry] 编译失败: {filePath} -> {result.Error}");
@@ -229,16 +252,17 @@ public class StoryRegistry
             }, content);
 
             var (sceneBlocks, flowScript) = ExtractSceneBlocksWithFlow(content);
-            foreach (var (name, elements, entryScript) in sceneBlocks)
+            var flowBuilder = new System.Text.StringBuilder(flowScript);
+            foreach (var (name, elements, entryScript, defines, layoutMode, sceneType) in sceneBlocks)
             {
                 if (_loadedScenes.Contains(name)) continue;
 
-                List<ICommand>? entryCmds = null;
+                // 将 entryScript 追加到 flowScript 中作为 label <sceneName>:
                 if (!string.IsNullOrWhiteSpace(entryScript))
                 {
-                    var entryResult = _dslEngine.Compile(entryScript);
-                    if (entryResult.Success && entryResult.Commands != null && entryResult.Commands.Count > 0)
-                        entryCmds = entryResult.Commands.ToList();
+                    flowBuilder.Append($"\nlabel {name}:\n");
+                    flowBuilder.Append(entryScript);
+                    flowBuilder.Append('\n');
                 }
 
                 _sceneRegistry.RegisterScene(name, new SceneEntity
@@ -246,12 +270,14 @@ public class StoryRegistry
                     SceneName = name,
                     Elements = elements,
                     IsTransient = false,
-                    EntryCommands = entryCmds
+                    Defines = defines,
+                    LayoutMode = layoutMode,
+                    SceneType = sceneType
                 });
                 _loadedScenes.Add(name);
             }
 
-            var result = _dslEngine.Compile(flowScript);
+            var result = _dslEngine.Compile(flowBuilder.ToString());
             if (!result.Success) return false;
             if (result.Commands != null && result.Commands.Count > 0)
             {
@@ -286,7 +312,8 @@ public class StoryRegistry
     }
 
     /// <summary>
-    /// 扫描完成后，注册所有已知文件的 define 到状态容器
+    /// 扫描完成后，注册所有已知文件的 JSON define 到状态容器
+    /// <para>DSL 格式的 define 已由 ExtractSceneBlocks 收集为场景级，在导航时深合并注入。</para>
     /// </summary>
     public void RegisterAllDefines()
     {
@@ -322,23 +349,60 @@ public class StoryRegistry
     /// <summary>
     /// 从 DSL 脚本中提取 scene 块并返回剩余流程脚本
     /// </summary>
-    private static (List<(string SceneName, List<UIElementEntity> Elements, string EntryScript)> Scenes, string FlowScript)
+    private (List<(string SceneName, List<UIElementEntity> Elements, string EntryScript, Dictionary<string, object?>? Defines, string LayoutMode, Abstractions.Entities.Enums.SceneType SceneType)> Scenes, string FlowScript)
         ExtractSceneBlocksWithFlow(string content)
     {
-        return StoryLoader.ExtractSceneBlocks(content);
+        return _storyLoader.ExtractSceneBlocks(content);
     }
 
     private string? FindByFileName(string sceneName)
     {
+        var resolvedRoot = ResolveStoryRoot();
+        if (resolvedRoot == null) return null;
+
         // 尝试 Stories/**/{sceneName}.story 或 Stories/**/{sceneName}_*.story
         var pattern = $"{sceneName}*.story";
-        var files = Directory.GetFiles(_storyRoot, pattern, SearchOption.AllDirectories);
+        var files = Directory.GetFiles(resolvedRoot, pattern, SearchOption.AllDirectories);
         if (files.Length > 0) return files[0];
 
         // 尝试 Stories/**/*{sceneName}*.story
         pattern = $"*{sceneName}*.story";
-        files = Directory.GetFiles(_storyRoot, pattern, SearchOption.AllDirectories);
+        files = Directory.GetFiles(resolvedRoot, pattern, SearchOption.AllDirectories);
         if (files.Length > 0) return files[0];
+
+        return null;
+    }
+
+    /// <summary>
+    /// 解析故事根目录路径
+    /// <para>搜索顺序：传入路径 → AppContext.BaseDirectory 下的同名子目录 → 项目根目录</para>
+    /// </summary>
+    private string? ResolveStoryRoot()
+    {
+        // 1. 直接存在
+        if (Directory.Exists(_storyRoot))
+            return _storyRoot;
+
+        // 2. 输出目录下
+        var baseDir = AppContext.BaseDirectory;
+        if (!string.IsNullOrEmpty(baseDir))
+        {
+            var outputDir = Path.Combine(baseDir, _storyRoot);
+            if (Directory.Exists(outputDir))
+                return outputDir;
+        }
+
+        // 3. 当前工作目录向上搜索
+        var current = Path.GetFullPath(".");
+        for (int i = 0; i < 5; i++)
+        {
+            var probe = Path.Combine(current, _storyRoot);
+            if (Directory.Exists(probe))
+                return probe;
+            var parent = Directory.GetParent(current);
+            if (parent == null) break;
+            current = parent.FullName;
+        }
 
         return null;
     }

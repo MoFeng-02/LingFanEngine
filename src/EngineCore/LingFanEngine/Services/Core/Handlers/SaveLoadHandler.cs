@@ -14,7 +14,7 @@ namespace LingFanEngine.Services.Core.Handlers;
 /// <para>保存：从当前状态构建存档数据并异步写入。</para>
 /// <para>加载：读取存档并恢复场景 + 堆栈 + 状态。</para>
 /// </summary>
-public class SaveLoadHandler : ICommandHandler<SaveLoadCommand>
+public class SaveLoadHandler : ICommandHandler<SaveLoadCommand>, IDefaultCommandHandler
 {
     public void Handle(SaveLoadCommand sl, ICommandContext ctx)
     {
@@ -23,6 +23,11 @@ public class SaveLoadHandler : ICommandHandler<SaveLoadCommand>
         if (sl.IsSave)
         {
             var saveData = ctx.BuildSaveData();
+            if (saveData == null)
+            {
+                System.Diagnostics.Debug.WriteLine("[SaveLoadHandler] 当前场景不允许存档（Menu/UI）");
+                return;
+            }
             // 异步写入，记录异常防止静默丢失
             _ = ctx.SaveService.SaveAsync(sl.SlotId, saveData)
                 .ContinueWith(t =>

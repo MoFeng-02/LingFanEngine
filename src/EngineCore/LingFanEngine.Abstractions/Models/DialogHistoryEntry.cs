@@ -18,4 +18,7 @@ public class DialogHistoryEntry
 
     /// <summary>当前场景名（记录时所在场景）</summary>
     public string? SceneName { get; set; }
+
+    /// <summary>回溯检查点索引（用于从历史面板跳转到该 Say）</summary>
+    public int CheckpointIndex { get; set; } = -1;
 }

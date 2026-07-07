@@ -13,6 +13,16 @@ namespace LingFanEngine.Services.Core;
 public class StateContainer : IStateContainer
 {
     private readonly ConcurrentDictionary<string, object?> _store = new(StringComparer.Ordinal);
+    private readonly IJsonValueConverter? _jsonConverter;
+
+    /// <summary>
+    /// 构造函数
+    /// </summary>
+    /// <param name="jsonConverter">JSON 值转换器（可选，用于归一化存档反序列化后的 JsonElement）</param>
+    public StateContainer(IJsonValueConverter? jsonConverter = null)
+    {
+        _jsonConverter = jsonConverter;
+    }
 
     /// <inheritdoc/>
     public void Set<T>(string key, T value)
@@ -27,15 +37,23 @@ public class StateContainer : IStateContainer
     public T? Get<T>(string key)
     {
         // 1. 精确键匹配（优先）
-        if (_store.TryGetValue(key, out var value) && value is T typed)
-            return typed;
+        if (_store.TryGetValue(key, out var value))
+        {
+            value = Normalize(value);
+            if (value is T typed)
+                return typed;
+            if (TryConvertValue<T>(value, out var converted))
+                return converted;
+        }
 
         // 2. 点分路径遍历（如 "player.hp" → store["player"]["hp"]）
         if (key.Contains('.'))
         {
-            var found = ResolvePath(key);
+            var found = Normalize(ResolvePath(key));
             if (found is T pathTyped)
                 return pathTyped;
+            if (TryConvertValue<T>(found, out var convertedPath))
+                return convertedPath;
         }
 
         return default;
@@ -45,19 +63,33 @@ public class StateContainer : IStateContainer
     public bool TryGet<T>(string key, out T? value)
     {
         // 1. 精确键匹配
-        if (_store.TryGetValue(key, out var raw) && raw is T typed)
+        if (_store.TryGetValue(key, out var raw))
         {
-            value = typed;
-            return true;
+            raw = Normalize(raw);
+            if (raw is T typed)
+            {
+                value = typed;
+                return true;
+            }
+            if (TryConvertValue<T>(raw, out var converted))
+            {
+                value = converted;
+                return true;
+            }
         }
 
         // 2. 点分路径遍历
         if (key.Contains('.'))
         {
-            var found = ResolvePath(key);
+            var found = Normalize(ResolvePath(key));
             if (found is T pathTyped)
             {
                 value = pathTyped;
+                return true;
+            }
+            if (TryConvertValue<T>(found, out var convertedPath))
+            {
+                value = convertedPath;
                 return true;
             }
         }
@@ -100,6 +132,47 @@ public class StateContainer : IStateContainer
     public void Clear() => _store.Clear();
 
     // ========== 嵌套字典路径支持 ==========
+
+    /// <summary>
+    /// 前置归一化：将 JsonElement 转为 .NET 原生类型
+    /// <para>存档反序列化后，嵌套字典内部的值可能仍是 JsonElement（未被 ConvertJsonValue 递归处理）。</para>
+    /// <para>此方法确保 Get&lt;T&gt; 永远不会把 JsonElement 泄漏给调用方——包括 Get&lt;object&gt;。</para>
+    /// <para>委托给 IJsonValueConverter.Convert，复用用户通过 RegisterCustomConverter 注册的自定义转换器。</para>
+    /// </summary>
+private object? Normalize(object? value)
+{
+if (value is System.Text.Json.JsonElement && _jsonConverter != null)
+return _jsonConverter.Convert(value);
+return value;
+}
+
+    /// <summary>
+    /// 尝试将已归一化的值安全转换为目标类型 T（AOT 安全，无反射）
+    /// <para>处理数值 widening/narrowing：short→int, int→double, int→long, string→int 等。</para>
+    /// <para>调用前值应已通过 Normalize 归一化（不含 JsonElement）。</para>
+    /// </summary>
+    private static bool TryConvertValue<T>(object? value, out T? result)
+    {
+        result = default;
+        if (value == null) return false;
+
+        // IConvertible → T（覆盖 short→int, int→double, int→long, double→int 等所有基元互转）
+        // string→int 也由 IConvertible 处理（string 实现 IConvertible）
+        if (value is IConvertible && typeof(T).IsPrimitive)
+        {
+            try
+            {
+                result = (T)Convert.ChangeType(value, typeof(T), System.Globalization.CultureInfo.InvariantCulture);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// 按点分路径解析嵌套字典中的值

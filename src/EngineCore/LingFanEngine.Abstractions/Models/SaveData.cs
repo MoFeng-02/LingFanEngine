@@ -1,3 +1,4 @@
+using LingFanEngine.Abstractions.Entities.Enums;
 using LingFanEngine.Abstractions.Models.Saves;
 
 namespace LingFanEngine.Abstractions.Models;
@@ -54,5 +55,11 @@ public class SaveData
 
     /// <summary>存档缩略图（JPEG bytes，320×180，由 SceneView.CaptureThumbnail 生成）</summary>
     public byte[]? Thumbnail { get; set; }
+
+    /// <summary>
+    /// 存档时的场景类型
+    /// <para>仅 Game 场景允许存档；Menu/UI 场景不应出现在存档中。</para>
+    /// </summary>
+    public SceneType SceneType { get; set; } = SceneType.Game;
 }
 

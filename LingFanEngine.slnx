@@ -14,6 +14,7 @@
   <Folder Name="/EngineCore/">
     <Project Path="E:/Project/Engine/src/EngineCore/LingFanEngine.Abstractions/LingFanEngine.Abstractions.csproj" />
     <Project Path="E:/Project/Engine/src/EngineCore/LingFanEngine/LingFanEngine.csproj" />
+    <Project Path="src/EngineCore/LingFanEngine.Tests/LingFanEngine.Tests.csproj" />
   </Folder>
   <Folder Name="/P/">
     <Project Path="E:/Project/Engine/Pidgin/Pidgin.csproj" />

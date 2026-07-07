@@ -9,8 +9,20 @@ namespace LingFanEngine.Abstractions.Models;
 /// </summary>
 public class RollbackCheckpoint
 {
-    /// <summary>创建此检查点时的 DSL 命令索引（ShowDialogCommand 的索引）</summary>
+    /// <summary>创建此检查点时的 DSL 命令索引（交互命令的索引）</summary>
     public int CommandIndex { get; set; }
+
+    /// <summary>
+    /// 创建此检查点时的场景名
+    /// <para>用于跨场景回退：回退到不同场景的检查点时，自动重载该场景的命令列表。</para>
+    /// </summary>
+    public string SceneName { get; set; } = "";
+
+    /// <summary>
+    /// 交互类型："dialog" / "menu" / "input" / "wait"
+    /// <para>用于回溯时正确恢复交互状态。</para>
+    /// </summary>
+    public string InteractionType { get; set; } = "dialog";
 
     /// <summary>
     /// 此时刻的全量状态快照（排除回溯自身的键）

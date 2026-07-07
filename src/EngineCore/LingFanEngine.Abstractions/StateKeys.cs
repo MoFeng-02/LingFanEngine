@@ -43,6 +43,12 @@ public static class StateKeys
 
         /// <summary>当前语言代码 (string)，如 "zh-CN" / "en-US"</summary>
         public const string CurrentLanguage = "__current_language";
+
+        /// <summary>Menu/UI 场景的来源场景名 (string?)，用于从菜单返回游戏</summary>
+        public const string MenuReturnTo = "__menu_return_to";
+
+        /// <summary>当前场景类型 (int, SceneType)，存档/回溯/导航行为依据此值</summary>
+        public const string CurrentType = "__current_scene_type";
     }
 
     // ==================== 对话 ====================
@@ -187,6 +193,18 @@ public static class StateKeys
 
         /// <summary>跳转目标索引 (int)，仅记录用</summary>
         public const string JumpIndex = "__dsl_jump_index";
+
+        /// <summary>
+        /// 阻塞类型 (string)："wait" / "menu" / "input" / "dialog" / ""
+        /// <para>联动: <see cref="WaitingType"/></para>
+        /// </summary>
+        public static class WaitingTypes
+        {
+            public const string Wait = "wait";
+            public const string Menu = "menu";
+            public const string Input = "input";
+            public const string Dialog = "dialog";
+        }
     }
 
     // ==================== 菜单 ====================
@@ -423,6 +441,9 @@ public static class StateKeys
 
         /// <summary>自动模式当前计时器 (double)，内部用</summary>
         public const string AutoTimer = "__auto_timer";
+
+/// <summary>已读 Say 的场景感知键集合 (HashSet&lt;string&gt;，格式 "sceneName:cmdIdx")，用于 Skip 仅跳已读</summary>
+public const string SeenSayIndices = "__seen_say_indices";
     }
 
     // ==================== 偏好设置 ====================
@@ -550,5 +571,8 @@ public static class StateKeys
 
         /// <summary>是否正在浏览历史 (bool)，true = 用户回退到了历史中某点</summary>
         public const string IsActive = "__rollback_is_active";
+
+        /// <summary>是否为回溯重展示（bool），true = 回退/前进重新展示 Say，不应记录历史</summary>
+        public const string IsReplay = "__rollback_is_replay";
     }
 }

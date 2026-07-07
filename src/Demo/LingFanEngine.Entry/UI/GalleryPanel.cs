@@ -20,7 +20,7 @@ namespace LingFanEngine.Entry.UI;
 public class GalleryPanel : UserControl
 {
     private readonly IStateContainer _state;
-    private readonly GameController? _controller;
+    private readonly IGameController? _controller;
     private ScrollViewer? _scrollViewer;
     private WrapPanel? _cgWrapPanel;
     private Border? _fullViewBorder;
@@ -29,7 +29,7 @@ public class GalleryPanel : UserControl
     /// <summary>面板关闭事件</summary>
     public event Action? Closed;
 
-    public GalleryPanel(IStateContainer state, GameController? controller)
+    public GalleryPanel(IStateContainer state, IGameController? controller)
     {
         _state = state;
         _controller = controller;

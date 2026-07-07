@@ -20,7 +20,7 @@ public class SaveLoadPanel : UserControl
 {
     private readonly IStateContainer _state;
     private readonly ISaveService? _saveService;
-    private readonly GameController? _controller;
+    private readonly IGameController? _controller;
     private readonly ScrollViewer _scrollViewer;
     private readonly StackPanel _slotsPanel;
     private bool _isSaveMode = true;
@@ -28,7 +28,7 @@ public class SaveLoadPanel : UserControl
     /// <summary>面板关闭事件</summary>
     public event Action? Closed;
 
-    public SaveLoadPanel(IStateContainer state, ISaveService? saveService, GameController? controller)
+    public SaveLoadPanel(IStateContainer state, ISaveService? saveService, IGameController? controller)
     {
         _state = state;
         _saveService = saveService;

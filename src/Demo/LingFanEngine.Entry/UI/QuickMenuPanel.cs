@@ -16,7 +16,7 @@ namespace LingFanEngine.Entry.UI;
 public class QuickMenuPanel : UserControl
 {
     private readonly IStateContainer _state;
-    private readonly GameController? _controller;
+    private readonly IGameController? _controller;
 
     /// <summary>菜单项点击事件</summary>
     public event Action<string>? MenuItemSelected;
@@ -24,7 +24,7 @@ public class QuickMenuPanel : UserControl
     /// <summary>面板关闭事件</summary>
     public event Action? Closed;
 
-    public QuickMenuPanel(IStateContainer state, GameController? controller)
+    public QuickMenuPanel(IStateContainer state, IGameController? controller)
     {
         _state = state;
         _controller = controller;
@@ -161,7 +161,8 @@ public class QuickMenuPanel : UserControl
                 _controller?.ToggleAuto();
                 break;
             case "title":
-                _controller?.Navigate("title_main");
+                // 使用 BackTitleAlias 别名，由 NavigateHandler 自动重定向到 TitleSceneName
+                _controller?.Navigate("back_title");
                 break;
             case "debug":
                 // debug 由外层 OverlayManager 处理

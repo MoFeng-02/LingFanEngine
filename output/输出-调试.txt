@@ -1,0 +1,4063 @@
+﻿[DslParser] scene 行解析失败: define "story.progress" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.4 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "第一章 · 初端" x=50% y=12% size=36 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "你站在一个古老的村落前。" x=5% y=25% size=22 color="#FFFFFF" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "风吹过麦田，带来远方的气息。" x=5% y=30% size=20 color="#CCCCCC" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "前方有三条路可选。" x=5% y=35% size=18 color="#AAAAAA" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "当前进度: 第{story.progress}步" x=5% y=40% size=16 color="#88FF88" font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "左边的小路" x=25% y=55% width=200 height=44 color="#88CCFF" nav="do_path1" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "右边的岔路" x=55% y=55% width=200 height=44 color="#88FF88" nav="do_path2" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回标题" x=50% y=70% width=160 height=42 color="#FF8888" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_path1: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你走进左边的小路，发现了一些金币！" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "story.progress" {story.progress + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.gold" {player.gold + 20} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "金币增加了 20" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "path1" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_path2: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "右边的岔路似乎有危险的气息……" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "story.progress" {story.progress + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你被荆棘划伤了！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.hp - 10} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.hp <= 0} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你昏迷了过去……" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.maxHp / 2} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "path2" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "story.progress" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.3 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "左边的小路" x=50% y=15% size=30 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "你发现了一些闪闪发光的金币！" x=5% y=25% size=22 color="#FFFFFF" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "金币 +20" x=5% y=32% size=18 color="#88FF88" font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你小心地将金币收进口袋。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: button "返回村落" x=25% y=50% width=200 height=44 color="#88CCFF" nav="chapter1_intro" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "继续探索" x=55% y=50% width=200 height=44 color="#88FF88" nav="chapter2_depart" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回标题" x=50% y=65% width=160 height=42 color="#FF8888" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "story.progress" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.3 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "右边的岔路" x=50% y=15% size=30 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "你狼狈地回到村落。" x=5% y=25% size=22 color="#FFFFFF" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "HP -10" x=5% y=32% size=18 color="#FF8888" font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "得小心一点了……" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: button "返回村落" x=25% y=50% width=200 height=44 color="#88CCFF" nav="chapter1_intro" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "直接出发" x=55% y=50% width=200 height=44 color="#88FF88" nav="chapter2_depart" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回标题" x=50% y=65% width=160 height=42 color="#FF8888" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.5 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "⚔ 战斗！" x=50% y=12% size=30 color="#FF4444" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "旅人 HP: {player.hp}/{player.maxHp}" x=5% y=25% size=18 color="#FFFFFF" font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "野狼扑了过来！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.hp - 15} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你受到了 15 点伤害！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.hp <= 0} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你倒下了……" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" 50 → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: back → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你惊醒过来，发现是一场梦。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你击退了野狼！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.gold" {player.gold + 30} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "获得了 30 金币！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: forward → Parse error.
+    unexpected f
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你继续前行。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.exp" {player.exp + 50} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "经验值 +50" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: button "继续前进" x=25% y=55% width=200 height=44 color="#88CCFF" nav="chapter2_advancing" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "返回标题" x=55% y=55% width=200 height=44 color="#FF8888" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "深入探索" x=100 y=150 size=30 color="#FFD700" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "前方出现了强大的敌人！" x=100 y=220 size=22 color="#FFFFFF" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "⚔ 战斗" x=100 y=320 width=140 height=42 color="#FF8888" nav="battle" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回启程" x=100 y=420 width=160 height=42 color="#88CCFF" nav="chapter2_depart" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回标题" x=100 y=480 width=160 height=42 color="#FF8888" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.4 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "第二章 · 启程" x=50% y=12% size=36 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "你来到了新的区域——翠绿平原。" x=5% y=25% size=22 color="#FFFFFF" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "前方是一片开阔的草原，远处有战斗的痕迹。" x=5% y=30% size=20 color="#CCCCCC" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "这里就是翠绿平原吗？看起来并不平静。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: button "继续前进" x=25% y=55% width=200 height=44 color="#88CCFF" nav="chapter2_advancing" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回标题" x=50% y=70% width=160 height=42 color="#FF8888" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.5 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "深入探索" x=50% y=12% size=30 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "前方出现了敌人！" x=5% y=25% size=22 color="#FFFFFF" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "一只野狼挡住了去路。" x=5% y=30% size=20 color="#CCCCCC" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "看来不打倒它是不行了。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: label start_battle: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "野狼冲了过来！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: back → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你回到了安全位置。" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: button "⚔ 迎战" x=25% y=55% width=200 height=44 color="#FF8888" nav="battle" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回" x=50% y=70% width=160 height=42 color="#FF8888" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.4 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "第三章 · 相遇" x=50% y=12% size=36 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "你在旅途中遇到了神秘的老者。" x=5% y=25% size=22 color="#FFFFFF" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "他自称是这片大陆的守护者。" x=5% y=30% size=20 color="#CCCCCC" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "年轻人，我看你天赋异禀……" speaker="老者" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: button "打招呼" x=20% y=55% width=200 height=44 color="#88FF88" nav="greet" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "购买物品" x=50% y=55% width=200 height=44 color="#88CCFF" nav="buy" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回标题" x=50% y=70% width=160 height=42 color="#FF8888" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "打招呼" x=50% y=15% size=30 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "您好，老先生！" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "呵呵，有礼貌的年轻人。这个东西送给你。" speaker="老者" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.gold" {player.gold + 100} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "金币 +100" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: button "← 返回" x=50% y=50% width=160 height=42 color="#FF8888" nav="chapter3_meet" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "购买物品" x=50% y=15% size=30 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "旅人金币: {player.gold}  当前 HP: {player.hp}/{player.maxHp}" x=5% y=25% size=16 color="#FFFFFF" font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: if {player.gold >= 50} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "这是一瓶恢复药水，50 金币。" speaker="老者" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.gold" {player.gold - 50} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.hp + 30} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.hp > player.maxHp} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.hp" {player.maxHp} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "HP 恢复了 30 点！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "金币不够，去多赚点吧。" speaker="老者" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回" x=50% y=50% width=160 height=42 color="#FF8888" nav="chapter3_meet" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "回到标题" x=50% y=60% width=160 height=42 color="#FF8888" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "淡入动画 (CrossFade)" x=640 y=200 size=36 color="#FFFFFF" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "点击下方按钮切换其他过渡效果" x=640 y=270 size=18 color="#CCCCCC" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回过渡菜单" x=640 y=400 width=200 height=42 color="#88CCFF" nav="trans_demo" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "左滑动画 (SlideLeftIn)" x=640 y=200 size=36 color="#FFFFFF" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "点击下方按钮切换其他过渡效果" x=640 y=270 size=18 color="#CCCCCC" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回过渡菜单" x=640 y=400 width=200 height=42 color="#88CCFF" nav="trans_demo" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "右滑动画 (SlideRightIn)" x=640 y=200 size=36 color="#FFFFFF" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "点击下方按钮切换其他过渡效果" x=640 y=270 size=18 color="#CCCCCC" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回过渡菜单" x=640 y=400 width=200 height=42 color="#88CCFF" nav="trans_demo" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "缩放动画 (ZoomIn)" x=640 y=200 size=36 color="#FFFFFF" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "点击下方按钮切换其他过渡效果" x=640 y=270 size=18 color="#CCCCCC" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回过渡菜单" x=640 y=400 width=200 height=42 color="#88CCFF" nav="trans_demo" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.3 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "📜 沙盒模式" x=50% y=12% size=36 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "自由测试各种 DSL 功能" x=50% y=18% size=16 color="#AAAAAA" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "旅人 · 金币: {player.gold} · HP: {player.hp}/{player.maxHp}" x=5% y=25% size=14 color="#FFFFFF" font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "等级: {player.level}  经验: {player.exp}" x=5% y=30% size=14 color="#FFFFFF" font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "游戏时间: 第{days}天 {hours}:{mins:00}" x=5% y=35% size=14 color="#888888" font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "💰 加 50 金币" x=15% y=45% width=160 height=42 color="#88FF88" cmd="do_sandbox_add_gold" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "💸 减 20 金币" x=38% y=45% width=160 height=42 color="#FF8888" cmd="do_sandbox_sub_gold" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "❤ 加 20 HP" x=62% y=45% width=160 height=42 color="#FF88AA" cmd="do_sandbox_add_hp" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "⬆ 升级" x=85% y=45% width=160 height=42 color="#88CCFF" cmd="do_sandbox_level_up" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🎲 掷骰子" x=15% y=55% width=160 height=42 color="#FFAA88" cmd="do_sandbox_roll_dice" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "⚔ 刷怪" x=38% y=55% width=160 height=42 color="#FF4444" cmd="do_sandbox_battle" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "💾 存档" x=62% y=55% width=160 height=42 color="#88FF88" cmd="do_save" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "📂 读档" x=85% y=55% width=160 height=42 color="#88CCFF" cmd="do_load" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🎵 播放 BGM" x=15% y=65% width=160 height=42 color="#AA88FF" cmd="play_bgm" value="Media/bgm_main.wav" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🔇 停止 BGM" x=38% y=65% width=160 height=42 color="#AA88FF" cmd="stop_bgm" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回标题" x=50% y=78% width=160 height=42 color="#FF8888" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_sandbox_add_gold: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.gold" {player.gold + 50} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "金币 +50" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "sandbox" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_sandbox_sub_gold: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.gold" {player.gold - 20} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.gold < 0} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.gold" 0 → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "金币 -20" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "sandbox" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_sandbox_add_hp: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.hp" {player.hp + 20} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.hp > player.maxHp} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.hp" {player.maxHp} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "HP +20" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "sandbox" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_sandbox_level_up: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.level" {player.level + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.maxHp" {player.maxHp + 20} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.maxHp} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "等级提升到 {player.level}！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "sandbox" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_sandbox_roll_dice: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: let "dice" 1 once → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "_local_dice" {random(1, 6)} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "🎲 掷出了 {_local_dice} 点" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "sandbox" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_sandbox_battle: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: let "enemy_hp" 1 once → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "_local_enemy_hp" {random(20, 50)} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "野狼出现了！HP: {_local_enemy_hp}" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "sandbox.battle_count" {sandbox.battle_count + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.hp - random(5, 15)} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.hp <= 0} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.hp" 50 → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你倒下了……但被救了回来。" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.gold" {player.gold + random(10, 30)} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你战胜了野狼！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "sandbox" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_sandbox_while_test: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "开始 while 循环测试" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "sandbox.test_count" 0 → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: let "i" 0 once → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: while {_local_i < 3} → Parse error.
+    unexpected w
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "_local_i" {_local_i + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "sandbox.test_count" {sandbox.test_count + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "循环第 {_local_i} 次" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "循环结束，共 {sandbox.test_count} 次" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "sandbox" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_sandbox_call_test: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "准备调用子过程" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: call do_sub_test → Parse error.
+    unexpected c
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "子过程返回了！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "sandbox" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_sub_test: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "我是子过程，执行完后会自动返回" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: return → Parse error.
+    unexpected r
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_sandbox_show: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: show "player" x=200 y=300 → Parse error.
+    unexpected h
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "显示了 player" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "sandbox" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_sandbox_hide: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: hide "player" → Parse error.
+    unexpected h
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "隐藏了 player" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "sandbox" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_sandbox_bg: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: background "Images/door_zoom.jpg" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "切换了背景图片" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "sandbox" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_sandbox_animate: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: animate "player" x 500 duration=1.0 easing=EaseOutBounce → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "player 移动到 x=500" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "sandbox" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_sandbox_menu: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你想做什么？" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: menu "选择行动" → Parse error.
+    unexpected m
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "sandbox" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.3 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "⏱ 游戏时间" x=50% y=12% size=36 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "当前游戏时间: 第{days}天 {hours}:{mins:00}" x=50% y=22% size=22 color="#FFFFFF" halign=center font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "游戏时间每秒自动推进" x=50% y=30% size=16 color="#AAAAAA" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "旅人 · 金币: {player.gold} · HP: {player.hp}/{player.maxHp}" x=5% y=75% size=14 color="#888888" font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回标题" x=50% y=50% width=160 height=42 color="#FF8888" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "🎬 过渡动画演示" x=640 y=120 size=36 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "点击按钮切换场景来体验过渡效果" x=640 y=185 size=18 color="#AAAAAA" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "淡入 (CrossFade)" x=640 y=280 width=200 height=42 nav="do_trans_fade" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "左滑 (SlideLeft)" x=640 y=340 width=200 height=42 nav="do_trans_slide" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "右滑 (SlideRight)" x=640 y=400 width=200 height=42 nav="do_trans_slide_right" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "缩放 (ZoomIn)" x=640 y=460 width=200 height=42 nav="do_trans_zoom" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回标题" x=640 y=520 width=160 height=42 color="#88CCFF" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_trans_fade: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: transition "fade" duration=0.8 → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "trans_crossfade" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_trans_slide: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: transition "slideleft" duration=0.6 → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "trans_slideleft" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_trans_slide_right: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: transition "slideright" duration=0.6 → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "trans_slideright" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_trans_zoom: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: transition "zoom" duration=0.5 → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "trans_zoomin" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "player.name" "旅人" once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "player.gold" 100 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "player.hp" 50 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "player.maxHp" 100 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "player.level" 1 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "player.exp" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "sandbox.battle_count" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "sandbox.dice" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "npc.merchant.name" "老张" once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "npc.merchant.favorability" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "story.progress" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.5 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "灵泛引擎" x=50% y=15% size=56 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "DSL 纯故事线演示" x=50% y=22% size=18 color="#AAAAAA" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "旅人 · 金币: {player.gold} · HP: {player.hp}/{player.maxHp}" x=50% y=28% size=14 color="#666666" halign=center font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🌟 星陨之谷（完整故事）" x=50% y=36% width=260 height=46 color="#FFD700" nav="valley_prologue" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "📖 第一章 · 初端" x=50% y=44% width=220 height=42 color="#88CCFF" nav="chapter1_intro" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🚀 第二章 · 启程" x=50% y=51% width=220 height=42 color="#88CCFF" nav="chapter2_depart" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🤝 第三章 · 相遇" x=50% y=58% width=220 height=42 color="#88FF88" nav="chapter3_meet" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "⏱ 时间系统" x=20% y=65% width=180 height=38 color="#FFAA88" nav="show_time" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "📜 沙盒模式" x=50% y=65% width=180 height=38 color="#FFAA88" nav="sandbox" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🎬 过渡动画" x=80% y=65% width=180 height=38 color="#88FF88" nav="trans_demo" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "English" x=20% y=75% width=160 height=36 color="#AA88FF" cmd="switch_lang" value="en" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "中文" x=50% y=75% width=160 height=36 color="#AA88FF" cmd="switch_lang" value="zh" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "📦 let 变量测试" x=80% y=75% width=180 height=38 color="#88FF88" nav="demo_let" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "📦 let 局部变量测试" x=50% y=15% size=30 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "每次进入，_local_counter 初始为 0，然后 +1" x=50% y=22% size=16 color="#AAAAAA" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: let "counter" 0 once → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "_local_counter" {_local_counter + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: text "当前计数: {_local_counter}" x=50% y=30% size=22 color="#FFFFFF" halign=center font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "切换场景再回来，计数恢复为 0" x=50% y=38% size=14 color="#888888" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回标题" x=50% y=50% width=160 height=42 color="#FF8888" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.wolf_hp" 40 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.wolf_max_hp" 40 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.6 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "第二章 · 试炼之林" x=50% y=10% size=30 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "三只发光眼睛的狼挡住了去路。" x=5% y=20% size=16 color="#FF8888" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "野狼 HP: {valley.wolf_hp}/{valley.wolf_max_hp}" x=5% y=28% size=16 color="#FF4444" font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "旅人 HP: {player.hp}/{player.maxHp}" x=5% y=33% size=14 color="#88FF88" font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "⚔ 攻击" x=25% y=50% width=160 height=42 color="#FF4444" cmd="do_valley_attack" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🛡 防御" x=50% y=50% width=160 height=42 color="#8888FF" cmd="do_valley_defend" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🏃 逃跑" x=75% y=50% width=160 height=42 color="#FFAA88" cmd="do_valley_flee" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🤝 尝试沟通" x=50% y=60% width=160 height=42 color="#88FF88" cmd="do_valley_communicate" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_valley_attack: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: let "dmg" 0 once → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "_local_dmg" {random(15, 25)} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {valley.has_bow} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "_local_dmg" {_local_dmg + 20} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你用猎弓射出一箭！造成了 {_local_dmg} 点伤害！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你挥拳攻击！造成了 {_local_dmg} 点伤害。" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "valley.wolf_hp" {valley.wolf_hp - _local_dmg} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {valley.wolf_hp <= 0} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "野狼倒下了……" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.wolf_defeated" true → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.bad_deeds" {valley.bad_deeds + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "恶行 +1（暴力解决问题）" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_after_wolf" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "野狼还活着！HP: {valley.wolf_hp}/{valley.wolf_max_hp}" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: call wolf_counterattack → Parse error.
+    unexpected c
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "valley_wolf_encounter" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_valley_defend: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: let "blocked" 0 once → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "_local_blocked" {random(3, 8)} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.hp - _local_blocked} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.hp <= 0} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.hp" 1 → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你险些倒下……但求生意志让你撑住了。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你举臂防御，受到 {_local_blocked} 点伤害。" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "防御成功！野狼似乎有些疲惫了。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.wolf_hp" {valley.wolf_hp - 5} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {valley.wolf_hp <= 0} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "野狼因疲惫而退走了。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.wolf_defeated" true → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_after_wolf" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "valley_wolf_encounter" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_valley_flee: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: let "flee_dice" 0 once → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "_local_flee_dice" {random(1, 6)} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {_local_flee_dice >= 4} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你成功逃脱了！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "但逃跑让你丢失了一些自信……" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.fled_from_wolf" true → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_after_wolf" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "逃跑失败！野狼咬住了你的衣角。" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.hp - 12} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.hp <= 0} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.hp" 1 → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "千钧一发之际，你挣脱了。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "受到 12 点伤害！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "valley_wolf_encounter" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_valley_communicate: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: if {valley.read_stele} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你想起了石碑上的话：「心怀善意者可通行」。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你放下武器，缓缓伸出手。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "……" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: wait 1.0 → Parse error.
+    unexpected w
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "野狼盯着你看了很久，然后低下了头。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "它转身走向密林深处，为你让开了路。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你感到一股温暖的力量流过全身。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.hp + 20} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.hp > player.maxHp} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.hp" {player.maxHp} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "valley.good_deeds" {valley.good_deeds + 2} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.wolf_defeated" true → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.peaceful_wolf" true → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "HP 恢复 20！善行 +2！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_after_wolf" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你试图和狼沟通……但它不理解你。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "野狼趁机扑了过来！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.hp - 15} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.hp <= 0} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.hp" 1 → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你勉强躲开了致命一击。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "受到 15 点伤害！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "（也许你需要先找到某种线索……）" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_wolf_encounter" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label wolf_counterattack: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: let "wolf_dmg" 0 once → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "_local_wolf_dmg" {random(8, 15)} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.hp - _local_wolf_dmg} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.hp <= 0} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.hp" 1 → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你险些倒下，但求生意志让你站了起来！" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "野狼反击！受到 {_local_wolf_dmg} 点伤害。" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: return → Parse error.
+    unexpected r
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.wolf_resolved" true once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.4 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "第二章 · 通行" x=50% y=10% size=30 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "道路在前方延伸，你继续深入。" x=5% y=20% size=16 color="#CCCCCC" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "HP: {player.hp}/{player.maxHp} · 金币: {player.gold}" x=5% y=85% size=14 color="#666666" font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🌲 继续前进" x=50% y=50% width=200 height=44 color="#88CCFF" nav="valley_crossroad" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "💊 休息片刻" x=30% y=60% width=160 height=40 color="#88FF88" cmd="do_valley_rest" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "💾 存档" x=70% y=60% width=160 height=40 color="#FFCC88" cmd="do_save" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_valley_rest: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: let "rest_count" 0 once → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "_local_rest_count" {_local_rest_count + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {_local_rest_count <= 2} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.hp" {player.hp + 15} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.hp > player.maxHp} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.hp" {player.maxHp} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你稍作休息，恢复了 15 HP。" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你已经休息够了，不宜在此久留。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "valley_after_wolf" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.at_crossroad" true once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.4 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "第二章 · 十字路口" x=50% y=10% size=30 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "前方出现了三条岔路。" x=5% y=20% size=18 color="#FFFFFF" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "左边的路飘着淡淡的光芒。" x=5% y=28% size=14 color="#88CCFF" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "中间的路布满了荆棘。" x=5% y=33% size=14 color="#FF8888" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "右边的路隐约传来水声。" x=5% y=38% size=14 color="#88FF88" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "✨ 光芒之路" x=25% y=55% width=180 height=44 color="#88CCFF" nav="valley_light_path" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🌿 荆棘之路" x=50% y=55% width=180 height=44 color="#FF8888" nav="valley_thorn_path" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "💧 溪流之路" x=75% y=55% width=180 height=44 color="#88FF88" nav="valley_river_path" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回" x=50% y=75% width=160 height=40 color="#FF8888" nav="valley_after_wolf" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_light_path: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你走向光芒之路。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "空气中弥漫着一种奇异的能量……" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "前方的空地上，漂浮着几颗光球。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "它们像是有意识地围着你旋转。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你感到精神一振。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.maxHp" {player.maxHp + 20} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.hp + 20} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "最大 HP +20！当前 HP +20！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.good_deeds" {valley.good_deeds + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "善行 +1" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "光球为你指引了方向。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.chosen_path" "light" → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_star_crater" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_thorn_path: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你走向荆棘之路。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "荆棘划破了你的衣袖……" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.hp - 10} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.hp <= 0} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.hp" 1 → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "HP -10" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "但你在荆棘深处发现了一个隐藏的宝箱！" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.gold" {player.gold + 50} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "金币 +50！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "宝箱底部还有一张泛黄的纸条：" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "「力量越大，代价越重。选择之前，三思。」" speaker="纸条" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.bad_deeds" {valley.bad_deeds + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "恶行 +1（取走了不属于你的东西）" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.chosen_path" "thorn" → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_star_crater" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_river_path: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你沿着溪流前行。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "清澈的溪水映出星空的倒影。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你在溪边发现了一些闪闪发光的石头。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "这些是……星石？据说有治愈的力量。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.hp + 25} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.hp > player.maxHp} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.hp" {player.maxHp} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "HP 恢复 25！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.has_starstone" true → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "获得物品：星石（可能在后面有用）" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "溪流尽头，隐约可见一片开阔地。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.chosen_path" "river" → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_star_crater" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.reached_crater" true once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "valley.chapter" 3 → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.6 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "第三章 · 星陨坑" x=50% y=10% size=32 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "你来到了山谷的尽头——一个巨大的环形坑洞。" x=5% y=20% size=16 color="#CCCCCC" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "坑底散发着柔和的星光。" x=5% y=25% size=16 color="#88CCFF" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "HP: {player.hp}/{player.maxHp} · 善行: {valley.good_deeds} · 恶行: {valley.bad_deeds}" x=5% y=85% size=12 color="#666666" font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "⬇ 走下坑底" x=50% y=50% width=200 height=44 color="#88CCFF" nav="valley_meet_spirit" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🔍 环顾四周" x=30% y=60% width=160 height=40 color="#AA88FF" cmd="do_valley_look_crater" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "💾 存档" x=70% y=60% width=160 height=40 color="#FFCC88" cmd="do_save" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_valley_look_crater: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "坑壁上刻满了古老的符文。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你辨认出其中一些文字：" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "「千年前，吾自天穹而降，困于此间。」" speaker="符文" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "「吾之力，可改天换地，亦可毁灭万物。」" speaker="符文" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "「唯待有心人，以真心决吾之命运。」" speaker="符文" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "看来这就是传说中的星灵所在。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {valley.has_starstone} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "手中的星石微微发热，似乎在回应什么。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "valley_star_crater" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_meet_spirit: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "valley.met_spirit" true → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: transition "fade" duration=1.5 → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你缓缓走下坑底……" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "星光越来越亮，最终凝聚成人形。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "一个半透明的身影浮现在你面前。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: wait 0.5 → Parse error.
+    unexpected w
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: shake intensity=5 duration=0.2 → Parse error.
+    unexpected h
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "……你来了。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "我等这一天，已经等了一千年。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你是……星灵？" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "曾经是。如今不过是困在凡间的残魂。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你为何被困在此？" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "千年前我坠落于此，力量散落在山谷各处。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "我无法离开这片坑洞。但我感受到了你的到来。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你身上带着我的碎片——" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {valley.has_starstone} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "那颗星石，正是我力量的一部分。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你愿意将它还给我吗？" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "虽然你没有找到星石，但你的到来本身就是一种缘分。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "现在，你需要做出选择。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "这个选择将决定我的命运，也决定你的。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_choice" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.at_choice" true once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.7 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "第三章 · 抉择" x=50% y=8% size=32 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "星灵悬浮在星光之中，等待你的回答。" x=50% y=16% size=16 color="#CCCCCC" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "「选择吧，旅人。」" x=50% y=22% size=20 color="#88CCFF" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🕊 解放星灵" x=25% y=45% width=200 height=48 color="#88FF88" nav="valley_path_free" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "⚡ 夺取力量" x=50% y=45% width=200 height=48 color="#FF4444" nav="valley_path_power" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🚶 离开此地" x=75% y=45% width=200 height=48 color="#FFCC88" nav="valley_path_leave" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "❓ 询问详情" x=50% y=58% width=160 height=38 color="#AA88FF" nav="valley_ask_more" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_ask_more: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你想要了解什么？" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "解放你意味着什么？" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "将我残存的力量归还于天地。我会消散，但灵魂将回归星辰。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "这是最好的结局——对我而言。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "那夺取力量呢？" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你可以吸收我所有的力量。你将变得无比强大。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "但力量越大，代价越重。你的心灵将被侵蚀。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "我无法保证你会成为英雄……还是暴君。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "如果我就这样离开呢？" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你会平安离去，我也将在此继续沉睡。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "直到下一个千年，下一个来访者。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "这并非最坏的选择。有时候，不打扰便是最大的善意。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "我明白了。让我想想。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_choice" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_path_free: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "我选择解放你。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "千年了……终于有人愿意放下贪念。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你的善行我看在眼里。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {valley.has_starstone} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你将星石递向星灵。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "星石发出耀眼的光芒，化作星尘融入星灵体内。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: if {valley.peaceful_wolf} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你以善意对待狼群，它为你引路至此。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "如今你以善意对待我，我将以祝福回馈。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "谢谢你，旅人。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.spirit_freed" true → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.good_deeds" {valley.good_deeds + 3} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: transition "fade" duration=2.0 → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "valley_ending_free" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_path_power: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "我选择……夺取你的力量。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "……" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "我理解。力量是诱人的。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {valley.bad_deeds >= 2} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你的旅途上已有太多贪念的痕迹。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "我并不意外。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你本不是恶人……但这一刻的选择定义了你。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "来吧。拿走你想要的一切。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "但记住——" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "力量不会让你自由。它会成为你的牢笼。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.took_power" true → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.bad_deeds" {valley.bad_deeds + 3} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: shake intensity=20 duration=1.0 → Parse error.
+    unexpected h
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: transition "fadeout" duration=2.0 → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "valley_ending_power" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_path_leave: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "我选择离开。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "这力量不属于我，我也不应该决定你的命运。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "……" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "这千年来，你是第一个既不贪求也不自以为是的人。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "不打扰……确实是一种善意。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "回去吧，旅人。你的路还很长。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.left_valley" true → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: transition "fade" duration=2.0 → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "valley_ending_leave" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.8 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "结局 A · 荣光" x=50% y=10% size=36 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "—— 星灵的祝福 ——" x=50% y=18% size=18 color="#88CCFF" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_ending_free_start: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: nvl → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "星灵化作漫天星光，升向夜空。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "千年的困锁在这一刻终结。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你感到一股温暖的力量涌入体内。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: nvl clear → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "谢谢你……旅人。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "这是我最后的力量。将它赠予你。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "愿你在未来的旅途中，永远心怀善意。" speaker="{npc.spirit.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "星灵消散了。山谷恢复了宁静。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.maxHp" {player.maxHp + 50} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.maxHp} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.level" {player.level + 3} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "最大 HP +50！等级 +3！HP 完全恢复！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: gallery unlock "cg_ending_free" "Images/door_zoom.jpg" title="结局·荣光" scene="valley_ending_free" → Parse error.
+    unexpected g
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "【画廊解锁】结局·荣光" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {valley.found_cat} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你带着小猫回到了村庄。小女孩露出了灿烂的笑容。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.good_deeds" {valley.good_deeds + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你成为了边境村庄的传说——" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "那个解放了星灵的善良旅人。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "" speaker="" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: text "✨ 恶行: {valley.bad_deeds} · 善行: {valley.good_deeds}" x=50% y=45% size=16 color="#88FF88" halign=center font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "这是最好的结局。" x=50% y=52% size=14 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "💾 保存进度" x=40% y=70% width=160 height=42 color="#88FF88" cmd="do_save" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🏠 回到标题" x=60% y=70% width=160 height=42 color="#88CCFF" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.9 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "结局 B · 暗堕" x=50% y=10% size=36 color="#FF4444" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "—— 力量的代价 ——" x=50% y=18% size=18 color="#FF8888" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_ending_power_start: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: nvl → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "星灵的力量如洪流般涌入你的体内。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你感到前所未有的强大……" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "但也感到某种东西正在从内心深处消失。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: nvl clear → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.maxHp" {player.maxHp + 100} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.maxHp} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.level" {player.level + 10} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.gold" {player.gold + 200} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "最大 HP +100！等级 +10！金币 +200！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你拥有了改天换地的力量。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "但这股力量……开始侵蚀你的心智。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: shake intensity=15 duration=0.5 → Parse error.
+    unexpected h
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {valley.bad_deeds >= 3} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你的眼中闪烁着危险的光芒。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "那些曾阻碍你的人……都将付出代价。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你成为了新的暴君。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你试图控制这股力量……" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "但它的重量远超你的想象。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你离开了山谷，再也没人见过你。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "有人说你在远方默默守护着什么。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "也有人说你已被力量吞噬。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: gallery unlock "cg_ending_power" "Images/door_zoom.jpg" title="结局·暗堕" scene="valley_ending_power" → Parse error.
+    unexpected g
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "【画廊解锁】结局·暗堕" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "" speaker="" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: text "💀 恶行: {valley.bad_deeds} · 善行: {valley.good_deeds}" x=50% y=45% size=16 color="#FF4444" halign=center font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "力量越大，代价越重。" x=50% y=52% size=14 color="#FF8888" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "💾 保存进度" x=40% y=70% width=160 height=42 color="#FF8888" cmd="do_save" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🏠 回到标题" x=60% y=70% width=160 height=42 color="#88CCFF" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.5 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "结局 C · 归途" x=50% y=10% size=36 color="#FFCC88" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "—— 不打扰的善意 ——" x=50% y=18% size=18 color="#FFCC88" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_ending_leave_start: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: nvl → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你转身离开了星陨坑。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "身后的星光渐渐暗淡。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你没有带走任何不属于你的东西。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "也没有留下任何改变。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: nvl clear → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "穿过森林时，你再次看到了那匹狼。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {valley.peaceful_wolf} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "它向你点了点头，仿佛在道别。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "它远远地看着你，没有靠近。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你回到了边境村庄。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {valley.found_cat} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你把小猫还给了小女孩。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "谢谢你，大哥哥/姐姐！" speaker="小女孩" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.good_deeds" {valley.good_deeds + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: if {npc.innkeeper.trust >= 5} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你回来了？看来你做出了正确的选择。" speaker="{npc.innkeeper.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "有些东西，不看比看了好。" speaker="{npc.innkeeper.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你在村庄住了一晚，第二天清晨启程离开。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "没有人知道你经历了什么。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "但你知道——" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "有时候，最好的选择就是不去选择。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: gallery unlock "cg_ending_leave" "Images/door_zoom.jpg" title="结局·归途" scene="valley_ending_leave" → Parse error.
+    unexpected g
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "【画廊解锁】结局·归途" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "" speaker="" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: text "🌿 恶行: {valley.bad_deeds} · 善行: {valley.good_deeds}" x=50% y=45% size=16 color="#FFCC88" halign=center font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "不打扰，便是最大的善意。" x=50% y=52% size=14 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "💾 保存进度" x=40% y=70% width=160 height=42 color="#FFCC88" cmd="do_save" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🏠 回到标题" x=60% y=70% width=160 height=42 color="#88CCFF" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_return_cat: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你在村庄里找到了小女孩。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "小猫！你找到它了！谢谢你！" speaker="小女孩" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "这是给你的，虽然不值什么钱……" speaker="小女孩" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.gold" {player.gold + 5} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "小女孩递给你一个小布袋，里面有 5 金币和一颗漂亮的石头。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.good_deeds" {valley.good_deeds + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "善行 +1，金币 +5" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_village" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.story_started" true once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.chapter" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.met_innkeeper" false once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.met_spirit" false once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.wolf_defeated" false once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.spirit_freed" false once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.took_power" false once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.left_valley" false once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.good_deeds" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.bad_deeds" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "npc.innkeeper.name" "老陈" once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "npc.innkeeper.trust" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "npc.spirit.name" "星灵" once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.7 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "星 陨 之 谷" x=50% y=20% size=48 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "—— 一个关于选择与代价的故事 ——" x=50% y=28% size=16 color="#AAAAAA" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "点击下方开始旅程" x=50% y=40% size=14 color="#888888" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🌙 开始故事" x=50% y=55% width=220 height=46 color="#88CCFF" nav="valley_start" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回标题" x=50% y=65% width=160 height=40 color="#FF8888" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_start: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "valley.chapter" 1 → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: transition "fade" duration=1.5 → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: nvl → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "传说在千年前，一颗星辰坠落于北境群山之中。" speaker="吟游诗人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "那道光芒照亮了整片夜空，持续了七天七夜。" speaker="吟游诗人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "此后，山谷中便时常传出奇异的光芒与低语……" speaker="吟游诗人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "人们称那片土地为——{b}{color=#FFD700}星陨之谷{/color}{/b}。" speaker="吟游诗人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: nvl clear → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "valley_village" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.village_visited" true once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.4 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "第一章 · 边境村庄" x=50% y=10% size=32 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "旅人 · HP: {player.hp}/{player.maxHp} · 金币: {player.gold}" x=5% y=85% size=14 color="#666666" font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🍺 进入酒馆" x=25% y=50% width=200 height=44 color="#88CCFF" nav="valley_tavern" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🗣 询问村民" x=50% y=50% width=200 height=44 color="#88FF88" nav="valley_villagers" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🌲 前往山谷" x=75% y=50% width=200 height=44 color="#FFAA88" nav="valley_forest_entry" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回标题" x=50% y=75% width=160 height=40 color="#FF8888" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.tavern_visited" true once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.3 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "🍺 边境酒馆" x=50% y=10% size=30 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "酒馆里弥漫着麦酒与木柴的气味。" x=5% y=20% size=16 color="#CCCCCC" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "老板 {npc.innkeeper.name} 正在擦拭酒杯。" x=5% y=25% size=16 color="#CCCCCC" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "信任度: {npc.innkeeper.trust}" x=5% y=85% size=12 color="#888888" font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "💬 和老板聊天" x=25% y=45% width=180 height=42 color="#88CCFF" nav="valley_innkeeper_chat" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🍺 买杯酒 (10金)" x=50% y=45% width=180 height=42 color="#FFCC88" cmd="do_valley_buy_drink" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🎵 听听传闻" x=75% y=45% width=180 height=42 color="#AA88FF" nav="valley_rumors" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 离开酒馆" x=50% y=75% width=160 height=40 color="#FF8888" nav="valley_village" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_innkeeper_chat: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "valley.met_innkeeper" true → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {npc.innkeeper.trust < 3} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "哦？外来客啊。这年头可不多了。" speaker="{npc.innkeeper.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你要是问那山谷的事……我可劝你别去。" speaker="{npc.innkeeper.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "最近进去的人，没几个完整出来的。" speaker="{npc.innkeeper.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "npc.innkeeper.trust" {npc.innkeeper.trust + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else if {npc.innkeeper.trust < 6} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你倒是常来。行吧，我跟你说实话。" speaker="{npc.innkeeper.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "山谷深处确实有东西。夜里能看见光。" speaker="{npc.innkeeper.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "老猎户说那光会说话……谁知道呢。" speaker="{npc.innkeeper.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "不过你看起来不像坏人。保重。" speaker="{npc.innkeeper.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "npc.innkeeper.trust" {npc.innkeeper.trust + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "老朋友来了！今天我请客。" speaker="{npc.innkeeper.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "我跟你说，村东头的老猎户知道更多。" speaker="{npc.innkeeper.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你要是真要去，记得带够药水。" speaker="{npc.innkeeper.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.hp + 15} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.hp > player.maxHp} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.hp" {player.maxHp} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "HP 恢复了 15 点！好感度够了，老板请了你一杯。" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "valley_tavern" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_valley_buy_drink: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: if {player.gold >= 10} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.gold" {player.gold - 10} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "npc.innkeeper.trust" {npc.innkeeper.trust + 2} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.hp + 10} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.hp > player.maxHp} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.hp" {player.maxHp} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "好酒量！来，这杯算我请你的。" speaker="{npc.innkeeper.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "金币 -10，HP +10，好感度 +2" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "嘿，金币不够就别逞强了。" speaker="{npc.innkeeper.name}" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "金币不足！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "valley_tavern" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_rumors: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你问山谷的事？来，坐下听我说。" speaker="酒客" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "三个月前，有个冒险家进去过。" speaker="酒客" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "出来的时候疯疯癫癫的，一直说'它还活着'。" speaker="酒客" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "后来呢？" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "后来？后来他就失踪了。" speaker="酒客" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "不过有人说，山谷入口有块石碑。" speaker="酒客" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "上面刻着什么'心怀善意者可通行'。" speaker="酒客" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "谁知道是真是假。" speaker="酒客" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.heard_rumor" true → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "获得情报：山谷入口有石碑。" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_tavern" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.asked_villagers" true once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.35 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "边境村庄 · 村民" x=50% y=10% size=30 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "村庄不大，几户人家散落在路两旁。" x=5% y=20% size=16 color="#CCCCCC" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "👵 老婆婆" x=25% y=40% width=160 height=42 color="#FFCC88" nav="valley_old_woman" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🏹 猎户" x=50% y=40% width=160 height=42 color="#88CCFF" nav="valley_hunter" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "👧 小女孩" x=75% y=40% width=160 height=42 color="#FF88AA" nav="valley_girl" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回" x=50% y=75% width=160 height=40 color="#FF8888" nav="valley_village" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_old_woman: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "年轻人，你是要去那山谷吗？" speaker="老婆婆" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "我年轻的时候也去过。" speaker="老婆婆" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "那里面有东西……不是野兽，是更古老的存在。" speaker="老婆婆" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "它不会伤害心怀善意的人。" speaker="老婆婆" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "但如果你心中只有贪婪……" speaker="老婆婆" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "谢谢您的提醒。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.good_deeds" {valley.good_deeds + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "善行 +1（当前: {valley.good_deeds}）" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_villagers" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_hunter: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你要进山？我劝你准备好武器。" speaker="猎户" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "山谷入口的林子里有狼群出没。" speaker="猎户" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "而且不是普通的狼——它们的眼睛会发光。" speaker="猎户" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.gold >= 30} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "这把旧弓你拿去吧，只要 30 金币。" speaker="猎户" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "买了！" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.gold" {player.gold - 30} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.has_bow" true → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "获得物品：猎弓（战斗中伤害 +20）" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "我有把旧弓可以卖你，30 金币。" speaker="猎户" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "可惜金币不够……" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "金币不足，无法购买猎弓。" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "祝你好运，旅人。" speaker="猎户" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_villagers" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_girl: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "大哥哥/姐姐，你是冒险家吗？" speaker="小女孩" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "嗯……算是吧。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "那你能不能帮我找我的小猫？" speaker="小女孩" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "它跑进山谷那边了……我好害怕。" speaker="小女孩" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "我会留意的。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.girl_request" true → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "接受支线任务：帮小女孩找猫。" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_villagers" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: define "valley.entered_forest" true once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.5 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "第一章 · 山谷入口" x=50% y=10% size=30 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "你站在山谷入口前。参天古木遮蔽了天空。" x=5% y=20% size=16 color="#CCCCCC" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: text "一块古老的石碑矗立在路旁。" x=5% y=25% size=16 color="#CCCCCC" font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "📖 阅读石碑" x=25% y=45% width=180 height=42 color="#FFCC88" nav="valley_stele" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🌲 深入森林" x=50% y=45% width=180 height=42 color="#88FF88" nav="valley_forest_deep" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "🔍 搜索周围" x=75% y=45% width=180 height=42 color="#AA88FF" cmd="do_valley_search_entrance" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: button "← 返回村庄" x=50% y=75% width=160 height=40 color="#FF8888" nav="valley_village" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_stele: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "石碑上的文字已经模糊，但仍可辨认：" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "{b}{color=#FFD700}「心怀善意者，星辰将为引路；」{/color}{/b}" speaker="石碑" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "{b}{color=#FFD700}「心怀贪念者，黑暗将吞噬其魂。」{/color}{/b}" speaker="石碑" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "石碑下方还有一行小字：" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "「狼群的试炼在前，星灵的抉择在后。」" speaker="石碑" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.read_stele" true → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "获得线索：善行影响结局。" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_forest_entry" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label do_valley_search_entrance: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: let "search_count" 0 once → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "_local_search_count" {_local_search_count + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {_local_search_count == 1} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你在草丛中发现了一些草药。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.hp" {player.hp + 10} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: if {player.hp > player.maxHp} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "player.hp" {player.maxHp} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "HP +10！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else if {_local_search_count == 2} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你发现了一个旧背包，里面有 15 金币。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "player.gold" {player.gold + 15} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "金币 +15！" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else if {_local_search_count == 3} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: if {valley.girl_request} → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "等等……灌木丛里有猫叫声！" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "小猫，快过来！" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "你找到了小女孩的猫，它蜷缩在你怀里。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.found_cat" true → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: set "valley.good_deeds" {valley.good_deeds + 2} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "善行 +2！记得回去把猫还给小女孩。" speaker="系统" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你仔细搜索了一番，没有发现什么了。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: else → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "这里已经被你搜遍了。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: end → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: navigate "valley_forest_entry" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: label valley_forest_deep: → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: set "valley.chapter" 2 → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: transition "fade" duration=1.0 → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: say "你踏入森林深处。光线越来越暗……" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "远处传来低沉的嚎叫。" speaker="旁白" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: shake intensity=8 duration=0.3 → Parse error.
+    unexpected h
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: say "……是狼。" speaker="旅人" → Parse error.
+    unexpected a
+    expected "scene"
+    at line 1, col 2
+[DslParser] scene 行解析失败: navigate "valley_wolf_encounter" → Parse error.
+    unexpected n
+    expected "scene"
+    at line 1, col 1
+[NavigateHandler] targetScene=title_main
+[DslParser] scene 行解析失败: // == 标题场景 ============================================= → Parse error.
+    unexpected /
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: // 入口文件，引擎启动时自动加载 → Parse error.
+    unexpected /
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败: // 所有玩家初始属性在进入 title_main 场景时深合并注入（"你不认识他之前，他不存在于你的世界"） → Parse error.
+    unexpected /
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[ExtractSceneBlocks] 匹配 scene: "title_main" layout=grid type=Game
+[DslParser] scene 行解析失败:   define "player.name" "旅人" once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[ExtractSceneBlocks] scene define: player.name = 旅人
+[DslParser] scene 行解析失败:   define "player.gold" 100 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[ExtractSceneBlocks] scene define: player.gold = 100
+[DslParser] scene 行解析失败:   define "player.hp" 50 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[ExtractSceneBlocks] scene define: player.hp = 50
+[DslParser] scene 行解析失败:   define "player.maxHp" 100 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[ExtractSceneBlocks] scene define: player.maxHp = 100
+[DslParser] scene 行解析失败:   define "player.level" 1 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[ExtractSceneBlocks] scene define: player.level = 1
+[DslParser] scene 行解析失败:   define "player.exp" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[ExtractSceneBlocks] scene define: player.exp = 0
+[DslParser] scene 行解析失败:   define "sandbox.battle_count" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[ExtractSceneBlocks] scene define: sandbox.battle_count = 0
+[DslParser] scene 行解析失败:   define "sandbox.dice" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[ExtractSceneBlocks] scene define: sandbox.dice = 0
+[DslParser] scene 行解析失败:   define "npc.merchant.name" "老张" once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[ExtractSceneBlocks] scene define: npc.merchant.name = 老张
+[DslParser] scene 行解析失败:   define "npc.merchant.favorability" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[ExtractSceneBlocks] scene define: npc.merchant.favorability = 0
+[DslParser] scene 行解析失败:   define "story.progress" 0 once → Parse error.
+    unexpected d
+    expected "scene"
+    at line 1, col 1
+[ExtractSceneBlocks] scene define: story.progress = 0
+[DslParser] scene 行解析失败:   image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.5 → Parse error.
+    unexpected i
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   text "灵泛引擎" x=50% y=15% size=56 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   text "DSL 纯故事线演示" x=50% y=22% size=18 color="#AAAAAA" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   text "旅人 · 金币: {player.gold} · HP: {player.hp}/{player.maxHp}" x=50% y=28% size=14 color="#666666" halign=center font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   button "🌟 星陨之谷（完整故事）" x=50% y=36% width=260 height=46 color="#FFD700" nav="valley_prologue" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   button "📖 第一章 · 初端" x=50% y=44% width=220 height=42 color="#88CCFF" nav="chapter1_intro" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   button "🚀 第二章 · 启程" x=50% y=51% width=220 height=42 color="#88CCFF" nav="chapter2_depart" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   button "🤝 第三章 · 相遇" x=50% y=58% width=220 height=42 color="#88FF88" nav="chapter3_meet" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   button "⏱ 时间系统" x=20% y=65% width=180 height=38 color="#FFAA88" nav="show_time" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   button "📜 沙盒模式" x=50% y=65% width=180 height=38 color="#FFAA88" nav="sandbox" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   button "🎬 过渡动画" x=80% y=65% width=180 height=38 color="#88FF88" nav="trans_demo" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   button "English" x=20% y=75% width=160 height=36 color="#AA88FF" cmd="switch_lang" value="en" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   button "中文" x=50% y=75% width=160 height=36 color="#AA88FF" cmd="switch_lang" value="zh" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   button "📦 let 变量测试" x=80% y=75% width=180 height=38 color="#88FF88" nav="demo_let" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[ExtractSceneBlocks] 匹配 scene: "demo_let" layout=grid type=Game
+[DslParser] scene 行解析失败:   text "📦 let 局部变量测试" x=50% y=15% size=30 color="#FFD700" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   text "每次进入，_local_counter 初始为 0，然后 +1" x=50% y=22% size=16 color="#AAAAAA" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   let "counter" 0 once → Parse error.
+    unexpected l
+    expected "scene"
+    at line 1, col 1
+[DslParser] 解析失败: let "counter" 0 once → Parse error.
+    unexpected 0
+    expected letter
+    at line 1, col 15
+[ExtractSceneBlocks] scene 内联命令: [let "counter" 0 once]
+[DslParser] scene 行解析失败:   set "_local_counter" {_local_counter + 1} → Parse error.
+    unexpected e
+    expected "scene"
+    at line 1, col 2
+[DslParser] 解析失败: set "_local_counter" {_local_counter + 1} → Parse error.
+    unexpected {
+    expected letter
+    at line 1, col 22
+[ExtractSceneBlocks] scene 内联命令: [set "_local_counter" {_local_counter + 1}]
+[DslParser] scene 行解析失败:   text "当前计数: {_local_counter}" x=50% y=30% size=22 color="#FFFFFF" halign=center font="Consolas" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   text "切换场景再回来，计数恢复为 0" x=50% y=38% size=14 color="#888888" halign=center font="Microsoft YaHei" → Parse error.
+    unexpected t
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:   button "← 返回标题" x=50% y=50% width=160 height=42 color="#FF8888" nav="title_main" → Parse error.
+    unexpected b
+    expected "scene"
+    at line 1, col 1
+[DslParser] scene 行解析失败:  → Parse error.
+    unexpected EOF
+    expected "scene"
+    at line 1, col 1
+[StoryRegistry] 注册场景: title_main, 元素数=14, entryCmds=0, defines=11
+[StoryRegistry] 注册场景: demo_let, 元素数=5, entryCmds=2, defines=0
+[NavigateHandler] 场景 [title_main] 已加载, 元素数=14, defines=11

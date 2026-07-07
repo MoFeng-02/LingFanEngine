@@ -2,52 +2,17 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using LingFanEngine.Abstractions;
+using LingFanEngine.Abstractions.Entities.Enums;
 using LingFanEngine.Abstractions.Entities.Scenes;
 using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Scripting;
+using LingFanEngine.Abstractions.Scripting;
 using LingFanEngine.Services.Resources;
 
 namespace LingFanEngine.Services.Scripting;
 
-/// <summary>
-/// 故事文件元数据
-/// </summary>
-public class StoryFile
-{
-    /// <summary>故事唯一标识</summary>
-    public required string Id { get; set; }
-
-    /// <summary>故事标题</summary>
-    public required string Title { get; set; }
-
-    /// <summary>作者（可选）</summary>
-    public string? Author { get; set; }
-
-    /// <summary>语言代码，如 zh-CN, en-US（可选，用于多语言故事）</summary>
-    public string? Lang { get; set; }
-
-    /// <summary>故事脚本内容</summary>
-    public required string Script { get; set; }
-
-    /// <summary>故事文件所在子目录（如 "chapter1_初端"，用于场景分组）</summary>
-    public string? Directory { get; set; }
-
-    /// <summary>关联场景名称（可选）</summary>
-    public string? SceneName { get; set; }
-
-    /// <summary>编译后的命令列表（JSON 序列化时忽略）</summary>
-    [System.Text.Json.Serialization.JsonIgnore]
-    public IReadOnlyList<ICommand>? CompiledCommands { get; set; }
-
-    /// <summary>标签位置映射（标签名 → 命令索引，JSON 序列化时忽略）</summary>
-    [System.Text.Json.Serialization.JsonIgnore]
-    public IReadOnlyDictionary<string, int>? Labels { get; set; }
-
-    /// <summary>JSON 格式的 defines 字段原始节点（JSON story 文件专用）</summary>
-    [System.Text.Json.Serialization.JsonIgnore]
-    public JsonNode? DefinesNode { get; set; }
-}
+// StoryFile 已迁移至 Abstractions/Scripting/StoryFile.cs
 
 /// <summary>
 /// .story 文件加载管线
@@ -55,7 +20,7 @@ public class StoryFile
 /// 文件名约定：{id}_{lang}.story，如 chapter1_zh-CN.story。
 /// 加载时根据当前语言自动选择对应文件。</para>
 /// </summary>
-public class StoryLoader
+public class StoryLoader : IStoryLoader
 {
     private readonly IScriptEngine _dslEngine;
     private readonly ICommandPipeline _pipeline;
@@ -181,35 +146,34 @@ public class StoryLoader
                 story.Directory = relativeDir;
         }
 
-        // 注册 define——直接写入状态容器，不经过 DSL 执行器
+        // 注册 JSON 格式的 define（仅 JSON 格式，DSL define 已由 ExtractSceneBlocks 收集为场景级）
         RegisterDefinesFromJson(story, content ?? "");
 
         // 从脚本中提取并注册 scene 块，剩余的脚本再编译为流程命令
         System.Diagnostics.Debug.WriteLine($"[StoryLoader] story.Script 前 200 字: {story.Script[..Math.Min(200, story.Script.Length)]}");
         var (sceneBlocks, flowScript) = ExtractSceneBlocks(story.Script);
         System.Diagnostics.Debug.WriteLine($"[StoryLoader] ExtractSceneBlocks 返回 {sceneBlocks.Count} 个场景");
-        foreach (var (sceneName, elements, entryScript) in sceneBlocks)
+        foreach (var (sceneName, elements, entryScript, defines, layoutMode, sceneType) in sceneBlocks)
         {
-            if (sceneName == "title_main")
-                System.Diagnostics.Debug.WriteLine($"[StoryLoader]   >>> title_main 元素数: {elements.Count}");
+            System.Diagnostics.Debug.WriteLine($"[StoryLoader]   >>> 场景 '{sceneName}' 元素数: {elements.Count}");
             var scene = new SceneEntity
             {
                 SceneName = sceneName,
                 Elements = elements,
-                IsTransient = false
+                IsTransient = false,
+                Defines = defines,
+                LayoutMode = layoutMode,
+                SceneType = sceneType
             };
             _sceneRegistry.RegisterScene(sceneName, scene);
             System.Diagnostics.Debug.WriteLine($"[StoryLoader] 注册场景: {sceneName}, Elements={elements.Count}");
 
-            // 如果有 entry script，编译并保存到 SceneEntity
+            // scene 块内的流程命令（say/set/if 等）转为 flow script 中的 label 块
+            // 这样它们会通过 DslExecutor.RunAsync 执行，正确等待交互命令
             if (!string.IsNullOrWhiteSpace(entryScript))
             {
-                var entryResult = _dslEngine.Compile(entryScript);
-                if (entryResult.Success && entryResult.Commands != null && entryResult.Commands.Count > 0)
-                {
-                    scene.EntryCommands = entryResult.Commands.ToList();
-                    System.Diagnostics.Debug.WriteLine($"[StoryLoader]   >>> entry script 已编译: {entryResult.Commands.Count} 条命令");
-                }
+                flowScript += $"\nlabel {sceneName}:\n" + entryScript + "\n";
+                System.Diagnostics.Debug.WriteLine($"[StoryLoader]   >>> entry script 转为 label [{sceneName}]");
             }
         }
 
@@ -604,13 +568,13 @@ public class StoryLoader
     }
 
     /// <summary>
-    /// 注册 define——直接将文件中的 define 写入状态容器
-    /// <para>支持 JSON 格式的 defines 字段和纯 DSL 的 define 行。</para>
-    /// <para>不经过 DslExecutor，文件加载完成后所有变量立即可用。</para>
+    /// 注册 JSON 格式的 define 到状态容器
+    /// <para>仅处理 JSON story 文件的 defines 字段。DSL 格式的 define 已由 ExtractSceneBlocks 解析为场景级 Defines，</para>
+    /// <para>在导航到对应场景时通过 MergeIntoState 深合并注入（"你不认识他之前，他不存在于你的世界"）。</para>
     /// </summary>
-    internal void RegisterDefinesFromJson(StoryFile story, string rawContent)
+    public void RegisterDefinesFromJson(StoryFile story, string rawContent)
     {
-        // 1) JSON 格式：读取 story.DefinesNode
+        // JSON 格式：读取 story.DefinesNode（文件级共享 define，加载时即注入）
         if (story.DefinesNode is JsonObject definesObj)
         {
             foreach (var (key, val) in definesObj)
@@ -622,39 +586,7 @@ public class StoryLoader
             }
         }
 
-        // 2) 纯 DSL 格式：从 rawContent 中扫描 define 行
-        //    define "key" value once
-        var definePattern = new System.Text.RegularExpressions.Regex(
-            @"^define\s+""([^""]+)""\s+(.+?)\s+once$",
-            System.Text.RegularExpressions.RegexOptions.Multiline);
-        foreach (System.Text.RegularExpressions.Match m in definePattern.Matches(rawContent))
-        {
-            var key = m.Groups[1].Value;
-            if (_state.ContainsKey(key)) continue; // once 语义
-            var rawVal = m.Groups[2].Value.Trim();
-
-            // 尝试解析 JSON 对象/数组，否则作为原始值
-            object? parsed;
-            if (rawVal.StartsWith('{') || rawVal.StartsWith('['))
-            {
-                try
-                {
-                    var node = JsonNode.Parse(rawVal);
-                    parsed = JsonNodeToObject(node);
-                }
-                catch
-                {
-                    parsed = ParseSetValue(rawVal);
-                }
-            }
-            else
-            {
-                parsed = ParseSetValue(rawVal);
-            }
-
-            _state.Set(key, parsed);
-            System.Diagnostics.Debug.WriteLine($"[StoryLoader] define: {key} = {parsed}");
-        }
+        // DSL 格式的 define 已由 ExtractSceneBlocks 收集为场景级 Defines，此处不再扫描文件级 define 行
     }
 
     /// <summary>
@@ -730,39 +662,63 @@ public class StoryLoader
 
     /// <summary>
     /// 从 DSL 脚本中提取 scene 块，返回（场景名列表，剩余流程脚本）
+    /// <para>每个 scene 块内的 define 行被解析为场景级 Defines（导航时深合并）。</para>
+    /// <para>支持 scene 行属性：scene "xxx" layout=canvas columns="*,2*"</para>
+    /// <para>支持缩进嵌套：容器类型元素的缩进行作为子元素。</para>
     /// </summary>
-    internal static (List<(string Name, List<UIElementEntity> Elements, string EntryScript)> Scenes, string FlowScript)
-        ExtractSceneBlocks(string script)
+public (List<(string SceneName, List<UIElementEntity> Elements, string EntryScript, Dictionary<string, object?>? Defines, string LayoutMode, SceneType SceneType)> Scenes, string FlowScript)
+ExtractSceneBlocks(string script)
     {
-        var scenes = new List<(string, List<UIElementEntity>, string)>();
+        var scenes = new List<(string, List<UIElementEntity>, string, Dictionary<string, object?>?, string, SceneType)>();
         var flowLines = new List<string>();
         var lines = script.Split('\n');
         bool inSceneBlock = false;
         string? currentSceneName = null;
+        string currentLayoutMode = "grid";
+        SceneType currentSceneType = SceneType.Game;
         var currentElements = new List<UIElementEntity>();
         var currentEntryScript = new List<string>();
+        Dictionary<string, object?>? currentDefines = null;
 
         foreach (var rawLine in lines)
         {
             var line = rawLine.TrimEnd('\r');
 
-            // scene "xxx" 开始（允许缩进，允许 label 内的 scene）
-            var sceneMatch = System.Text.RegularExpressions.Regex.Match(line,
-                @"^\s*scene\s+""([^""]+)""$");
-            if (sceneMatch.Success)
+            // scene "xxx" 开始（仅顶格行识别为场景定义，缩进的 scene 是 DSL 导航命令）
+            // 快速前缀过滤 + Pidgin 解析器
+            var lineIndent = 0;
+            foreach (var ch in rawLine)
             {
-                System.Diagnostics.Debug.WriteLine($"[ExtractSceneBlocks] 匹配 scene: \"{sceneMatch.Groups[1].Value}\"");
-                // 之前的 scene 块结束，保存
-                if (inSceneBlock && currentSceneName != null)
+                if (ch == ' ') lineIndent++;
+                else if (ch == '\t') lineIndent += 4;
+                else break;
+            }
+            var trimmedForScene = line.AsSpan().TrimStart();
+            if (lineIndent == 0 && (trimmedForScene.StartsWith("scene ") || trimmedForScene.StartsWith("scene\t")))
+            {
+                var sceneHeader = DslParser.ParseSceneHeader(line);
+                if (sceneHeader != null && !line.Contains("navigate"))
                 {
-                    var entryScript = string.Join("\n", currentEntryScript);
-                    scenes.Add((currentSceneName, currentElements, entryScript));
+                    var sceneNameVal = sceneHeader.SceneName;
+                    var layoutMode = sceneHeader.LayoutMode;
+                    var sceneType = sceneHeader.SceneType;
+
+                    System.Diagnostics.Debug.WriteLine($"[ExtractSceneBlocks] 匹配 scene: \"{sceneNameVal}\" layout={layoutMode} type={sceneType}");
+                    // 之前的 scene 块结束，保存
+                    if (inSceneBlock && currentSceneName != null)
+                    {
+                        var entryScript = string.Join("\n", currentEntryScript);
+                        scenes.Add((currentSceneName, currentElements, entryScript, currentDefines, currentLayoutMode, currentSceneType));
+                    }
+                    inSceneBlock = true;
+                    currentSceneName = sceneNameVal;
+                    currentLayoutMode = layoutMode;
+                    currentSceneType = sceneType;
+                    currentElements = new List<UIElementEntity>();
+                    currentEntryScript = new List<string>();
+                    currentDefines = null;
+                    continue;
                 }
-                inSceneBlock = true;
-                currentSceneName = sceneMatch.Groups[1].Value;
-                currentElements = new List<UIElementEntity>();
-                currentEntryScript = new List<string>();
-                continue;
             }
 
             if (inSceneBlock)
@@ -771,35 +727,56 @@ public class StoryLoader
                 if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("//") || trimmed.StartsWith('#'))
                     continue;
 
-                // 检查缩进：顶格行（非缩进）且不是 scene 行 → 退出 scene 块
-                // 缩进的 scene 行在后面通过 sceneMatch 匹配，不会到这里
-                var isTopLevel = !string.IsNullOrEmpty(rawLine) && !rawLine.StartsWith(' ') && !rawLine.StartsWith('\t');
-                if (isTopLevel && !trimmed.StartsWith("text ") && !trimmed.StartsWith("button ") && !trimmed.StartsWith("image "))
+                // 计算缩进空格数（Tab 按 4 空格计算）
+                var indent = 0;
+                foreach (var ch in rawLine)
+                {
+                    if (ch == ' ') indent++;
+                    else if (ch == '\t') indent += 4;
+                    else break;
+                }
+
+                // 检查缩进：顶格行（非缩进）且不是 UI 元素 → 退出 scene 块
+                var isTopLevel = indent == 0;
+                if (isTopLevel && !IsUiElementLine(trimmed))
                 {
                     // 顶格非元素行——退出 scene 块
                     if (currentSceneName != null)
                     {
                         var entryScript = string.Join("\n", currentEntryScript);
-                        scenes.Add((currentSceneName, currentElements, entryScript));
-                        System.Diagnostics.Debug.WriteLine($"[ExtractSceneBlocks] 保存 scene: {currentSceneName}, 元素数: {currentElements.Count}, entry: {currentEntryScript.Count} 行");
+                        scenes.Add((currentSceneName, currentElements, entryScript, currentDefines, currentLayoutMode, currentSceneType));
+                        System.Diagnostics.Debug.WriteLine($"[ExtractSceneBlocks] 保存 scene: {currentSceneName}, 元素数: {currentElements.Count}, entry: {currentEntryScript.Count} 行, defines: {currentDefines?.Count ?? 0}");
                     }
                     System.Diagnostics.Debug.WriteLine($"[ExtractSceneBlocks] 退出 scene 块 at 顶格行: [{line.Trim()}]");
                     inSceneBlock = false;
                     currentSceneName = null;
                     currentElements = new List<UIElementEntity>();
                     currentEntryScript = new List<string>();
+                    currentDefines = null;
+                    currentSceneType = SceneType.Game;
                     flowLines.Add(line);
                     continue;
                 }
 
-                var element = ParseSceneElement(trimmed);
-                if (element != null)
+                // scene 块内的 define 行 → 解析为场景级变量定义（不进入 entry script）
+                // 快速前缀过滤 + Pidgin 解析器
+                if (trimmed.StartsWith("define ") || trimmed.StartsWith("define\t"))
                 {
-                    currentElements.Add(element);
-                    continue;
+                    var defineEntry = DslParser.ParseDefineLine(trimmed);
+                    if (defineEntry != null)
+                    {
+                        var parsed = ParseDefineValue(defineEntry.RawValue);
+                        currentDefines ??= new Dictionary<string, object?>();
+                        currentDefines[defineEntry.Key] = parsed;
+                        System.Diagnostics.Debug.WriteLine($"[ExtractSceneBlocks] scene define: {defineEntry.Key} = {parsed}");
+                        continue;
+                    }
                 }
-                // 缩进的非元素行（如 set/say/transition）：加入 entry script 但不退出 scene 块
-                System.Diagnostics.Debug.WriteLine($"[ExtractSceneBlocks] scene 内联命令: [{line.Trim()}]");
+
+                // 所有 scene 块内非 define 行（UI 元素 + 流程命令）统一加入 entryScript
+                // UI 元素行（image/text/button 等）会被 DslStatementParser 解析为 ShowElementStmt
+                // 流程命令行（say/set/transition 等）保持原有解析
+                // 这样保证了元素与流程命令的交织顺序，实现按序揭示
                 currentEntryScript.Add(line);
             }
             else
@@ -812,107 +789,70 @@ public class StoryLoader
         if (inSceneBlock && currentSceneName != null)
         {
             var entryScript = string.Join("\n", currentEntryScript);
-            scenes.Add((currentSceneName, currentElements, entryScript));
+            scenes.Add((currentSceneName, currentElements, entryScript, currentDefines, currentLayoutMode, currentSceneType));
         }
 
         return (scenes, string.Join("\n", flowLines));
     }
 
     /// <summary>
-    /// 解析 scene 块内的 UI 元素行
+    /// 已知的 UI 元素类型集合——用于区分 scene 块内的元素行和顶格流程命令行。
+    /// 当一行顶格且首词在此集合中时，视为 scene 块内元素而非退出。
+    /// <para>注意：label 和 menu 是 DSL 流程控制关键字（label xxx: / menu "..."），
+    /// 不可放入此集合，否则 scene 块无法在遇到 label/menu 行时正确退出。</para>
+    /// </summary>
+    private static readonly HashSet<string> s_uiElementTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "text", "button", "image", "panel", "grid", "stack", "canvas",
+        "border", "frame", "scroll", "background", "bar", "vbar", "slider",
+        "checkbox", "imagebutton", "separator", "spacer", "narrator",
+        "speaker", "dialog", "choice", "progress", "progressbar",
+        "toggle", "switch", "combobox", "dropdown", "listbox", "treeview",
+        "tab", "tabitem", "menubar", "tooltip", "textbox", "passwordbox"
+    };
+
+    /// <summary>
+    /// 判断一行是否为 UI 元素（首词在 s_uiElementTypes 中）
+    /// </summary>
+    private static bool IsUiElementLine(string trimmed)
+    {
+        var spaceIdx = trimmed.IndexOf(' ');
+        var firstWord = spaceIdx > 0 ? trimmed[..spaceIdx] : trimmed;
+        return s_uiElementTypes.Contains(firstWord);
+    }
+
+    /// <summary>
+    /// 解析 define 值字符串为具体类型（数字/布尔/字符串/JSON对象/数组）
+    /// </summary>
+    private static object? ParseDefineValue(string val)
+    {
+        if (bool.TryParse(val, out var b)) return b;
+        if (int.TryParse(val, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var i)) return i;
+        if (double.TryParse(val, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var d)) return d;
+        // 去掉两端引号
+        if (val.Length >= 2 && val[0] == '"' && val[^1] == '"') return val[1..^1];
+        // 尝试 JSON 对象/数组
+        if (val.StartsWith('{') || val.StartsWith('['))
+        {
+            try
+            {
+                var node = JsonNode.Parse(val);
+                return JsonNodeToObject(node);
+            }
+            catch { }
+        }
+        return val;
+    }
+
+    /// <summary>
+    /// 解析 scene 块内的 UI 元素行（委托给 Pidgin 解析器）
+    /// <para>支持属性任意顺序，at/size 语法糖自动展开。</para>
     /// </summary>
     internal static UIElementEntity? ParseSceneElement(string line)
     {
-        // text "内容" at (x,y) size=N color="#xxx" align=center max=W font="name"
-        // x,y,max 支持百分比（如 50%）和像素值
-        var textMatch = System.Text.RegularExpressions.Regex.Match(line,
-            @"^text\s+""([^""]+)""\s+at\s+\(([\d.%]+)\s*,\s*([\d.%]+)\)(?:\s+size=([\d.]+))?(?:\s+color=""([^""]+)"")?(?:\s+align=(\w+))?(?:\s+max=([\d.%]+))?(?:\s+font=""([^""]+)"")?$");
-        if (textMatch.Success)
-        {
-            var rawX = textMatch.Groups[2].Value;
-            var rawY = textMatch.Groups[3].Value;
-            var rawMax = textMatch.Groups[7].Success ? textMatch.Groups[7].Value : null;
-            // 字符串保留原值（含 %），由渲染层 GetRelative 解析
-            var xVal = rawX.EndsWith('%') ? (object)rawX : double.Parse(rawX);
-            var yVal = rawY.EndsWith('%') ? (object)rawY : double.Parse(rawY);
-            var props = new Dictionary<string, object>
-            {
-                ["text"] = textMatch.Groups[1].Value,
-                ["x"] = xVal,
-                ["y"] = yVal
-            };
-            if (rawMax != null)
-                props["maxWidth"] = rawMax.EndsWith('%') ? (object)rawMax : double.Parse(rawMax);
-            if (textMatch.Groups[4].Success) props["fontSize"] = double.Parse(textMatch.Groups[4].Value);
-            if (textMatch.Groups[5].Success) props["color"] = textMatch.Groups[5].Value;
-            if (textMatch.Groups[6].Success) props["textAlign"] = textMatch.Groups[6].Value;
-            if (textMatch.Groups[7].Success) props["maxWidth"] = double.Parse(textMatch.Groups[7].Value);
-            if (textMatch.Groups[8].Success) props["fontFamily"] = textMatch.Groups[8].Value;
-            return new UIElementEntity { ElementType = "text", Properties = props, Order = 0 };
-        }
-
-        // button "文本" at (x,y) size=(w,h) color="#xxx" cmd="xxx" value="xxx" nav="label"
-        var btnMatch = System.Text.RegularExpressions.Regex.Match(line,
-            @"^button\s+""([^""]+)""\s+at\s+\(([\d.%]+)\s*,\s*([\d.%]+)\)\s+size=\(([\d.%]+)\s*,\s*([\d.%]+)\)(?:\s+color=""([^""]+)"")?(?:\s+cmd=""([^""]+)"")?(?:\s+value=""([^""]+)"")?(?:\s+key=""([^""]+)"")?(?:\s+nav=""([^""]+)"")?$");
-        if (btnMatch.Success)
-        {
-            var rawBx = btnMatch.Groups[2].Value;
-            var rawBy = btnMatch.Groups[3].Value;
-            var rawBw = btnMatch.Groups[4].Value;
-            var rawBh = btnMatch.Groups[5].Value;
-            var props = new Dictionary<string, object>
-            {
-                ["text"] = btnMatch.Groups[1].Value,
-                ["x"] = rawBx.EndsWith('%') ? (object)rawBx : double.Parse(rawBx),
-                ["y"] = rawBy.EndsWith('%') ? (object)rawBy : double.Parse(rawBy),
-                ["width"] = rawBw.EndsWith('%') ? (object)rawBw : double.Parse(rawBw),
-                ["height"] = rawBh.EndsWith('%') ? (object)rawBh : double.Parse(rawBh)
-            };
-            if (btnMatch.Groups[6].Success) props["color"] = btnMatch.Groups[6].Value;
-            if (btnMatch.Groups[7].Success) props["cmd"] = btnMatch.Groups[7].Value;
-            if (btnMatch.Groups[8].Success) props["value"] = btnMatch.Groups[8].Value;
-            if (btnMatch.Groups[9].Success) props["textKey"] = btnMatch.Groups[9].Value;
-
-            // cmd 优先，其次 nav（生成 jump 命令），最后无命令
-            var cmd = btnMatch.Groups[7].Success ? btnMatch.Groups[7].Value : null;
-            var nav = btnMatch.Groups[10].Success ? btnMatch.Groups[10].Value : null;
-
-            // 记录 nav 属性到 Properties 中，供渲染层判断是否生成 JumpCommand
-            if (nav != null)
-                props["nav"] = nav;
-
-            return new UIElementEntity
-            {
-                ElementType = "button",
-                Properties = props,
-                Order = 0,
-                Command = cmd ?? nav, // cmd 优先，nav 兜底
-                CommandValue = btnMatch.Groups[8].Success ? btnMatch.Groups[8].Value : null
-            };
-        }
-
-        // image "path" at (x,y) size=(w,h) opacity=N
-        var imgMatch = System.Text.RegularExpressions.Regex.Match(line,
-            @"^image\s+""([^""]+)""\s+at\s+\(([\d.%]+)\s*,\s*([\d.%]+)\)(?:\s+size=\(([\d.%]+)\s*,\s*([\d.%]+)\))?(?:\s+opacity=([\d.]+))?$");
-        if (imgMatch.Success)
-        {
-            var rawIx = imgMatch.Groups[2].Value;
-            var rawIy = imgMatch.Groups[3].Value;
-            var rawIw = imgMatch.Groups[4].Success ? imgMatch.Groups[4].Value : null;
-            var rawIh = imgMatch.Groups[5].Success ? imgMatch.Groups[5].Value : null;
-            var props = new Dictionary<string, object>
-            {
-                ["source"] = imgMatch.Groups[1].Value,
-                ["x"] = rawIx.EndsWith('%') ? (object)rawIx : double.Parse(rawIx),
-                ["y"] = rawIy.EndsWith('%') ? (object)rawIy : double.Parse(rawIy),
-            };
-            if (rawIw != null) props["width"] = rawIw.EndsWith('%') ? (object)rawIw : double.Parse(rawIw);
-            if (rawIh != null) props["height"] = rawIh.EndsWith('%') ? (object)rawIh : double.Parse(rawIh);
-            if (imgMatch.Groups[6].Success) props["opacity"] = double.Parse(imgMatch.Groups[6].Value);
-            return new UIElementEntity { ElementType = "image", Properties = props, Order = 0 };
-        }
-
-        return null;
+        return DslParser.ParseElement(line);
     }
 
     // Route 已移除

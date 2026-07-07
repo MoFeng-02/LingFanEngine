@@ -19,9 +19,9 @@ public abstract class StoryScript
     /// <summary>场景标识名</summary>
     public abstract string SceneName { get; }
     public virtual SceneType SceneType => SceneType.Game;
-    protected GameController Ctrl { get; private set; } = null!;
+    protected IGameController Ctrl { get; private set; } = null!;
 
-    public void Initialize(GameController ctrl, IStateContainer state,
+    public void Initialize(IGameController ctrl, IStateContainer state,
         ICommandPipeline pipeline, ISceneRegistry sceneRegistry)
     {
         Ctrl = ctrl;

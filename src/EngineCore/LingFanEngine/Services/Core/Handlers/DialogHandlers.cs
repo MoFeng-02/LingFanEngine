@@ -9,7 +9,7 @@ namespace LingFanEngine.Services.Core.Handlers;
 /// 设置变量命令处理器
 /// <para>支持 define...once 语法（仅键不存在时设置）和表达式占位符求值。</para>
 /// </summary>
-public class SetVariableHandler : ICommandHandler<SetVariableCommand>
+public class SetVariableHandler : ICommandHandler<SetVariableCommand>, IDefaultCommandHandler
 {
     public void Handle(SetVariableCommand sv, ICommandContext ctx)
     {
@@ -34,7 +34,7 @@ public class SetVariableHandler : ICommandHandler<SetVariableCommand>
 /// 显示对话命令处理器
 /// <para>替换 {变量} 表达式，设置对话文本、说话者、样式等状态。</para>
 /// </summary>
-public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>
+public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>, IDefaultCommandHandler
 {
     public void Handle(ShowDialogCommand sd, ICommandContext ctx)
     {
@@ -42,6 +42,11 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>
         // 替换 {变量} 表达式
         if (dialogText.Contains('{'))
             dialogText = DslExpressionEvaluator.ReplaceText(dialogText, ctx.State);
+
+        // 替换 speaker 中的 {变量} 表达式（如 speaker="{npc.innkeeper.name}"）
+        var speakerName = sd.Speaker;
+        if (!string.IsNullOrEmpty(speakerName) && speakerName.Contains('{'))
+            speakerName = DslExpressionEvaluator.ReplaceText(speakerName, ctx.State);
 
         // NVL 模式：累积文本而非替换
         var nvlActive = ctx.State.Get<bool>(StateKeys.Nvl.Active);
@@ -51,8 +56,8 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>
             var nvlSpeakers = ctx.State.Get<string>(StateKeys.Nvl.Speakers) ?? "";
             var nvlCount = ctx.State.Get<int>(StateKeys.Nvl.Count);
 
-            // 累积说话者（带换行）
-            var speakerLine = sd.Speaker ?? "";
+            // 累积说话者（带换行，使用已求值的 speakerName）
+            var speakerLine = speakerName ?? "";
             if (!string.IsNullOrEmpty(nvlSpeakers))
                 nvlSpeakers += "\n";
             nvlSpeakers += speakerLine;
@@ -68,12 +73,12 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>
 
             // NVL 模式下也设置常规对话状态（但用累积文本）
             ctx.State.Set(StateKeys.Dialog.Text, nvlText);
-            ctx.State.Set(StateKeys.Dialog.Speaker, sd.Speaker ?? "");
+            ctx.State.Set(StateKeys.Dialog.Speaker, speakerName ?? "");
         }
         else
         {
             ctx.State.Set(StateKeys.Dialog.Text, dialogText);
-            ctx.State.Set(StateKeys.Dialog.Speaker, sd.Speaker ?? "");
+            ctx.State.Set(StateKeys.Dialog.Speaker, speakerName ?? "");
         }
         // 角色样式（对标 Ren'Py Character 对象）
         ctx.State.Set(StateKeys.Dialog.SpeakerColor, sd.SpeakerColor ?? (string?)null);
@@ -90,23 +95,28 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>
         ctx.State.Set(StateKeys.Dialog.Complete, false);
 
         // 记录对话历史（对标 Ren'Py _history_list）
-        RecordHistory(sd, dialogText, ctx);
+        RecordHistory(sd, dialogText, speakerName, ctx);
     }
 
     /// <summary>
     /// 将当前对话追加到历史列表，超出上限时移除最旧条目
+    /// <para>回溯重展示（Rollback/Rollforward）时不记录历史，避免重复。</para>
     /// </summary>
-    private static void RecordHistory(ShowDialogCommand sd, string dialogText, ICommandContext ctx)
+    private static void RecordHistory(ShowDialogCommand sd, string dialogText, string? speakerName, ICommandContext ctx)
     {
+        // 回溯重展示时不记录历史
+        if (ctx.State.Get<bool>(StateKeys.Rollback.IsReplay)) return;
+
         var history = ctx.State.Get<List<DialogHistoryEntry>>(StateKeys.History.Entries) ?? [];
         var maxCount = ctx.State.Get<int>(StateKeys.History.MaxCount);
         if (maxCount <= 0) maxCount = 100;
 
         history.Add(new DialogHistoryEntry
         {
-            Speaker = sd.Speaker,
+            Speaker = speakerName,
             Text = dialogText,
-            SceneName = ctx.State.Get<string>(StateKeys.Scene.CurrentName)
+            SceneName = ctx.State.Get<string>(StateKeys.Scene.CurrentName),
+            CheckpointIndex = ctx.State.Get<int>(StateKeys.Rollback.CurrentIndex)
         });
 
         // 超出上限时移除最旧条目
@@ -120,7 +130,7 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>
 /// <summary>
 /// 追加对话命令处理器（对标 Ren'Py extend）
 /// </summary>
-public class ExtendDialogHandler : ICommandHandler<ExtendDialogCommand>
+public class ExtendDialogHandler : ICommandHandler<ExtendDialogCommand>, IDefaultCommandHandler
 {
     public void Handle(ExtendDialogCommand ed, ICommandContext ctx)
     {

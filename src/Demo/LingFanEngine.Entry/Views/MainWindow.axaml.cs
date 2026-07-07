@@ -1,8 +1,10 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using LingFanEngine.Abstractions.EngineOptions;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Entry;
+using LingFanEngine.Abstractions.Interfaces.Media;
 using LingFanEngine.Abstractions.Interfaces.Saves;
 using LingFanEngine.Services.Core;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,7 +32,7 @@ public partial class MainWindow : Window
             var pipeline = _services.GetRequiredService<ICommandPipeline>();
             var gameLoop = _services.GetRequiredService<IGameLoop>();
             var commandService = _services.GetService<ICommandService>();
-            var audio = _services.GetService<LingFanEngine.Services.Media.AudioManager>();
+            var audio = _services.GetService<IAudioManager>();
             var saveService = _services.GetService<ISaveService>();
 
             Title = "灵泛引擎 — 入门教程";
@@ -39,11 +41,12 @@ public partial class MainWindow : Window
             Background = new SolidColorBrush(Colors.Black);
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
-            var i18n = _services.GetRequiredService<LingFanEngine.Services.Entry.I18nService>();
-            _sceneView = new LingFanEngine.Views.SceneView(state, pipeline, i18n, commandService);
+            var i18n = _services.GetRequiredService<II18nService>();
+            var scReg = _services.GetRequiredService<ISceneRegistry>();
+            _sceneView = new LingFanEngine.Views.SceneView(state, pipeline, i18n, commandService, scReg);
 
             // 创建覆盖层管理器（存档/设置/历史/快捷菜单）
-            var ctrl = new GameController(pipeline, state);
+            var ctrl = _services.GetRequiredService<IGameController>();
             _overlay = new Entry.UI.OverlayManager(state, saveService, ctrl);
 
             // 使用 Grid 叠加 SceneView 和 OverlayManager
@@ -64,9 +67,10 @@ public partial class MainWindow : Window
             _ = gameLoop.StartAsync();
             Closed += async (_, _) => { await gameLoop.StopAsync(); await _services.DisposeAsync(); };
 
-            var scReg = _services.GetRequiredService<ISceneRegistry>();
             CSharpScripts.RegisterAll(state, scReg, ctrl, pipeline, commandService, audio, gameLoop as GameLoop);
-            pipeline.SendAsync(new NavigateCommand { Path = "tutorial_title" });
+            // 启动到 DSL 标题场景（.story 文件由 StoryRegistry 扫描并懒加载）
+            var titleScene = _services.GetRequiredService<LingFanEngineOptions>().TitleSceneName;
+            pipeline.SendAsync(new NavigateCommand { Path = titleScene });
             // 立即触发首帧渲染，不等 GameLoop 帧回调（消除构造函数结束到首帧之间的黑屏延迟）
             _sceneView.Update(0.016);
 

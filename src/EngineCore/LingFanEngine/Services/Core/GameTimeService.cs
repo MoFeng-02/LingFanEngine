@@ -1,6 +1,6 @@
 using LingFanEngine.Abstractions;
+using LingFanEngine.Abstractions.EngineOptions;
 using LingFanEngine.Abstractions.Interfaces.Core;
-using LingFanEngine.Extensions;
 
 namespace LingFanEngine.Services.Core;
 

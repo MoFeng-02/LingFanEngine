@@ -1,37 +1,46 @@
-// == 标题场景 =============================================
-// 入口文件，引擎启动时自动加载
-define "player.name" "旅人" once
-define "player.gold" 100 once
-define "player.hp" 50 once
-define "player.maxHp" 100 once
-define "player.level" 1 once
-define "player.exp" 0 once
-define "sandbox.battle_count" 0 once
-define "sandbox.dice" 0 once
-define "npc.merchant.name" "老张" once
-define "npc.merchant.favorability" 0 once
-define "story.progress" 0 once
+// ============================================================
+// 迷雾小镇 - 标题画面 + 序章
+// 全局玩家属性在 title_main 场景 define once 初始化
+// ============================================================
 
-scene "title_main"
-  image "Images/door_zoom.jpg" at (0, 0) size=(100%, 100%) opacity=0.5
-  text "灵泛引擎" at (50%, 15%) size=56 color="#FFD700" align=center font="Microsoft YaHei"
-  text "DSL 纯故事线演示" at (50%, 22%) size=18 color="#AAAAAA" align=center font="Microsoft YaHei"
-  text "旅人 · 金币: {player.gold} · HP: {player.hp}/{player.maxHp}" at (50%, 28%) size=14 color="#666666" align=center font="Consolas"
-  button "📖 第一章 · 初端" at (50%, 38%) size=(220, 44) color="#88CCFF" nav="chapter1_intro"
-  button "🚀 第二章 · 启程" at (50%, 46%) size=(220, 44) color="#88CCFF" nav="chapter2_depart"
-  button "🤝 第三章 · 相遇" at (50%, 54%) size=(220, 44) color="#88FF88" nav="chapter3_meet"
-  button "⏱ 时间系统" at (20%, 65%) size=(180, 38) color="#FFAA88" nav="show_time"
-  button "📜 沙盒模式" at (50%, 65%) size=(180, 38) color="#FFAA88" nav="sandbox"
-  button "🎬 过渡动画" at (80%, 65%) size=(180, 38) color="#88FF88" nav="trans_demo"
-  button "English" at (20%, 75%) size=(160, 36) color="#AA88FF" cmd="switch_lang" value="en"
-  button "中文" at (50%, 75%) size=(160, 36) color="#AA88FF" cmd="switch_lang" value="zh"
-  button "📦 let 变量测试" at (80%, 75%) size=(180, 38) color="#88FF88" nav="demo_let"
+// == 标题场景 ================================================
+scene "title_main" type=menu
+  define "player.name" "旅人" once
+  define "player.hp" 50 once
+  define "player.maxHp" 100 once
+  define "player.gold" 100 once
+  define "player.level" 1 once
+  define "player.exp" 0 once
+  define "story.progress" 0 once
+  define "story.met_innkeeper" false once
+  define "story.met_elder" false once
+  define "story.has_clue" false once
+  define "story.good_deeds" 0 once
+  define "story.bad_deeds" 0 once
+  define "story.wolf_defeated" false once
+  define "story.ending" "" once
+  define "npc.innkeeper.name" "老张" once
+  define "npc.innkeeper.trust" 0 once
+  define "sandbox.battle_count" 0 once
+  image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.5
+  text "迷雾小镇" x=50% y=15% size=56 color="#FFD700" halign=center font="Microsoft YaHei"
+  text "灵泛引擎 DSL 演示" x=50% y=22% size=18 color="#AAAAAA" halign=center font="Microsoft YaHei"
+  text "{player.name} · 金币: {player.gold} · HP: {player.hp}/{player.maxHp}" x=50% y=28% size=14 color="#666666" halign=center font="Consolas"
+  button "开始故事" x=50% y=38% width=240 height=48 color="#88CCFF" nav="prologue"
+  button "沙盒模式" x=50% y=48% width=200 height=42 color="#FFAA88" nav="sandbox"
+  button "过渡动画演示" x=50% y=58% width=200 height=42 color="#88FF88" nav="trans_demo"
 
-scene "demo_let"
-  text "📦 let 局部变量测试" at (50%, 15%) size=30 color="#FFD700" align=center font="Microsoft YaHei"
-  text "每次进入，_local_counter 初始为 0，然后 +1" at (50%, 22%) size=16 color="#AAAAAA" align=center font="Microsoft YaHei"
-  let "counter" 0 once
-  set "_local_counter" {_local_counter + 1}
-  text "当前计数: {_local_counter}" at (50%, 30%) size=22 color="#FFFFFF" align=center font="Consolas"
-  text "切换场景再回来，计数恢复为 0" at (50%, 38%) size=14 color="#888888" align=center font="Microsoft YaHei"
-  button "← 返回标题" at (50%, 50%) size=(160, 42) color="#FF8888" nav="title_main"
+// == 序章（NVL 叙事）========================================
+label prologue:
+  set "story.progress" 1
+  bgm "Media/bgm_main.wav" volume=0.7
+  transition "fade" duration=1.5
+  nvl
+  say "迷雾笼罩着这座小镇，没有人记得它何时出现。" speaker="吟游诗人"
+  say "旅人啊，你踏着暮色而来，带着满身的尘土与疲惫。" speaker="吟游诗人"
+  say "镇民们的目光躲闪而警惕，似乎在隐瞒着什么{p}" speaker="吟游诗人"
+  say "而你，即将揭开这一切背后的{b}{color=#FFD700}秘密{/color}{/b}。" speaker="吟游诗人"
+  nvl clear
+  say "你站在小镇入口，雾气在脚边翻涌。" speaker="旁白"
+  say "前方是一座陌生的城镇，空气中弥漫着潮湿的木头气味。" speaker="旁白"
+  navigate "town_entrance"

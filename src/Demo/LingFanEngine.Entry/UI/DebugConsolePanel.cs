@@ -18,7 +18,7 @@ namespace LingFanEngine.Entry.UI;
 public class DebugConsolePanel : UserControl
 {
     private readonly IStateContainer _state;
-    private readonly GameController? _controller;
+    private readonly IGameController? _controller;
     private StackPanel? _logPanel;
     private ScrollViewer? _scrollViewer;
     private TextBlock? _statusText;
@@ -26,7 +26,7 @@ public class DebugConsolePanel : UserControl
     /// <summary>面板关闭事件</summary>
     public event Action? Closed;
 
-    public DebugConsolePanel(IStateContainer state, GameController? controller)
+    public DebugConsolePanel(IStateContainer state, IGameController? controller)
     {
         _state = state;
         _controller = controller;

@@ -10,7 +10,7 @@ namespace LingFanEngine.Services.Core.Handlers;
 /// <para>nvl clear：清空 NVL 累积文本并退出 NVL 模式。</para>
 /// <para>对标 Ren'Py NVL Mode 和 KiriKiri 的历史对话模式。</para>
 /// </summary>
-public class NvlHandler : ICommandHandler<NvlCommand>
+public class NvlHandler : ICommandHandler<NvlCommand>, IDefaultCommandHandler
 {
     public void Handle(NvlCommand cmd, ICommandContext ctx)
     {

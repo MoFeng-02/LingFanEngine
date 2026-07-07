@@ -11,7 +11,7 @@ namespace LingFanEngine.Services.Core;
 /// <para>fire-and-forget 版直接投递命令到管道（不等待）。</para>
 /// <para>Async 版等待命令执行完成后返回。</para>
 /// </summary>
-public class GameController
+public class GameController : IGameController
 {
     private readonly ICommandPipeline _pipeline;
     private readonly IStateContainer _state;

@@ -1,4 +1,5 @@
 using LingFanEngine.Abstractions;
+using LingFanEngine.Abstractions.EngineOptions;
 using LingFanEngine.Abstractions.Entities.Transitions;
 using LingFanEngine.Abstractions.Interfaces.Core;
 
@@ -8,15 +9,15 @@ namespace LingFanEngine.Services.Core;
 /// 过渡动画引擎
 /// <para>所有状态在状态容器中（__transition_*），不维护私有字段。</para>
 /// </summary>
-public class TransitionEngine
+public class TransitionEngine : ITransitionEngine
 {
     private readonly IStateContainer _state;
-    private readonly LingFanEngine.Extensions.LingFanEngineOptions _options;
+    private readonly LingFanEngineOptions _options;
 
-    public TransitionEngine(IStateContainer state, LingFanEngine.Extensions.LingFanEngineOptions? options = null)
+    public TransitionEngine(IStateContainer state, LingFanEngineOptions? options = null)
     {
         _state = state;
-        _options = options ?? new LingFanEngine.Extensions.LingFanEngineOptions();
+        _options = options ?? new  LingFanEngineOptions();
     }
 
     /// <summary>

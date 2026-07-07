@@ -1,4 +1,5 @@
 using System.Globalization;
+using LingFanEngine.Abstractions.Entities.UIs;
 using Pidgin;
 using static Pidgin.Parser;
 using static Pidgin.Parser<char>;
@@ -24,16 +25,16 @@ public static class DslStatementParser
         Char('"').Then(AnyCharExcept('"').ManyString()).Before(Char('"'))
             .Labelled("quoted string");
 
-    /// <summary>标识符 \w+</summary>
+    /// <summary>标识符 \w+（字母/数字/下划线）</summary>
     private static readonly Parser<char, string> Identifier =
-        Token(char.IsLetterOrDigit).AtLeastOnceString()
+        Token(c => char.IsLetterOrDigit(c) || c == '_').AtLeastOnceString()
             .Labelled("identifier");
 
     /// <summary>数字（整数或浮点数）</summary>
     private static readonly Parser<char, double> Number =
         (from intPart in Digit.AtLeastOnceString()
          from fracPart in Try(Char('.').Then(Digit.AtLeastOnceString())).Optional()
-         select double.Parse(intPart + fracPart.GetValueOrDefault(""), CultureInfo.InvariantCulture))
+         select double.Parse(intPart + (fracPart.HasValue ? "." + fracPart.Value : ""), CultureInfo.InvariantCulture))
         .Labelled("number");
 
     /// <summary>{表达式}——返回花括号内的内容</summary>
@@ -54,11 +55,16 @@ public static class DslStatementParser
 
     // ====== 语句解析器 ======
 
-    /// <summary>say "text" [by "speaker"]</summary>
+    /// <summary>say "text" [by "speaker" | speaker="speaker"]</summary>
     private static readonly Parser<char, DslStatement> _say =
         from _1 in String("say").Before(_ws)
         from text in QuotedString.Before(_ws)
-        from speaker in Try(String("by").Before(_ws).Then(QuotedString)).Optional()
+        from speaker in (
+            // speaker="speaker" 语法（故事文件中使用的格式）
+            Try(String("speaker=").Then(QuotedString).Before(_ws))
+            // by "speaker" 语法（兼容旧格式）
+            .Or(Try(String("by").Before(_ws).Then(QuotedString)).Before(_ws))
+        ).Optional()
         select (DslStatement)new SayStmt
         {
             Text = text,
@@ -80,7 +86,7 @@ public static class DslStatementParser
     private static readonly Parser<char, DslStatement> _set =
         from _1 in String("set").Before(_ws)
         from key in QuotedString.Before(_ws)
-        from value in Tok(AnyCharExcept('\n', '\r')).ManyString()
+        from value in AnyCharExcept('\n', '\r').ManyString()
         select (DslStatement)new SetStmt
         {
             Key = key,
@@ -105,7 +111,7 @@ public static class DslStatementParser
     private static readonly Parser<char, DslStatement> _bgm =
         from _1 in String("bgm").Before(_ws)
         from path in QuotedString.Before(_ws)
-        from volume in Try(String("volume=").Then(Number)).Optional()
+        from volume in Try(String("volume=").Then(Number).Before(_ws)).Optional()
         select (DslStatement)new BgmStmt
         {
             Path = path,
@@ -122,7 +128,7 @@ public static class DslStatementParser
     private static readonly Parser<char, DslStatement> _transition =
         from _1 in String("transition").Before(_ws)
         from type in QuotedString.Before(_ws)
-        from duration in Try(String("duration=").Then(Number)).Optional()
+        from duration in Try(String("duration=").Then(Number).Before(_ws)).Optional()
         select (DslStatement)new TransitionStmt
         {
             Type = type,
@@ -209,8 +215,8 @@ public static class DslStatementParser
         from target in QuotedString.Before(_ws)
         from prop in Identifier.Before(_ws)
         from val in Number.Before(_ws)
-        from duration in Try(String("duration=").Then(Number)).Optional()
-        from easing in Try(String("easing=").Then(Identifier)).Optional()
+        from duration in Try(String("duration=").Then(Number).Before(_ws)).Optional()
+        from easing in Try(String("easing=").Then(Identifier).Before(_ws)).Optional()
         select (DslStatement)new AnimateStmt
         {
             Target = target,
@@ -225,6 +231,65 @@ public static class DslStatementParser
         from _1 in String("menu").Before(_ws)
         from prompt in QuotedString
         select (DslStatement)new MenuStmt { Prompt = prompt };
+
+    /// <summary>"选项文本" -> target_label</summary>
+    private static readonly Parser<char, DslStatement> _menuOption =
+        from text in QuotedString.Before(_ws)
+        from _1 in String("->").Before(_ws)
+        from target in Identifier
+        select (DslStatement)new MenuOptionStmt { Text = text, TargetLabel = target };
+
+    /// <summary>shake [intensity=N] [duration=N]</summary>
+    private static readonly Parser<char, DslStatement> _shake =
+        from _1 in String("shake")
+        from intensity in Try(String("intensity=").Then(Number).Before(_ws)).Optional()
+        from duration in Try(String("duration=").Then(Number).Before(_ws)).Optional()
+        select (DslStatement)new ShakeStmt
+        {
+            Intensity = intensity.HasValue ? intensity.Value : null,
+            Duration = duration.HasValue ? duration.Value : null
+        };
+
+    /// <summary>skip</summary>
+    private static readonly Parser<char, DslStatement> _skip =
+        String("skip").ThenReturn((DslStatement)new ToggleSkipStmt());
+
+    /// <summary>auto</summary>
+    private static readonly Parser<char, DslStatement> _auto =
+        String("auto").ThenReturn((DslStatement)new ToggleAutoStmt());
+
+    /// <summary>gallery unlock "id" "imagePath" [title="..."] [scene="..."]</summary>
+    private static readonly Parser<char, DslStatement> _galleryUnlock =
+        from _1 in String("gallery").Before(_ws)
+        from _2 in String("unlock").Before(_ws)
+        from id in QuotedString.Before(_ws)
+        from imagePath in QuotedString.Before(_ws)
+        from title in Try(String("title=").Then(QuotedString).Before(_ws)).Optional()
+        from sceneName in Try(String("scene=").Then(QuotedString).Before(_ws)).Optional()
+        select (DslStatement)new GalleryUnlockStmt
+        {
+            Id = id,
+            ImagePath = imagePath,
+            Title = title.HasValue ? title.Value : null,
+            SceneName = sceneName.HasValue ? sceneName.Value : null
+        };
+
+    /// <summary>debug "message" [level=Info]</summary>
+    private static readonly Parser<char, DslStatement> _debugLog =
+        from _1 in String("debug").Before(_ws)
+        from message in QuotedString.Before(_ws)
+        from level in Try(String("level=").Then(Identifier)).Optional()
+        select (DslStatement)new DebugLogStmt
+        {
+            Message = message,
+            Level = level.HasValue ? level.Value : null
+        };
+
+    /// <summary>nvl / nvl clear</summary>
+    private static readonly Parser<char, DslStatement> _nvl =
+        from _1 in String("nvl")
+        from clear in Try(_ws.Then(String("clear"))).Optional()
+        select (DslStatement)new NvlStmt { IsClear = clear.HasValue };
 
     /// <summary>input "prompt" store "key" [options=[...]]</summary>
     private static readonly Parser<char, DslStatement> _input =
@@ -247,40 +312,29 @@ public static class DslStatementParser
                 : null
         };
 
-    // ====== 块结构 ======
+    // ====== 块结构（缩进式，无花括号）======
 
-    /// <summary>if {cond} {</summary>
+    /// <summary>if {cond}</summary>
     private static readonly Parser<char, DslStatement> _if =
         from _1 in String("if").Before(_ws)
-        from cond in Expression.Before(_ws)
-        from _2 in Char('{')
+        from cond in Expression
         select (DslStatement)new IfStmt { Condition = cond };
 
-    /// <summary>} else if {cond} {</summary>
+    /// <summary>else if {cond}</summary>
     private static readonly Parser<char, DslStatement> _elseIf =
-        from _1 in Char('}').Before(_ws)
-        from _2 in String("else").Before(_ws)
-        from _3 in String("if").Before(_ws)
-        from cond in Expression.Before(_ws)
-        from _4 in Char('{')
+        from _1 in String("else").Before(_ws)
+        from _2 in String("if").Before(_ws)
+        from cond in Expression
         select (DslStatement)new ElseIfStmt { Condition = cond };
 
-    /// <summary>} else {</summary>
+    /// <summary>else</summary>
     private static readonly Parser<char, DslStatement> _else =
-        from _1 in Char('}').Before(_ws)
-        from _2 in String("else").Before(_ws)
-        from _3 in Char('{')
-        select (DslStatement)new ElseStmt();
+        String("else").ThenReturn((DslStatement)new ElseStmt());
 
-    /// <summary>}</summary>
-    private static readonly Parser<char, DslStatement> _endBlock =
-        Char('}').ThenReturn((DslStatement)new EndBlockStmt());
-
-    /// <summary>while {cond} {</summary>
+    /// <summary>while {cond}</summary>
     private static readonly Parser<char, DslStatement> _while =
         from _1 in String("while").Before(_ws)
-        from cond in Expression.Before(_ws)
-        from _2 in Char('{')
+        from cond in Expression
         select (DslStatement)new WhileStmt { Condition = cond };
 
     // ====== 主解析器 ======
@@ -304,12 +358,11 @@ public static class DslStatementParser
     /// </summary>
     private static readonly Parser<char, DslStatement>[] _statementParsers =
     [
-        // 块结构（以 } 开头或包含 { 结尾）
+        // 块结构（缩进式，无花括号）
         _elseIf,
         _else,
         _if,
         _while,
-        _endBlock,
         // 多字符关键字（长的在前）
         _navigate,
         _transition,
@@ -317,11 +370,14 @@ public static class DslStatementParser
         _forward,
         _return,
         _animate,
+        _galleryUnlock,
         // 单关键字
         _define,
         _scene,
         _input,
         _menu,
+        _menuOption,
+        _debugLog,
         _label,
         _jump,
         _call,
@@ -332,8 +388,12 @@ public static class DslStatementParser
         _wait,
         _show,
         _hide,
+        _shake,
         _back,
         _end,
+        _nvl,
+        _skip,
+        _auto,
         _saveLoad,
     ];
 
@@ -356,6 +416,16 @@ public static class DslStatementParser
                 result.Value.LineNumber = lineNumber;
                 return result.Value;
             }
+        }
+
+        // 兜底：尝试解析为 UI 元素行（image/text/button 等）
+        // 这些行在 scene 块内作为 ShowElementStmt 编译为 ShowElementCommand
+        var element = DslParser.ParseElement(line);
+        if (element != null)
+        {
+            var stmt = new ShowElementStmt { Element = element };
+            stmt.LineNumber = lineNumber;
+            return stmt;
         }
 
         return null;

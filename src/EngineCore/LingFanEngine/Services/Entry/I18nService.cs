@@ -1,6 +1,7 @@
 using System.Text.Json;
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
+using LingFanEngine.Abstractions.Interfaces.Entry;
 using LingFanEngine.Services.Core;
 
 namespace LingFanEngine.Services.Entry;
@@ -11,7 +12,7 @@ namespace LingFanEngine.Services.Entry;
 /// <para>Translate() 首次调用时按需读取 Lang/{lang}/ 并缓存到内存。</para>
 /// <para>语言切换时清除缓存，下次调用重新读取。</para>
 /// </summary>
-public class I18nService
+public class I18nService : II18nService
 {
     private readonly IStateContainer _state;
     private Dictionary<string, string> _translations = new();

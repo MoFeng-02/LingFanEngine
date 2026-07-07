@@ -31,6 +31,7 @@ public partial class App : Application
             options.MediaDirectory = "Media";
             options.Live2DDirectory = "Live2D";
             options.ModsDirectory = "Mods";
+            options.StoriesDirectory = "Stories";
             options.DesktopTargetFps = 120;
             options.WindowWidth = 1920;
             options.WindowHeight = 1080;

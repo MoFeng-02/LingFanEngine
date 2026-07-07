@@ -1,9 +1,11 @@
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Entry;
+using LingFanEngine.Abstractions.Interfaces.Events;
 using LingFanEngine.Abstractions.Interfaces.Scripting;
 using LingFanEngine.Abstractions.Interfaces.Media;
 using LingFanEngine.Abstractions.Interfaces.Saves;
 using LingFanEngine.Services.Core;
+using LingFanEngine.Services.Core.Handlers;
 using LingFanEngine.Services.Dlc;
 using LingFanEngine.Services.Entry;
 using LingFanEngine.Services.Events;
@@ -12,7 +14,9 @@ using LingFanEngine.Services.Platform;
 using LingFanEngine.Services.Resources;
 using LingFanEngine.Services.Saves;
 using LingFanEngine.Services.Scripting;
+using LingFanEngine.Services.Tweens;
 using Microsoft.Extensions.DependencyInjection;
+using LingFanEngine.Abstractions.EngineOptions;
 
 namespace LingFanEngine.Extensions;
 
@@ -31,12 +35,15 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(options);
 
         // 注册核心运行时
-        services.AddSingleton<IStateContainer, StateContainer>();
+        services.AddSingleton<IJsonValueConverter, JsonValueConverter>();
+        services.AddSingleton<IStateContainer>(sp =>
+            new StateContainer(sp.GetRequiredService<IJsonValueConverter>()));
         services.AddSingleton<ICommandPipeline, CommandPipeline>();
         services.AddSingleton<IGameTimeService, GameTimeService>();
+        services.AddSingleton<ICommandDispatcher, CommandDispatcher>();
+        services.AddSingleton<ITweenEngine>(sp => new TweenEngine(sp.GetRequiredService<IStateContainer>()));
         // RouterService 已移除，场景切换基于 SceneRegistry + SceneStack
-        services.AddSingleton<EventScheduler>();
-        // DlcLoader 已移除
+        services.AddSingleton<IEventScheduler, EventScheduler>();
         services.AddSingleton(sp => new DlcScanner(sp.GetRequiredService<LingFanEngineOptions>().ModsDirectory));
         services.AddSingleton<PluginLoader>();
         services.AddSingleton<DlcLoader>();
@@ -46,34 +53,87 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IReadOnlyGameState, GameState>();
         services.AddSingleton<ISceneRegistry, SceneRegistry>();
         // SceneLoader 已移除
-        services.AddSingleton<TransitionEngine>();
-        services.AddSingleton<SceneStack>();
+        services.AddSingleton<ITransitionEngine, TransitionEngine>();
+        services.AddSingleton<ISceneStack, SceneStack>();
         services.AddSingleton<IScriptEngine, LingFanDslEngine>();
 
         // 注册故事加载管线（StoryLoader 必须在 StoryRegistry 之前）
-        services.AddSingleton<StoryLoader>();
-        services.AddSingleton(sp =>
+        services.AddSingleton<IStoryLoader, StoryLoader>();
+        services.AddSingleton<IStoryRegistry>(sp =>
         {
             var sceneRegistry = sp.GetRequiredService<ISceneRegistry>();
             var dslEngine = sp.GetRequiredService<IScriptEngine>();
-            var storyLoader = sp.GetRequiredService<StoryLoader>();
-            return new StoryRegistry(sceneRegistry, dslEngine, storyLoader);
+            var storyLoader = sp.GetRequiredService<IStoryLoader>();
+            var opts = sp.GetRequiredService<LingFanEngineOptions>();
+            return new StoryRegistry(sceneRegistry, dslEngine, (StoryLoader)storyLoader, opts.StoriesDirectory);
         });
-        services.AddSingleton<DslExecutor>();
+        services.AddSingleton<IDslExecutor>(sp => new DslExecutor(
+            sp.GetRequiredService<IStateContainer>(),
+            sp.GetRequiredService<ICommandPipeline>(),
+            sp.GetRequiredService<LingFanEngineOptions>()));
+        services.AddSingleton<IPreferencesService, PreferencesService>();
+        services.AddSingleton<IGameController, GameController>();
+        services.AddSingleton<IEventAggregator, EventAggregator>();
+        services.AddSingleton<II18nService, I18nService>();
 
         // 注册资源包加载器
         services.AddSingleton<PackLoader>();
-        services.AddSingleton<AudioManager>(sp => new AudioManager(
+        services.AddSingleton<IAudioManager>(sp => new AudioManager(
             sp.GetRequiredService<ICommandPipeline>(),
             sp.GetRequiredService<IStateContainer>()
         ));
         services.AddSingleton<LanguageService>();
-        services.AddSingleton<I18nService>();
         services.AddSingleton<IConfigService, JsonConfigService>();
 
         // 注册新服务
         services.AddSingleton<IGalleryService, GalleryService>();
         services.AddSingleton<IDebugConsoleService, DebugConsoleService>();
+
+        // 注册默认命令处理器（IDefaultCommandHandler 标记接口，AOT 安全手动注册）
+        services.AddSingleton<IDefaultCommandHandler, SetVariableHandler>();
+        services.AddSingleton<IDefaultCommandHandler, ShowDialogHandler>();
+        services.AddSingleton<IDefaultCommandHandler, ExtendDialogHandler>();
+        services.AddSingleton<IDefaultCommandHandler, PlayBgmHandler>();
+        services.AddSingleton<IDefaultCommandHandler, PlaySeHandler>();
+        services.AddSingleton<IDefaultCommandHandler, PlayVoiceHandler>();
+        services.AddSingleton<IDefaultCommandHandler, BgmQueueHandler>();
+        services.AddSingleton<IDefaultCommandHandler, TransitionHandler>();
+        services.AddSingleton<IDefaultCommandHandler, AnimateHandler>();
+        services.AddSingleton<IDefaultCommandHandler, ShowHideHandler>();
+        services.AddSingleton<IDefaultCommandHandler, NavigateHandler>();
+        services.AddSingleton<IDefaultCommandHandler, SaveLoadHandler>();
+        services.AddSingleton<IDefaultCommandHandler, InputHandler>();
+        services.AddSingleton<IDefaultCommandHandler, WaitHandler>();
+        services.AddSingleton<IDefaultCommandHandler, HardPauseHandler>();
+        services.AddSingleton<IDefaultCommandHandler, BackHandler>();
+        services.AddSingleton<IDefaultCommandHandler, ForwardHandler>();
+        services.AddSingleton<IDefaultCommandHandler, RollbackToHandler>();
+        services.AddSingleton<IDefaultCommandHandler, SceneHandler>();
+        services.AddSingleton<IDefaultCommandHandler, NavToLabelHandler>();
+        services.AddSingleton<IDefaultCommandHandler, BuildSceneHandler>();
+        services.AddSingleton<IDefaultCommandHandler, ClearStackHandler>();
+        services.AddSingleton<IDefaultCommandHandler, MergeDefinesHandler>();
+        services.AddSingleton<IDefaultCommandHandler, ShakeHandler>();
+        services.AddSingleton<IDefaultCommandHandler, ToggleSkipHandler>();
+        services.AddSingleton<IDefaultCommandHandler, ToggleAutoHandler>();
+        services.AddSingleton<IDefaultCommandHandler, UnlockGalleryHandler>();
+        services.AddSingleton<IDefaultCommandHandler, DebugLogHandler>();
+        services.AddSingleton<IDefaultCommandHandler, NvlHandler>();
+
+        // 注册子服务（从 GameLoop 拆分）
+        services.AddSingleton<IStateInitializer, StateInitializer>();
+        services.AddSingleton<IAnimationService, AnimationService>();
+        services.AddSingleton<IShakeService, ShakeService>();
+        services.AddSingleton<IPlaybackService, PlaybackService>();
+        services.AddSingleton<ISaveDataService>(sp => new SaveDataService(
+            sp.GetRequiredService<IStateContainer>(),
+            sp.GetRequiredService<IJsonValueConverter>(),
+            sp.GetRequiredService<LingFanEngineOptions>(),
+            sp.GetService<ISaveService>(),
+            sp.GetService<ISceneStack>(),
+            sp.GetService<ISceneRegistry>(),
+            sp.GetService<IStoryRegistry>(),
+            sp.GetService<IDslExecutor>()));
 
         // 注册 GameLoop 并应用目标帧率
         services.AddSingleton<IGameLoop>(sp =>
@@ -81,27 +141,33 @@ public static class ServiceCollectionExtensions
             var pipeline = sp.GetRequiredService<ICommandPipeline>();
             var state = sp.GetRequiredService<IStateContainer>();
             var time = sp.GetRequiredService<IGameTimeService>();
+            var dispatcher = sp.GetRequiredService<ICommandDispatcher>();
+            var tween = sp.GetRequiredService<ITweenEngine>();
+            var jsonConverter = sp.GetRequiredService<IJsonValueConverter>();
+            var defaultHandlers = sp.GetServices<IDefaultCommandHandler>();
             var save = sp.GetService<ISaveService>();
             var sceneReg = sp.GetService<ISceneRegistry>();
-            var loop = new GameLoop(pipeline, state, time, save, sceneReg, options);
+            var sceneStack = sp.GetService<ISceneStack>();
+            var storyReg = sp.GetService<IStoryRegistry>();
+            var dslExec = sp.GetService<IDslExecutor>();
+            var transition = sp.GetService<ITransitionEngine>();
+            var audio = sp.GetService<IAudioManager>();
+            var loop = new GameLoop(
+                pipeline, state, time,
+                dispatcher, tween, jsonConverter, defaultHandlers,
+                sp.GetRequiredService<IStateInitializer>(),
+                sp.GetRequiredService<IAnimationService>(),
+                sp.GetRequiredService<IShakeService>(),
+                sp.GetRequiredService<IPlaybackService>(),
+                sp.GetRequiredService<ISaveDataService>(),
+                save, sceneReg, options,
+                sceneStack, storyReg, dslExec, transition, audio);
             loop.TargetFps = options.GetTargetFps();
-            // 注入过渡引擎，由 GameLoop 每帧驱动过渡更新
-            var transition = sp.GetRequiredService<TransitionEngine>();
-            loop.SetTransitionEngine(transition);
-            // 注入音频管理器
-            var audio = sp.GetRequiredService<AudioManager>();
-            loop.SetAudioManager(audio);
-            // 注入场景堆栈，由 GameLoop NavigateCommand 时写入
-            var sceneStack = sp.GetRequiredService<SceneStack>();
-            loop.SetSceneStack(sceneStack);
-            // 注入 StoryRegistry（场景懒加载 + 全局 label 索引）
-            var storyReg = sp.GetRequiredService<StoryRegistry>();
-            loop.SetStoryRegistry(storyReg);
-            storyReg.Scan();
-            // 注入 DSL 执行器，由 GameLoop 每帧推进命令执行
-            var dslExecutor = sp.GetRequiredService<DslExecutor>();
-            dslExecutor.SetStoryRegistry(storyReg);
-            loop.SetDslExecutor(dslExecutor);
+            // StoryRegistry 扫描副作用（需在 GameLoop 构造后执行）
+            storyReg?.Scan();
+            // DSL 执行器关联 StoryRegistry
+            if (dslExec != null && storyReg != null)
+                dslExec.SetStoryRegistry(storyReg);
             return loop;
         });
 

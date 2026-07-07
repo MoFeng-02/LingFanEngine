@@ -422,9 +422,8 @@ public class LingFanDslEngineTests
     public void Compile_IfBlock_BranchCommandsGenerated()
     {
         var script = """
-            if {gold >= 100} {
+            if {gold >= 100}
               say "rich"
-            }
             """;
         var result = _engine.Compile(script);
         result.Success.Should().BeTrue();
@@ -435,27 +434,71 @@ public class LingFanDslEngineTests
     public void Compile_IfElseIfElse_AllBranchesGenerated()
     {
         var script = """
-            if {gold >= 100} {
+            if {gold >= 100}
               say "rich"
-            } else if {gold >= 50} {
+            else if {gold >= 50}
               say "medium"
-            } else {
+            else
               say "poor"
-            }
             """;
         var result = _engine.Compile(script);
         result.Success.Should().BeTrue();
         var branchCmds = result.Commands.Where(c => c is BranchCommand).ToList();
-        branchCmds.Should().HaveCountGreaterThanOrEqualTo(3);
+        branchCmds.Should().HaveCountGreaterThanOrEqualTo(2);
+    }
+
+    [Fact]
+    public void Compile_IfElse_SkipCount_IncludesJumpCommand()
+    {
+        // BUG 回归测试：if 条件为 false 时必须跳到 else body，不能跳到 JumpCommand
+        var script = """
+            if {cond}
+              say "true"
+            else
+              say "false"
+            """;
+        var result = _engine.Compile(script);
+        result.Success.Should().BeTrue();
+
+        var branchCmd = result.Commands.OfType<BranchCommand>().First();
+        var jumpCmd = result.Commands.OfType<JumpCommand>().FirstOrDefault();
+        jumpCmd.Should().NotBeNull("if body 后应有 JumpCommand 跳到 endIf");
+
+        // SkipCount 应包含 body + JumpCommand
+        // 布局: [0]BranchCommand [1]ShowDialog("true") [2]JumpCommand [3]ShowDialog("false")
+        // BranchCommand.SkipCount = 2 (body=1 + JumpCommand=1)
+        // false 时: 0 + 2 + 1 = 3 → ShowDialog("false")（else body）
+        branchCmd.SkipCount.Should().Be(2, "SkipCount 必须包含 JumpCommand，否则 else 分支不可达");
+    }
+
+    [Fact]
+    public void Compile_IfElseIf_SkipCount_IncludesJumpCommand()
+    {
+        // BUG 回归测试：if 条件为 false 时必须跳到 else-if 的 BranchCommand
+        var script = """
+            if {cond1}
+              say "a"
+            else if {cond2}
+              say "b"
+            """;
+        var result = _engine.Compile(script);
+        result.Success.Should().BeTrue();
+
+        var branchCmds = result.Commands.OfType<BranchCommand>().ToList();
+        branchCmds.Should().HaveCount(2);
+
+        // 布局: [0]BranchCommand(cond1) [1]ShowDialog("a") [2]JumpCommand [3]BranchCommand(cond2) [4]ShowDialog("b")
+        // BranchCommand[0].SkipCount = 2 (body=1 + JumpCommand=1)
+        // false 时: 0 + 2 + 1 = 3 → BranchCommand(cond2)（else-if）
+        branchCmds[0].SkipCount.Should().Be(2, "if 的 SkipCount 必须包含 JumpCommand，否则 else-if 不可达");
     }
 
     [Fact]
     public void Compile_IfBlock_ConditionStripsBraces()
     {
         var script = """
-            if {gold >= 100} {
+            if {gold >= 100}
               say "rich"
-            }
             """;
         var result = _engine.Compile(script);
         var ifBranch = result.Commands.OfType<BranchCommand>().First();
@@ -468,9 +511,8 @@ public class LingFanDslEngineTests
     public void Compile_WhileBlock_BranchCommandGenerated()
     {
         var script = """
-            while {hp > 0} {
+            while {hp > 0}
               say "alive"
-            }
             """;
         var result = _engine.Compile(script);
         result.Success.Should().BeTrue();
@@ -539,11 +581,10 @@ public class LingFanDslEngineTests
             bgm "bgm/intro.mp3" volume=0.9
             wait 1.5
             transition "fade" duration=1.0
-            if {gold >= 50} {
+            if {gold >= 50}
               say "你很富有"
-            } else {
+            else
               say "你需要更多金币"
-            }
             navigate "chapter1"
             """;
         var result = _engine.Compile(script);

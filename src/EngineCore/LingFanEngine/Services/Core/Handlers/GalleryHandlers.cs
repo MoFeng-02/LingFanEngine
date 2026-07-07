@@ -9,7 +9,7 @@ namespace LingFanEngine.Services.Core.Handlers;
 /// CG 解锁命令处理器
 /// <para>将 CG 条目写入状态容器的已解锁列表，供鉴赏界面读取。</para>
 /// </summary>
-public class UnlockGalleryHandler : ICommandHandler<UnlockGalleryCommand>
+public class UnlockGalleryHandler : ICommandHandler<UnlockGalleryCommand>, IDefaultCommandHandler
 {
     public void Handle(UnlockGalleryCommand cmd, ICommandContext ctx)
     {

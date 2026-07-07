@@ -8,10 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="VideoLAN.LibVLC.Windows" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\LingFanEngine.Desktop\LingFanEngine.Desktop.csproj" />
   </ItemGroup>
 

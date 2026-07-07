@@ -10,7 +10,7 @@ namespace LingFanEngine.Services.Core;
 /// <para>back = 弹出栈顶恢复场景 + 状态，forward = 重新压入。</para>
 /// <para>最大深度由 MaxDepth 控制（默认 50），超出时删除最旧记录。</para>
 /// </summary>
-public class SceneStack
+public class SceneStack : ISceneStack
 {
     private readonly IStateContainer _state;
     private const string KeyStack = StateKeys.Scene.Stack;

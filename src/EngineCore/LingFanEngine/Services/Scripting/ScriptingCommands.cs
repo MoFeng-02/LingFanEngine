@@ -1,4 +1,5 @@
-﻿﻿﻿using System.Collections.Concurrent;
+﻿﻿﻿﻿﻿using System.Collections.Concurrent;
+using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Services.Core;
 
@@ -205,7 +206,7 @@ public readonly record struct EvalCommand : ICommand
 /// 轻量表达式求值器
 /// <para>支持 {变量} 引用、{a + b} 算术、random(min, max)、比较运算。</para>
 /// </summary>
-public static partial class DslExpressionEvaluator
+public static class DslExpressionEvaluator
 {
     /// <summary>
     /// 表达式 AST 编译缓存——避免每次求值重新解析
@@ -240,7 +241,7 @@ public static partial class DslExpressionEvaluator
     }
 
     /// <summary>
-    /// 旧版正则引擎求值——回退用
+    /// 旧版求值——Pidgin 解析失败时的回退（不使用正则）
     /// </summary>
     /// <param name="expr">表达式文本（不含花括号）</param>
     /// <param name="state">状态容器，用于读取变量</param>
@@ -252,48 +253,39 @@ public static partial class DslExpressionEvaluator
 
         expr = expr.Trim();
 
-        // 纯布尔——必须在变量检查之前，否则 true/false 会被误匹配为变量名
+        // 纯布尔
         if (expr == "true") return true;
         if (expr == "false") return false;
         if (expr == "null") return null;
 
-        // random(min, max) 函数
-        var randomMatch = s_randomPattern().Match(expr);
-        if (randomMatch.Success)
+        // random(min, max) 函数——简单字符串解析
+        if (expr.StartsWith("random(") && expr.EndsWith(')'))
         {
-            var min = int.Parse(randomMatch.Groups[1].Value);
-            var max = int.Parse(randomMatch.Groups[2].Value);
-            return Random.Shared.Next(min, max + 1);
+            var args = expr[7..^1].Split(',');
+            if (args.Length == 2 && int.TryParse(args[0].Trim(), out var min) && int.TryParse(args[1].Trim(), out var max))
+                return Random.Shared.Next(min, max + 1);
         }
 
-        // 纯变量引用：{gold}
-        var varMatch = s_varOnlyPattern().Match(expr);
-        if (varMatch.Success)
+        // 纯变量引用：仅含字母/数字/下划线/点
+        if (IsPureVariable(expr))
+            return state.Get<object>(expr);
+
+        // 比较表达式：gold >= 100
+        var (cmpLeft, cmpOp, cmpRight) = TryParseComparison(expr);
+        if (cmpOp != null)
         {
-            return state.Get<object>(varMatch.Value);
+            var left = ResolveValue(cmpLeft.Trim(), state);
+            var right = ResolveValue(cmpRight.Trim(), state);
+            return CompareValues(left, right, cmpOp);
         }
 
-        // 比较表达式：{gold >= 100}
-        var cmpMatch = s_comparePattern().Match(expr);
-        if (cmpMatch.Success)
+        // 算术表达式：gold + 50
+        var (arithLeft, arithOp, arithRight) = TryParseArithmetic(expr);
+        if (arithOp != null)
         {
-            var left = ResolveValue(cmpMatch.Groups[1].Value.Trim(), state);
-            var right = ResolveValue(cmpMatch.Groups[3].Value.Trim(), state);
-            var op = cmpMatch.Groups[2].Value;
-
-            return CompareValues(left, right, op);
-        }
-
-        // 算术表达式：{gold + 50}、{hp - damage * 2}
-        // 简单实现：拆分为"变量 + 数字"的形式
-        var arithMatch = s_arithPattern().Match(expr);
-        if (arithMatch.Success)
-        {
-            var left = ResolveValue(arithMatch.Groups[1].Value.Trim(), state);
-            var right = ResolveValue(arithMatch.Groups[3].Value.Trim(), state);
-            var op = arithMatch.Groups[2].Value;
-
-            return ArithValues(left, right, op);
+            var left = ResolveValue(arithLeft.Trim(), state);
+            var right = ResolveValue(arithRight.Trim(), state);
+            return ArithValues(left, right, arithOp);
         }
 
         // 纯数字
@@ -337,7 +329,7 @@ public static partial class DslExpressionEvaluator
     }
 
     /// <summary>
-    /// 旧版正则引擎布尔求值——回退用
+    /// 旧版布尔求值——Pidgin 解析失败时的回退（不使用正则）
     /// <para>与 Evaluate 不同，此方法始终返回 bool。</para>
     /// </summary>
     private static bool EvaluateBoolLegacy(string expr, IStateContainer state)
@@ -351,21 +343,19 @@ public static partial class DslExpressionEvaluator
         if (expr == "true") return true;
         if (expr == "false") return false;
 
-        // 比较表达式：{gold >= 100}
-        var cmpMatch = s_comparePattern().Match(expr);
-        if (cmpMatch.Success)
+        // 比较表达式
+        var (cmpLeft, cmpOp, cmpRight) = TryParseComparison(expr);
+        if (cmpOp != null)
         {
-            var left = ResolveValue(cmpMatch.Groups[1].Value.Trim(), state);
-            var right = ResolveValue(cmpMatch.Groups[3].Value.Trim(), state);
-            var op = cmpMatch.Groups[2].Value;
-            return CompareValues(left, right, op);
+            var left = ResolveValue(cmpLeft.Trim(), state);
+            var right = ResolveValue(cmpRight.Trim(), state);
+            return CompareValues(left, right, cmpOp);
         }
 
         // 纯变量引用：非空且非 false 即为真
-        var varMatch = s_varOnlyPattern().Match(expr);
-        if (varMatch.Success)
+        if (IsPureVariable(expr))
         {
-            var val = state.Get<object>(varMatch.Value);
+            var val = state.Get<object>(expr);
             if (val == null) return false;
             if (val is bool b) return b;
             if (val is int i) return i != 0;
@@ -376,6 +366,48 @@ public static partial class DslExpressionEvaluator
 
         // 默认 false（未知表达式）
         return false;
+    }
+
+    /// <summary>判断是否为纯变量名（字母/数字/下划线/点）</summary>
+    private static bool IsPureVariable(string expr)
+    {
+        if (string.IsNullOrEmpty(expr)) return false;
+        foreach (var c in expr)
+        {
+            if (!char.IsLetterOrDigit(c) && c != '_' && c != '.')
+                return false;
+        }
+        return char.IsLetter(expr[0]) || expr[0] == '_';
+    }
+
+    /// <summary>尝试解析比较表达式，返回 (左, 运算符, 右) 或 (null, null, null)</summary>
+    private static (string Left, string? Op, string Right) TryParseComparison(string expr)
+    {
+        string[] ops = [">=", "<=", "!=", "==", ">", "<"];
+        foreach (var op in ops)
+        {
+            var idx = expr.IndexOf(op, StringComparison.Ordinal);
+            if (idx > 0 && idx < expr.Length - op.Length)
+            {
+                return (expr[..idx], op, expr[(idx + op.Length)..]);
+            }
+        }
+        return (expr, null, expr);
+    }
+
+    /// <summary>尝试解析算术表达式，返回 (左, 运算符, 右) 或 (null, null, null)</summary>
+    private static (string Left, string? Op, string Right) TryParseArithmetic(string expr)
+    {
+        string[] ops = ["+", "-", "*", "/", "%"];
+        foreach (var op in ops)
+        {
+            var idx = expr.IndexOf(op, StringComparison.Ordinal);
+            if (idx > 0 && idx < expr.Length - 1)
+            {
+                return (expr[..idx], op, expr[(idx + 1)..]);
+            }
+        }
+        return (expr, null, expr);
     }
 
     /// <summary>
@@ -514,18 +546,7 @@ public static partial class DslExpressionEvaluator
         };
     }
 
-    // 正则（手工 new，只在被调用时编译；数量极少且非热路径）
-    [System.Text.RegularExpressions.GeneratedRegex(@"^random\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)$")]
-    private static partial System.Text.RegularExpressions.Regex s_randomPattern();
-
-    [System.Text.RegularExpressions.GeneratedRegex(@"^[a-zA-Z_][\w.]*$")]
-    private static partial System.Text.RegularExpressions.Regex s_varOnlyPattern();
-
-    [System.Text.RegularExpressions.GeneratedRegex(@"^(.+?)\s*(>=|<=|!=|==|>|<)\s*(.+)$")]
-    private static partial System.Text.RegularExpressions.Regex s_comparePattern();
-
-    [System.Text.RegularExpressions.GeneratedRegex(@"^(.+?)\s*([+\-*/%])\s*(.+)$")]
-    private static partial System.Text.RegularExpressions.Regex s_arithPattern();
+    // 正则回退路径已移除，替换为纯字符串解析
 }
 
 /// <summary>
@@ -577,6 +598,18 @@ public readonly record struct ForwardCommand : ICommand
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
     public CommandPriority Priority { get; init; } = CommandPriority.Normal;
     public ForwardCommand() { }
+}
+
+/// <summary>
+/// 回溯到指定检查点——从历史面板跳转到某句 Say
+/// <para>targetCheckpointIndex 为 -1 时等价于 BackCommand。</para>
+/// </summary>
+public readonly record struct RollbackToCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public int TargetCheckpointIndex { get; init; } = -1;
+    public RollbackToCommand() { }
 }
 
 /// <summary>
@@ -711,4 +744,20 @@ public readonly record struct NvlCommand : ICommand
     public bool IsClear { get; init; }
 
     public NvlCommand() { }
+}
+
+/// <summary>
+/// 显示场景元素命令——scene 块内的 UI 元素行编译结果
+/// <para>由 DslExecutor 同步执行：追加到 Scene.Elements + 设置 Dirty。</para>
+/// <para>非阻塞——立即执行，不等待。阻塞由后续的 say/transition 等命令实现。</para>
+/// </summary>
+public readonly record struct ShowElementCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+
+    /// <summary>要显示的 UI 元素</summary>
+    public required UIElementEntity Element { get; init; }
+
+    public ShowElementCommand() { }
 }

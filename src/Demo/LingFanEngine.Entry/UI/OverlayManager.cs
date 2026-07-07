@@ -24,7 +24,7 @@ public class OverlayManager : Grid
     private readonly DebugConsolePanel _debugConsolePanel;
     private readonly IStateContainer _state;
 
-    public OverlayManager(IStateContainer state, ISaveService? saveService, GameController? controller)
+    public OverlayManager(IStateContainer state, ISaveService? saveService, IGameController? controller)
     {
         _state = state;
 

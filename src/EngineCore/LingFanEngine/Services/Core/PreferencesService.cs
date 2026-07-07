@@ -8,7 +8,7 @@ namespace LingFanEngine.Services.Core;
 /// <para>所有偏好值存储在状态容器中（__pref_* 前缀），通过 SaveSystemState 持久化。</para>
 /// <para>对标 Ren'Py Preferences 对象。</para>
 /// </summary>
-public class PreferencesService
+public class PreferencesService : IPreferencesService
 {
     private readonly IStateContainer _state;
 

@@ -6,7 +6,7 @@ namespace LingFanEngine.Services.Core.Handlers;
 /// <summary>
 /// 播放 BGM 命令处理器
 /// </summary>
-public class PlayBgmHandler : ICommandHandler<PlayBgmCommand>
+public class PlayBgmHandler : ICommandHandler<PlayBgmCommand>, IDefaultCommandHandler
 {
     public void Handle(PlayBgmCommand bgm, ICommandContext ctx)
     {
@@ -20,7 +20,7 @@ public class PlayBgmHandler : ICommandHandler<PlayBgmCommand>
 /// <summary>
 /// 播放音效命令处理器
 /// </summary>
-public class PlaySeHandler : ICommandHandler<PlaySeCommand>
+public class PlaySeHandler : ICommandHandler<PlaySeCommand>, IDefaultCommandHandler
 {
     public void Handle(PlaySeCommand se, ICommandContext ctx)
     {
@@ -31,7 +31,7 @@ public class PlaySeHandler : ICommandHandler<PlaySeCommand>
 /// <summary>
 /// 播放语音命令处理器
 /// </summary>
-public class PlayVoiceHandler : ICommandHandler<PlayVoiceCommand>
+public class PlayVoiceHandler : ICommandHandler<PlayVoiceCommand>, IDefaultCommandHandler
 {
     public void Handle(PlayVoiceCommand vc, ICommandContext ctx)
     {
@@ -43,7 +43,7 @@ public class PlayVoiceHandler : ICommandHandler<PlayVoiceCommand>
 /// <summary>
 /// BGM 交叉淡入队列命令处理器
 /// </summary>
-public class BgmQueueHandler : ICommandHandler<BgmQueueCommand>
+public class BgmQueueHandler : ICommandHandler<BgmQueueCommand>, IDefaultCommandHandler
 {
     public void Handle(BgmQueueCommand q, ICommandContext ctx)
     {

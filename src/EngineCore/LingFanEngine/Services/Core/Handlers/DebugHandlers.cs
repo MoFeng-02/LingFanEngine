@@ -10,7 +10,7 @@ namespace LingFanEngine.Services.Core.Handlers;
 /// <para>将调试消息写入状态容器的日志列表，供调试控制台读取。</para>
 /// <para>仅当调试模式开启时才记录日志。</para>
 /// </summary>
-public class DebugLogHandler : ICommandHandler<DebugLogCommand>
+public class DebugLogHandler : ICommandHandler<DebugLogCommand>, IDefaultCommandHandler
 {
     public void Handle(DebugLogCommand cmd, ICommandContext ctx)
     {

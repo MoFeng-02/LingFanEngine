@@ -1,8 +1,9 @@
-﻿﻿﻿using System;
+﻿﻿﻿﻿using System;
 using System.Threading.Tasks;
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Entry;
+using LingFanEngine.Abstractions.Interfaces.Media;
 using LingFanEngine.Entry.Demos;
 using LingFanEngine.Abstractions.Scripting;
 using LingFanEngine.Services.Core;
@@ -18,40 +19,35 @@ namespace LingFanEngine.Entry;
 public static class CSharpScripts
 {
     public static void RegisterAll(IStateContainer state, ISceneRegistry sceneRegistry,
-        GameController ctrl, ICommandPipeline pipeline, ICommandService? cmdService,
-        LingFanEngine.Services.Media.AudioManager? audio = null,
+        IGameController ctrl, ICommandPipeline pipeline, ICommandService? cmdService,
+        IAudioManager? audio = null,
         GameLoop? gameLoop = null)
     {
         // ===== 初始变量 =====
-        //ctrl.Define("player.name", "你");
-        //ctrl.Define("player.gold", 100);
-        //ctrl.Define("player.hp", 50);
-        //ctrl.Define("player.maxHp", 100);
-        //ctrl.Define("sandbox.dice", 0);
-        // 已迁移到场景级变量定义
+        // 已迁移到 DSL title_main 场景级 define（"你不认识他之前，他不存在于你的世界"）
 
-        // ===== 教程场景 =====
-        var scripts = new StoryScript[]
-        {
-            new TutorialTitle(),
-            new TutorialChapter(),
-            new TutorialFeatures(),
-            new TutorialSandbox(),
-        };
+        // ===== C# 教程场景（已迁移到 DSL .story 文件）=====
+        // 如需同时使用 C# StoryScript 和 DSL .story，取消下方注释即可：
+        // var scripts = new StoryScript[]
+        // {
+        //     new TutorialTitle(),
+        //     new TutorialChapter(),
+        //     new TutorialFeatures(),
+        //     new TutorialSandbox(),
+        // };
+        // foreach (var script in scripts)
+        // {
+        //     script.Initialize(ctrl, state, pipeline, sceneRegistry);
+        //     gameLoop?.RegisterScriptEntry(new SceneScriptEntry
+        //     {
+        //         SceneName = script.SceneName,
+        //         SceneType = script.SceneType,
+        //         Runner = () => script.Run(),
+        //         Defines = script.InDefines()
+        //     });
+        // }
 
-        foreach (var script in scripts)
-        {
-            script.Initialize(ctrl, state, pipeline, sceneRegistry);
-            gameLoop?.RegisterScriptEntry(new SceneScriptEntry
-            {
-                SceneName = script.SceneName,
-                SceneType = script.SceneType,
-                Runner = () => script.Run(),
-                Defines = script.InDefines()
-            });
-        }
-
-        // ===== 命令注册（引擎层无预制命令，全部在此） =====
+        // ===== 命令注册（DSL .story 中的 cmd="do_xxx" 依赖这些 C# 命令）=====
         if (cmdService == null) return;
 
         cmdService.RegisterCommand("do_exit", (_, _) =>
@@ -72,7 +68,9 @@ public static class CSharpScripts
         });
         cmdService.RegisterCommand("do_hp_add", (_, _) =>
         {
-            var hp = Math.Min(state.Get<int>("player.maxHp"), state.Get<int>("player.hp") + 20);
+            var maxHp = state.Get<int>("player.maxHp");
+            var _hp = state.Get<int>("player.hp");
+            var hp = Math.Min(maxHp, _hp + 20);
             state.Set("player.hp", hp);
             state.Set<object>(StateKeys.Notify.Text, $"HP +20（{hp}/{state.Get<int>("player.maxHp")}）");
             return Task.CompletedTask;

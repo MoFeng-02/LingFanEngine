@@ -1,5 +1,6 @@
 using LingFanEngine.Abstractions.Entities.Events;
 using LingFanEngine.Abstractions.Interfaces.Core;
+using LingFanEngine.Abstractions.Interfaces.Events;
 using LingFanEngine.Services.Core;
 using LingFanEngine.Services.Scripting;
 
@@ -10,7 +11,7 @@ namespace LingFanEngine.Services.Events;
 /// <para>监听 GameTimeService 的 OnTimeAdvanced 事件，检查 TimeEventEntity 是否到期并触发导航。</para>
 /// <para>支持可选的条件表达式：时间条件满足后，通过 DslExpressionEvaluator 求值 Condition 字段。</para>
 /// </summary>
-public class EventScheduler : IDisposable
+public class EventScheduler : IEventScheduler
 {
     private readonly IGameTimeService _timeService;
     private readonly ICommandPipeline _pipeline;

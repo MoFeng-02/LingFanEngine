@@ -37,9 +37,20 @@ public class StateContainerTests
     public void Get_WrongType_ReturnsDefault()
     {
         var container = new StateContainer();
-        container.Set("key", "42");
+        // 存入不可转换类型（Dictionary 无法转为 int）
+        container.Set("key", new Dictionary<string, object?>());
         var value = container.Get<int>("key");
         value.Should().Be(0); // default(int)
+    }
+
+    [Fact]
+    public void Get_ConvertibleType_Succeeds()
+    {
+        // 字符串 "42" 可转换为 int 42（存档反序列化后的常见场景）
+        var container = new StateContainer();
+        container.Set("key", "42");
+        var value = container.Get<int>("key");
+        value.Should().Be(42);
     }
 
     [Fact]
@@ -65,7 +76,8 @@ public class StateContainerTests
     public void TryGet_WrongType_ReturnsFalse()
     {
         var container = new StateContainer();
-        container.Set("key", "42");
+        // 存入不可转换类型
+        container.Set("key", new Dictionary<string, object?>());
         var success = container.TryGet<int>("key", out var value);
         success.Should().BeFalse();
         value.Should().Be(0);

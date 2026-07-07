@@ -1,11 +1,12 @@
 using System.Collections.Concurrent;
+using LingFanEngine.Abstractions.Interfaces.Entry;
 
 namespace LingFanEngine.Services.Entry;
 
 /// <summary>
 /// 简单的事件聚合器
 /// </summary>
-public class EventAggregator
+public class EventAggregator : IEventAggregator
 {
     private readonly ConcurrentDictionary<Type, List<Delegate>> _handlers = new();
 

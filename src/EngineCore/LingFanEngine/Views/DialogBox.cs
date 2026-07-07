@@ -184,51 +184,82 @@ public class DialogBox : UserControl
     {
         _contentText.Inlines.Clear();
         var text = raw.Replace("{w}", "").Replace("{fast}", "").Replace("{p}", "");
-        int pos = 0;
-        while (pos < text.Length)
+        ParseInline(text, 0, text.Length, null);
+    }
+
+    /// <summary>
+    /// 递归解析内联标记，支持嵌套标签如 {b}{color=#FFD700}秘密{/color}{/b}
+    /// </summary>
+    private int ParseInline(string text, int start, int end, InlineStyle? parentStyle)
+    {
+        int pos = start;
+        while (pos < end)
         {
             if (text[pos] == '{')
             {
                 int close = text.IndexOf('}', pos);
-                if (close < 0) { AppendRun(text[pos..]); break; }
+                if (close < 0 || close >= end) { AppendRun(text[pos..end], parentStyle); return end; }
                 var tag = text[(pos + 1)..close];
-                int endTag = text.IndexOf("{/" + tag.Split('=')[0] + "}", close + 1);
-                var inner = endTag >= 0 ? text[(close + 1)..endTag] : text[(close + 1)..];
+                var tagName = tag.Contains('=') ? tag[..tag.IndexOf('=')] : tag;
                 var attr = tag.Contains('=') ? tag[(tag.IndexOf('=') + 1)..] : null;
-                var tagName = tag.Split('=')[0];
-                switch (tagName)
-                {
-                    case "b": AppendRun(inner, bold: true); break;
-                    case "i": AppendRun(inner, italic: true); break;
-                    case "u": AppendRun(inner, underline: true); break;
-                    case "color": AppendRun(inner, color: attr); break;
-                    case "font": AppendRun(inner, font: attr); break;
-                    case "size": { var s = double.TryParse(attr, out var fs) ? fs : (double?)null; AppendRun(inner, size: s); break; }
-                    default: AppendRun("{" + tag + "}"); break;
-                }
-                pos = endTag >= 0 ? endTag + tagName.Length + 3 : text.Length;
+
+                // 闭合标签 → 返回（让调用者处理）
+                if (tagName.StartsWith('/'))
+                    return close + 1;
+
+                // 开放标签 → 递归解析内部内容，合并样式
+                var childStyle = MergeStyle(parentStyle, tagName, attr);
+                int afterTag = close + 1;
+                int nextClose = ParseInline(text, afterTag, end, childStyle);
+                pos = nextClose;
             }
             else
             {
-                int nextBrace = text.IndexOf('{', pos + 1);
-                if (nextBrace < 0) { AppendRun(text[pos..]); break; }
-                AppendRun(text[pos..nextBrace]);
+                // 普通文本——找到下一个 { 或 end
+                int nextBrace = text.IndexOf('{', pos);
+                if (nextBrace < 0 || nextBrace >= end) nextBrace = end;
+                AppendRun(text[pos..nextBrace], parentStyle);
                 pos = nextBrace;
             }
         }
+        return pos;
     }
 
-    private void AppendRun(string text, bool bold = false, bool italic = false,
-        bool underline = false, string? color = null, string? font = null, double? size = null)
+    /// <summary>合并内联样式（子标签叠加父标签的样式）</summary>
+    private static InlineStyle? MergeStyle(InlineStyle? parent, string tagName, string? attr)
     {
+        var s = parent ?? new InlineStyle();
+        return tagName switch
+        {
+            "b" => s with { Bold = true },
+            "i" => s with { Italic = true },
+            "u" => s with { Underline = true },
+            "color" => attr != null ? s with { Color = attr } : s,
+            "font" => attr != null ? s with { Font = attr } : s,
+            "size" => double.TryParse(attr, out var fs) ? s with { Size = fs } : s,
+            _ => s
+        };
+    }
+
+    private void AppendRun(string text, InlineStyle? style)
+    {
+        if (string.IsNullOrEmpty(text)) return;
         var run = new Run(text);
-        if (bold) run.FontWeight = FontWeight.Bold;
-        if (italic) run.FontStyle = FontStyle.Italic;
-        if (underline) run.TextDecorations = TextDecorations.Underline;
-        if (color != null) run.Foreground = new SolidColorBrush(Color.Parse(color));
-        if (font != null) run.FontFamily = new FontFamily(font);
-        if (size.HasValue) run.FontSize = size.Value;
+        if (style != null)
+        {
+            if (style.Bold) run.FontWeight = FontWeight.Bold;
+            if (style.Italic) run.FontStyle = FontStyle.Italic;
+            if (style.Underline) run.TextDecorations = TextDecorations.Underline;
+            if (style.Color != null) run.Foreground = new SolidColorBrush(Color.Parse(style.Color));
+            if (style.Font != null) run.FontFamily = new FontFamily(style.Font);
+            if (style.Size.HasValue) run.FontSize = style.Size.Value;
+        }
         _contentText.Inlines.Add(run);
     }
+
+    /// <summary>内联样式数据（支持嵌套叠加）</summary>
+    private record InlineStyle(
+        bool Bold = false, bool Italic = false, bool Underline = false,
+        string? Color = null, string? Font = null, double? Size = null);
 #pragma warning restore CS8602
 }

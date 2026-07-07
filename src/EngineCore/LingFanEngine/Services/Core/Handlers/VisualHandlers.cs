@@ -9,7 +9,7 @@ namespace LingFanEngine.Services.Core.Handlers;
 /// 过渡动画命令处理器
 /// <para>启动过渡动画，设置过渡状态到状态容器。</para>
 /// </summary>
-public class TransitionHandler : ICommandHandler<TransitionCommand>
+public class TransitionHandler : ICommandHandler<TransitionCommand>, IDefaultCommandHandler
 {
     public void Handle(TransitionCommand tc, ICommandContext ctx)
     {
@@ -29,7 +29,7 @@ public class TransitionHandler : ICommandHandler<TransitionCommand>
 /// 控件级动画命令处理器
 /// <para>存起始值、目标值、进度到状态容器，SceneView 每帧读取动画状态更新控件。</para>
 /// </summary>
-public class AnimateHandler : ICommandHandler<AnimateCommand>
+public class AnimateHandler : ICommandHandler<AnimateCommand>, IDefaultCommandHandler
 {
     public void Handle(AnimateCommand ac, ICommandContext ctx)
     {
@@ -52,7 +52,7 @@ public class AnimateHandler : ICommandHandler<AnimateCommand>
 /// show/hide/background 命令处理器
 /// <para>操作运行时元素层（对标 Ren'Py），不改变场景定义。</para>
 /// </summary>
-public class ShowHideHandler : ICommandHandler<ShowHideCommand>
+public class ShowHideHandler : ICommandHandler<ShowHideCommand>, IDefaultCommandHandler
 {
     public void Handle(ShowHideCommand sh, ICommandContext ctx)
     {
