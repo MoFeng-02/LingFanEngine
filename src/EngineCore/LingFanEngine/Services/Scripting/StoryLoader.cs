@@ -803,12 +803,12 @@ ExtractSceneBlocks(string script)
     /// </summary>
     private static readonly HashSet<string> s_uiElementTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "text", "button", "image", "panel", "grid", "stack", "canvas",
-        "border", "frame", "scroll", "background", "bar", "vbar", "slider",
-        "checkbox", "imagebutton", "separator", "spacer", "narrator",
-        "speaker", "dialog", "choice", "progress", "progressbar",
-        "toggle", "switch", "combobox", "dropdown", "listbox", "treeview",
-        "tab", "tabitem", "menubar", "tooltip", "textbox", "passwordbox"
+"text", "button", "image", "panel", "grid", "stack", "canvas",
+"border", "frame", "scroll", "scrollviewer", "viewport", "background", "bar", "vbar", "slider",
+"checkbox", "imagebutton", "separator", "spacer", "narrator",
+"speaker", "dialog", "choice", "progress", "progressbar",
+"toggle", "switch", "combobox", "dropdown", "listbox", "treeview",
+"tab", "tabitem", "menubar", "tooltip", "textbox", "passwordbox"
     };
 
     /// <summary>
@@ -841,7 +841,7 @@ ExtractSceneBlocks(string script)
                 var node = JsonNode.Parse(val);
                 return JsonNodeToObject(node);
             }
-            catch { }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[StoryLoader] JSON parse failed: {ex.Message}"); }
         }
         return val;
     }

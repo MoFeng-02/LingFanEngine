@@ -20,7 +20,11 @@ public class PlaybackService : IPlaybackService
         if (currentType != SceneType.Game) return;
 
         var waitingType = state.Get<string>(StateKeys.Dsl.WaitingType);
-        if (waitingType != StateKeys.Dsl.WaitingTypes.Dialog) return;
+        // P1-#12: Skip/Auto 扩展到 WaitSkipable 和 Pause（不仅限于 Dialog）
+        var isInteractive = waitingType == StateKeys.Dsl.WaitingTypes.Dialog
+            || waitingType == StateKeys.Dsl.WaitingTypes.WaitSkipable
+            || waitingType == StateKeys.Dsl.WaitingTypes.Pause;
+        if (!isInteractive) return;
 
         // 回溯模式下不自动推进（用户在浏览历史，不应被跳过/自动模式打断）
         if (state.Get<bool>(StateKeys.Rollback.IsActive)) return;
@@ -28,28 +32,33 @@ public class PlaybackService : IPlaybackService
         // 对话已完成（用户点击或打字机结束）时不处理
         if (state.Get<bool>(StateKeys.Dialog.Complete)) return;
 
-        // 检查打字机是否还在进行中（由 SceneView 控制 __typewriter_done）
-        // 如果打字机未完成，跳过模式和自动模式都应等待
-        var typewriterDone = state.Get<bool>(StateKeys.Dialog.TypewriterDone);
-        if (!typewriterDone) return;
+        // P1-#12: 打字机检查仅对 Dialog 等待有意义
+        // WaitSkipable/Pause 没有打字机，直接推进
+        if (waitingType == StateKeys.Dsl.WaitingTypes.Dialog)
+        {
+            var typewriterDone = state.Get<bool>(StateKeys.Dialog.TypewriterDone);
+            if (!typewriterDone) return;
+        }
 
         // 跳过模式
         if (state.Get<bool>(StateKeys.Playback.SkipActive))
         {
-            // 检查当前 Say 是否已读（SkipOnlySeen=true 时仅跳已读）
-            var skipOnlySeen = state.Get<bool>(StateKeys.Playback.SkipOnlySeen);
-            if (skipOnlySeen)
+            // P1-#12: SkipOnlySeen 检查仅对 Dialog 有意义
+            if (waitingType == StateKeys.Dsl.WaitingTypes.Dialog)
             {
-                var currentIndex = state.Get<int>(StateKeys.Dsl.CurrentIndex);
-                var sceneName = state.Get<string>(StateKeys.Scene.CurrentName) ?? "";
-                var seenKey = $"{sceneName}:{currentIndex}";
-                var seen = state.Get<HashSet<string>>(StateKeys.Playback.SeenSayIndices);
-                // currentIndex 指向当前正在等待的 ShowDialogCommand（不再提前推进）
-                if (seen != null && !seen.Contains(seenKey))
+                var skipOnlySeen = state.Get<bool>(StateKeys.Playback.SkipOnlySeen);
+                if (skipOnlySeen)
                 {
-                    // 未读 Say — 停止跳过
-                    state.Set(StateKeys.Playback.SkipActive, false);
-                    return;
+                    var currentIndex = state.Get<int>(StateKeys.Dsl.CurrentIndex);
+                    var sceneName = state.Get<string>(StateKeys.Scene.CurrentName) ?? "";
+                    var seenKey = $"{sceneName}:{currentIndex}";
+                    var seen = state.Get<HashSet<string>>(StateKeys.Playback.SeenSayIndices);
+                    if (seen != null && !seen.Contains(seenKey))
+                    {
+                        // 未读 Say — 停止跳过
+                        state.Set(StateKeys.Playback.SkipActive, false);
+                        return;
+                    }
                 }
             }
             state.Set(StateKeys.Dialog.Complete, true);

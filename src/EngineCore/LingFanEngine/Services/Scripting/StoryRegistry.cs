@@ -287,7 +287,7 @@ public class StoryRegistry : IStoryRegistry
             }
             return true;
         }
-        catch { return false; }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[StoryRegistry] ReloadFile failed: {filePath} — {ex.Message}"); return false; }
     }
 
     /// <summary>
@@ -344,6 +344,100 @@ public class StoryRegistry : IStoryRegistry
         if (_loadedScenes.Contains(sceneName) || _sceneToFile.ContainsKey(sceneName))
             return true;
         return FindByFileName(sceneName) != null;
+    }
+
+    /// <summary>
+    /// 热重载：重新加载指定文件的所有场景和编译结果
+    /// <para>清除该文件的已加载标记和编译缓存，重新读取、编译、注册。</para>
+    /// <para>返回该文件包含的所有场景名列表（用于 UI 刷新判断）。</para>
+    /// </summary>
+    public List<string> ReloadFile(string filePath)
+    {
+        var affectedScenes = new List<string>();
+
+        // 1. 找出该文件对应的所有场景名
+        foreach (var (sceneName, file) in _sceneToFile)
+        {
+            if (string.Equals(file, filePath, StringComparison.OrdinalIgnoreCase))
+                affectedScenes.Add(sceneName);
+        }
+
+        // 2. 从已加载集合中移除这些场景
+        foreach (var sceneName in affectedScenes)
+            _loadedScenes.Remove(sceneName);
+
+        // 3. 清除编译缓存
+        _compiledCommands.Remove(filePath);
+        _compiledLabels.Remove(filePath);
+
+        // 4. 重新扫描文件更新 scene/label 映射
+        RescanFile(filePath);
+
+        // 5. 重新加载文件
+        LoadSceneFromFile(filePath);
+
+        System.Diagnostics.Debug.WriteLine(
+            $"[StoryRegistry] 热重载: {filePath}, 影响场景: {string.Join(", ", affectedScenes)}");
+
+        return affectedScenes;
+    }
+
+    /// <summary>
+    /// 重新扫描单个文件的 scene/label 定义，更新映射表
+    /// </summary>
+    private void RescanFile(string filePath)
+    {
+        if (!File.Exists(filePath)) return;
+
+        // 移除该文件的旧映射
+        var keysToRemove = _sceneToFile.Where(kv => 
+            string.Equals(kv.Value, filePath, StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Key).ToList();
+        foreach (var key in keysToRemove)
+            _sceneToFile.Remove(key);
+
+        var labelKeysToRemove = _labelToFile.Where(kv => 
+            string.Equals(kv.Value, filePath, StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Key).ToList();
+        foreach (var key in labelKeysToRemove)
+            _labelToFile.Remove(key);
+
+        // 重新扫描
+        try
+        {
+            using var reader = new StreamReader(filePath);
+            string? line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                var trimmed = line.Trim();
+                if (trimmed.StartsWith("//") || trimmed.StartsWith('#')) continue;
+
+                var lineIndent = 0;
+                foreach (var ch in line)
+                {
+                    if (ch == ' ') lineIndent++;
+                    else if (ch == '\t') lineIndent += 4;
+                    else break;
+                }
+                if (lineIndent != 0) continue;
+
+                if (trimmed.StartsWith("scene ") || trimmed.StartsWith("scene\t"))
+                {
+                    var sceneHeader = DslParser.ParseSceneHeader(trimmed);
+                    if (sceneHeader != null)
+                        _sceneToFile[sceneHeader.SceneName] = filePath;
+                }
+
+                if (trimmed.StartsWith("label ") || trimmed.StartsWith("label\t"))
+                {
+                    var labelName = DslParser.ParseLabelLine(trimmed);
+                    if (labelName != null)
+                        _labelToFile[labelName] = filePath;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[StoryRegistry] RescanFile failed: {filePath} -> {ex.Message}");
+        }
     }
 
     /// <summary>

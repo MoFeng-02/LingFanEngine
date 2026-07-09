@@ -1,10 +1,10 @@
 namespace LingFanEngine.Abstractions.Models;
 
 /// <summary>
-/// 回溯检查点 — 记录某个 Say 时刻的完整状态快照
-/// <para>每次 DSL 执行到 ShowDialogCommand 时创建一个检查点。</para>
-/// <para>回溯 = 恢复上一个检查点的状态 + 重新展示该 Say。</para>
-/// <para>前进 = 恢复下一个检查点的状态 + 重新展示该 Say。</para>
+/// 回溯检查点 — 记录某个交互时刻的完整状态快照（统一线性回溯时间线 Phase 16/16.1）
+/// <para>DSL 执行到 say/menu/input/wait/scene_idle/navigate 时创建一个检查点。</para>
+/// <para>回溯 = 恢复检查点的状态 + 重新执行该交互命令。</para>
+/// <para>前进 = 恢复下一个检查点的状态 + 重新执行该交互命令。</para>
 /// <para>检查点是会话级的（不写入存档），读档后从当前状态重新开始积累。</para>
 /// </summary>
 public class RollbackCheckpoint

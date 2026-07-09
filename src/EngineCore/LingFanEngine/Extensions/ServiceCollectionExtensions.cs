@@ -16,6 +16,7 @@ using LingFanEngine.Services.Saves;
 using LingFanEngine.Services.Scripting;
 using LingFanEngine.Services.Tweens;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using LingFanEngine.Abstractions.EngineOptions;
 
 namespace LingFanEngine.Extensions;
@@ -73,13 +74,20 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<LingFanEngineOptions>()));
         services.AddSingleton<IPreferencesService, PreferencesService>();
         services.AddSingleton<IGameController, GameController>();
-        services.AddSingleton<IEventAggregator, EventAggregator>();
-        services.AddSingleton<II18nService, I18nService>();
+services.AddSingleton<IEventAggregator, EventAggregator>();
+services.AddSingleton<II18nService, I18nService>();
+
+// 注册日志服务（游戏可替换为自定义实现）
+services.TryAddSingleton<IEngineLogger, DebugEngineLogger>();
 
         // 注册资源包加载器
         services.AddSingleton<PackLoader>();
         services.AddSingleton<IAudioManager>(sp => new AudioManager(
             sp.GetRequiredService<ICommandPipeline>(),
+            sp.GetRequiredService<IStateContainer>(),
+            CreateAudioPlayerFactory()
+        ));
+        services.AddSingleton<IVideoManager>(sp => new VideoManager(
             sp.GetRequiredService<IStateContainer>()
         ));
         services.AddSingleton<LanguageService>();
@@ -107,6 +115,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDefaultCommandHandler, HardPauseHandler>();
         services.AddSingleton<IDefaultCommandHandler, BackHandler>();
         services.AddSingleton<IDefaultCommandHandler, ForwardHandler>();
+        services.AddSingleton<IDefaultCommandHandler, RollbackHandler>();
+        services.AddSingleton<IDefaultCommandHandler, RollforwardHandler>();
         services.AddSingleton<IDefaultCommandHandler, RollbackToHandler>();
         services.AddSingleton<IDefaultCommandHandler, SceneHandler>();
         services.AddSingleton<IDefaultCommandHandler, NavToLabelHandler>();
@@ -120,11 +130,21 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDefaultCommandHandler, DebugLogHandler>();
         services.AddSingleton<IDefaultCommandHandler, NvlHandler>();
 
+        // 注册视频命令处理器
+        services.AddSingleton<IDefaultCommandHandler, PlayVideoHandler>();
+        services.AddSingleton<IDefaultCommandHandler, StopVideoHandler>();
+        services.AddSingleton<IDefaultCommandHandler, PauseVideoHandler>();
+        services.AddSingleton<IDefaultCommandHandler, ResumeVideoHandler>();
+        services.AddSingleton<IDefaultCommandHandler, SeekVideoHandler>();
+        services.AddSingleton<IDefaultCommandHandler, CutsceneHandler>();
+
         // 注册子服务（从 GameLoop 拆分）
         services.AddSingleton<IStateInitializer, StateInitializer>();
         services.AddSingleton<IAnimationService, AnimationService>();
         services.AddSingleton<IShakeService, ShakeService>();
         services.AddSingleton<IPlaybackService, PlaybackService>();
+        // 对话框工厂（游戏可注册自定义实现替换内置 DialogBox）
+        services.TryAddSingleton<Views.IDialogBoxFactory, Views.DefaultDialogBoxFactory>();
         services.AddSingleton<ISaveDataService>(sp => new SaveDataService(
             sp.GetRequiredService<IStateContainer>(),
             sp.GetRequiredService<IJsonValueConverter>(),
@@ -152,6 +172,7 @@ public static class ServiceCollectionExtensions
             var dslExec = sp.GetService<IDslExecutor>();
             var transition = sp.GetService<ITransitionEngine>();
             var audio = sp.GetService<IAudioManager>();
+            var video = sp.GetService<IVideoManager>();
             var loop = new GameLoop(
                 pipeline, state, time,
                 dispatcher, tween, jsonConverter, defaultHandlers,
@@ -161,7 +182,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IPlaybackService>(),
                 sp.GetRequiredService<ISaveDataService>(),
                 save, sceneReg, options,
-                sceneStack, storyReg, dslExec, transition, audio);
+                sceneStack, storyReg, dslExec, transition, audio, video);
             loop.TargetFps = options.GetTargetFps();
             // StoryRegistry 扫描副作用（需在 GameLoop 构造后执行）
             storyReg?.Scan();
@@ -187,6 +208,9 @@ public static class ServiceCollectionExtensions
             var opts = sp.GetRequiredService<LingFanEngineOptions>();
             return new Live2DDataService(opts.Live2DDirectory);
         });
+
+        // 注册故事热重载服务
+        services.AddSingleton<StoryHotReloadService>();
 
         return services;
     }
@@ -235,5 +259,29 @@ public static class ServiceCollectionExtensions
     {
         services.AddSingleton<ILive2DDataService>(sp => new Live2DDataService(modelBasePath));
         return services;
+    }
+
+    /// <summary>
+    /// 创建音频播放器工厂——根据平台选择 LibVLC 或 NullAsyncAudioPlayer
+    /// <para>LibVLC 不可用时（Browser/WASM 或初始化失败）降级为空操作播放器。</para>
+    /// </summary>
+    private static Func<IAudioPlayer> CreateAudioPlayerFactory()
+    {
+        // 确保 Core 已初始化
+        LibVlcInitializer.InitializeCore();
+
+        if (!LibVlcInitializer.IsAvailable)
+        {
+            // Browser/WASM 或 LibVLC 初始化失败——降级为空操作
+            return () => new NullAsyncAudioPlayer();
+        }
+
+        return () =>
+        {
+            var libVLC = LibVlcInitializer.GetLibVLC();
+            if (libVLC == null)
+                return new NullAsyncAudioPlayer();
+            return new LibVlcAudioPlayer(libVLC);
+        };
     }
 }

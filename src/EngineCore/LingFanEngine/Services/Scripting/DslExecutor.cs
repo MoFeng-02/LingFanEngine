@@ -14,7 +14,8 @@ namespace LingFanEngine.Services.Scripting;
 /// <para>RunAsync 为主执行循环，遇到交互命令（say/menu/input/wait）时
 /// 使用 async/await 天然等待，无需帧轮询状态标记。</para>
 /// <para>所有状态保存在状态容器中，不维护私有内部状态（除 CancellationTokenSource）。</para>
-/// <para>支持 Say 级回溯：每个 ShowDialogCommand 创建检查点，
+/// <para>支持统一线性回溯时间线（Phase 16/16.1）：检查点列表 + CurrentIndex 前沿模型，
+/// say/menu/input/wait/scene_idle/navigate 创建检查点（全量状态快照），
 /// 回溯时取消当前 RunAsync、恢复检查点状态、重启 RunAsync。</para>
 /// </summary>
 public class DslExecutor : IDslExecutor
@@ -24,9 +25,9 @@ public class DslExecutor : IDslExecutor
     private readonly LingFanEngineOptions _options;
     private IStoryRegistry? _storyRegistry;
 
-    /// <summary>异步执行取消令牌</summary>
+    /// <summary>异步执行取消令牌（线程安全——使用 Interlocked.Exchange 原子替换）</summary>
     private CancellationTokenSource? _cts;
-    /// <summary>当前运行中的执行任务</summary>
+    /// <summary>当前运行中的执行任务（线程安全——使用 Interlocked.Exchange 原子替换）</summary>
     private Task? _runTask;
 
     /// <summary>回溯自身相关的键，快照时排除</summary>
@@ -36,8 +37,13 @@ public class DslExecutor : IDslExecutor
         StateKeys.Rollback.CurrentIndex,
         StateKeys.Rollback.IsActive,
         StateKeys.Rollback.IsReplay,
-        StateKeys.Playback.SeenSayIndices
+        StateKeys.Rollback.BlockedUntil,
+        StateKeys.Playback.SeenSayIndices,
+        StateKeys.Dsl.CSharpReplayGeneration
     };
+
+    /// <summary>C# 场景回溯回调（由 GameLoop 设置，回溯到 C# 场景时调用）</summary>
+    public Func<string, Task>? OnCSharpSceneReplay { get; set; }
 
     public DslExecutor(IStateContainer state, ICommandPipeline pipeline, LingFanEngineOptions? options = null)
     {
@@ -124,9 +130,11 @@ public class DslExecutor : IDslExecutor
     /// <inheritdoc/>
     public void Stop()
     {
-        _cts?.Cancel();
-        _cts = null;
-        _runTask = null;
+        // 线程安全：原子取消并清除引用
+        var cts = Interlocked.Exchange(ref _cts, null);
+        cts?.Cancel();
+        cts?.Dispose();
+        Interlocked.Exchange(ref _runTask, null);
         _state.Set(StateKeys.Dsl.Executing, false);
         _state.Set(StateKeys.Dsl.WaitingType, "");
     }
@@ -136,8 +144,15 @@ public class DslExecutor : IDslExecutor
     /// </summary>
     private void BeginRunAsync()
     {
-        _cts = new CancellationTokenSource();
-        var ct = _cts.Token;
+        // 线程安全：先取消并清理旧 CTS/Task，再创建新的
+        var oldCts = Interlocked.Exchange(ref _cts, null);
+        oldCts?.Cancel();
+        oldCts?.Dispose();
+        Interlocked.Exchange(ref _runTask, null);
+
+        var newCts = new CancellationTokenSource();
+        Interlocked.Exchange(ref _cts, newCts);
+        var ct = newCts.Token;
         _runTask = Task.Run(() => RunAsync(ct), ct);
     }
 
@@ -159,9 +174,23 @@ public class DslExecutor : IDslExecutor
 
                 if (currentIndex >= commands.Count)
                 {
-                    // 命令列表耗尽——清除对话状态，让 SceneView 隐藏对话框
+                    // 命令列表耗尽——场景元素已全部添加（按钮可见），用户将与此场景交互
+                    // 创建检查点：回溯到此处 = 直接看到完整场景（含按钮），无需重新点击 say
+                    if (!_state.Get<bool>(StateKeys.Rollback.IsReplay))
+                    {
+                        var cps = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
+                        if (cps == null || cps.Count == 0 || cps[^1].CommandIndex != currentIndex)
+                        {
+                            _state.Set(StateKeys.Dialog.Text, "");
+                            _state.Set(StateKeys.Dialog.Speaker, "");
+                            _state.Set(StateKeys.Dialog.Complete, false);
+                            CreateCheckpoint(currentIndex, "scene_idle");
+                            AdvanceRollbackFrontier();
+                        }
+                    }
+                    _state.Set(StateKeys.Rollback.IsActive, false);
+                    _state.Set(StateKeys.Rollback.IsReplay, false);
                     _state.Set(StateKeys.Dsl.Executing, false);
-                    _state.Set(StateKeys.Dialog.Text, "");
                     break;
                 }
 
@@ -173,73 +202,119 @@ public class DslExecutor : IDslExecutor
 
                     case ShowDialogCommand dialog:
                     {
-                        // 创建回溯检查点（回溯重展示时不创建新检查点）
                         if (!_state.Get<bool>(StateKeys.Rollback.IsReplay))
                             CreateCheckpoint(currentIndex, StateKeys.Dsl.WaitingTypes.Dialog);
 
-                        // 投递到管道（ShowDialogHandler 设置对话文本/说话者等）
                         _ = _pipeline.SendAsync(cmd);
                         _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Dialog);
 
-                        // 异步等待用户点击继续
                         await WaitForDialogComplete(ct);
                         if (ct.IsCancellationRequested) return;
 
                         _state.Set(StateKeys.Dsl.WaitingType, "");
+                        // 重置 Clickable——防止 say clickable=true 的状态泄漏到后续非 say 命令
+                        _state.Set(StateKeys.Dialog.Clickable, false);
 
-                        // 回溯模式：点击继续 = 前进到下一个检查点
                         var isRollback = _state.Get<bool>(StateKeys.Rollback.IsActive);
                         if (isRollback && CanRollforward())
                         {
                             if (Rollforward())
                                 return;
-                            // Rollforward 失败：回退到正常推进
                         }
 
-                        // 到达前沿或不在回溯模式：正常推进
                         _state.Set(StateKeys.Rollback.IsActive, false);
                         _state.Set(StateKeys.Rollback.IsReplay, false);
+                        AdvanceRollbackFrontier();
                         _state.Set(StateKeys.Dsl.CurrentIndex, currentIndex + 1);
                         break;
                     }
 
                     case WaitCommand wait:
                     {
-                        if (!_state.Get<bool>(StateKeys.Rollback.IsReplay))
-                            CreateCheckpoint(currentIndex, StateKeys.Dsl.WaitingTypes.Wait);
+                        var waitType = wait.IsSkipable
+                            ? StateKeys.Dsl.WaitingTypes.WaitSkipable
+                            : StateKeys.Dsl.WaitingTypes.Wait;
 
-                        _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Wait);
+                        if (!_state.Get<bool>(StateKeys.Rollback.IsReplay))
+                            CreateCheckpoint(currentIndex, waitType);
+
+                        _state.Set(StateKeys.Dsl.WaitingType, waitType);
                         _state.Set(StateKeys.Dsl.WaitUntil, Environment.TickCount64 / 1000.0 + wait.Seconds);
                         _state.Set(StateKeys.Dsl.WaitDuration, wait.Seconds);
 
-                        // 异步等待指定时长
-                        try { await Task.Delay(TimeSpan.FromSeconds(wait.Seconds), ct); }
-                        catch (OperationCanceledException) { return; }
+                        if (wait.IsSkipable)
+                        {
+                            _state.Set(StateKeys.Dialog.Text, "");
+                            _state.Set(StateKeys.Dialog.Speaker, "");
+                            _state.Set(StateKeys.Dialog.Clickable, false);
+                            _state.Set(StateKeys.Dialog.Complete, false);
+
+                            using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                            var delayTask = Task.Delay(TimeSpan.FromSeconds(wait.Seconds), waitCts.Token);
+                            var clickTask = WaitForDialogComplete(waitCts.Token);
+                            var winner = await Task.WhenAny(delayTask, clickTask);
+                            waitCts.Cancel();
+
+                            _state.Set(StateKeys.Dialog.Complete, false);
+
+                            if (ct.IsCancellationRequested) return;
+                        }
+                        else
+                        {
+                            try { await Task.Delay(TimeSpan.FromSeconds(wait.Seconds), ct); }
+                            catch (OperationCanceledException) { return; }
+                        }
 
                         if (ct.IsCancellationRequested) return;
                         _state.Set(StateKeys.Dsl.WaitingType, "");
 
-                        // 回溯模式处理
                         var isRollback = _state.Get<bool>(StateKeys.Rollback.IsActive);
                         if (isRollback && CanRollforward())
                         {
                             if (Rollforward())
                                 return;
-                            // Rollforward 失败：回退到正常推进
                         }
                         _state.Set(StateKeys.Rollback.IsActive, false);
                         _state.Set(StateKeys.Rollback.IsReplay, false);
+                        AdvanceRollbackFrontier();
+                        _state.Set(StateKeys.Dsl.CurrentIndex, currentIndex + 1);
+                        break;
+                    }
+
+                    case HardPauseCommand:
+                    {
+                        if (!_state.Get<bool>(StateKeys.Rollback.IsReplay))
+                            CreateCheckpoint(currentIndex, StateKeys.Dsl.WaitingTypes.Pause);
+
+                        _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Pause);
+                        _state.Set(StateKeys.Dialog.Text, "");
+                        _state.Set(StateKeys.Dialog.Speaker, "");
+                        _state.Set(StateKeys.Dialog.Clickable, false);
+                        _state.Set(StateKeys.Dialog.Complete, false);
+
+                        await WaitForDialogComplete(ct);
+                        if (ct.IsCancellationRequested) return;
+
+                        _state.Set(StateKeys.Dsl.WaitingType, "");
+
+                        var hpRollback = _state.Get<bool>(StateKeys.Rollback.IsActive);
+                        if (hpRollback && CanRollforward())
+                        {
+                            if (Rollforward())
+                                return;
+                        }
+                        _state.Set(StateKeys.Rollback.IsActive, false);
+                        _state.Set(StateKeys.Rollback.IsReplay, false);
+                        AdvanceRollbackFrontier();
                         _state.Set(StateKeys.Dsl.CurrentIndex, currentIndex + 1);
                         break;
                     }
 
                     case MenuCommand menu:
                     {
-                        // 设置菜单状态供 SceneView 渲染
                         _state.Set(StateKeys.Menu.Prompt, menu.Prompt);
                         _state.Set<object>(StateKeys.Menu.Options, menu.Options.Select(o => o.Text).ToArray());
                         _state.Set(StateKeys.Menu.Selected, -1);
-                        // 存储目标 label 列表供跳转
                         _state.Set(StateKeys.Menu.DslTargets, string.Join(",", menu.Options.Select(o => o.TargetLabel)));
                         _state.Set(StateKeys.Menu.DslTexts, string.Join(",", menu.Options.Select(o => o.Text)));
 
@@ -248,11 +323,9 @@ public class DslExecutor : IDslExecutor
 
                         _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Menu);
 
-                        // 异步等待用户选择
                         var selectedIdx = await WaitForMenuSelection(ct);
                         if (ct.IsCancellationRequested) return;
 
-                        // 清除菜单状态
                         _state.Set(StateKeys.Dsl.WaitingType, "");
                         _state.Set(StateKeys.Menu.Prompt, "");
                         _state.Set<object>(StateKeys.Menu.Options, Array.Empty<string>());
@@ -260,18 +333,16 @@ public class DslExecutor : IDslExecutor
                         _state.Set(StateKeys.Menu.DslTargets, "");
                         _state.Set(StateKeys.Menu.DslTexts, "");
 
-                        // 回溯模式处理
                         var isRollback = _state.Get<bool>(StateKeys.Rollback.IsActive);
                         if (isRollback && CanRollforward())
                         {
                             if (Rollforward())
                                 return;
-                            // Rollforward 失败：回退到正常推进
                         }
                         _state.Set(StateKeys.Rollback.IsActive, false);
                         _state.Set(StateKeys.Rollback.IsReplay, false);
+                        AdvanceRollbackFrontier();
 
-                        // 跳转到选中选项的 label
                         if (selectedIdx >= 0 && selectedIdx < menu.Options.Count)
                         {
                             var targetLabel = menu.Options[selectedIdx].TargetLabel;
@@ -288,7 +359,6 @@ public class DslExecutor : IDslExecutor
 
                     case InputCommand input:
                     {
-                        // 设置输入状态供 SceneView 渲染
                         _state.Set(StateKeys.Input.Prompt, input.Prompt);
                         _state.Set(StateKeys.Input.DslStore, input.StoreKey);
                         _state.Set<object>(StateKeys.Input.Options, input.Options ?? Array.Empty<string>());
@@ -299,28 +369,24 @@ public class DslExecutor : IDslExecutor
 
                         _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Input);
 
-                        // 异步等待用户提交
                         var inputValue = await WaitForInput(ct);
                         if (ct.IsCancellationRequested) return;
 
-                        // 清除输入状态
                         _state.Set(StateKeys.Dsl.WaitingType, "");
                         _state.Set(StateKeys.Input.Prompt, "");
                         _state.Set(StateKeys.Input.DslStore, "");
                         _state.Set<object>(StateKeys.Input.Options, Array.Empty<string>());
 
-                        // 回溯模式处理
                         var isRollback = _state.Get<bool>(StateKeys.Rollback.IsActive);
                         if (isRollback && CanRollforward())
                         {
                             if (Rollforward())
                                 return;
-                            // Rollforward 失败：回退到正常推进
                         }
                         _state.Set(StateKeys.Rollback.IsActive, false);
                         _state.Set(StateKeys.Rollback.IsReplay, false);
+                        AdvanceRollbackFrontier();
 
-                        // 存储输入值
                         if (!string.IsNullOrEmpty(input.StoreKey))
                             _state.Set(input.StoreKey, inputValue);
 
@@ -329,11 +395,25 @@ public class DslExecutor : IDslExecutor
                     }
 
                     case EndCommand:
-                        // 块结束哨兵——停止执行
-                        // 清除对话状态，让 SceneView 检测到 Dialog.Text 变空 → 调用 Hide()
+                    {
+                        if (!_state.Get<bool>(StateKeys.Rollback.IsReplay))
+                        {
+                            var endCps = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
+                            if (endCps == null || endCps.Count == 0 || endCps[^1].CommandIndex != currentIndex)
+                            {
+                                _state.Set(StateKeys.Dialog.Text, "");
+                                _state.Set(StateKeys.Dialog.Speaker, "");
+                                _state.Set(StateKeys.Dialog.Complete, false);
+                                CreateCheckpoint(currentIndex, "scene_idle");
+                                AdvanceRollbackFrontier();
+                            }
+                        }
+                        _state.Set(StateKeys.Rollback.IsActive, false);
+                        _state.Set(StateKeys.Rollback.IsReplay, false);
                         _state.Set(StateKeys.Dsl.Executing, false);
                         _state.Set(StateKeys.Dialog.Text, "");
                         return;
+                    }
 
                     // ========== 控制流命令（同步处理）==========
 
@@ -388,11 +468,30 @@ public class DslExecutor : IDslExecutor
                     // ========== 同步命令 ==========
 
                     case SetVariableCommand sv:
-                        // 同步执行（立即改 state），不经过管道
-                        // 否则后面的 if 判断会读到旧值
                         if (sv.IsDefine && _state.ContainsKey(sv.Key))
                         {
                             // define ... once：跳过
+                        }
+                        else if (sv.Value is DslForLengthPlaceholder forLen)
+                        {
+                            var source = DslExpressionEvaluator.Evaluate(forLen.SourceExpr, _state);
+                            var len = source switch
+                            {
+                                string s => s.Length,
+                                System.Collections.IList list => list.Count,
+                                System.Collections.IEnumerable en => en.Cast<object?>().Count(),
+                                _ => 0
+                            };
+                            _state.Set(sv.Key, len);
+                        }
+                        else if (sv.Value is DslForIndexPlaceholder forIdx)
+                        {
+                            var source = DslExpressionEvaluator.Evaluate(forIdx.SourceExpr, _state);
+                            var index = _state.Get<int>(forIdx.IndexVar);
+                            object? element = null;
+                            if (source is System.Collections.IList list && index >= 0 && index < list.Count)
+                                element = list[index]!;
+                            _state.Set(sv.Key, element);
                         }
                         else if (sv.Value is DslExpressionPlaceholder placeholder)
                         {
@@ -407,7 +506,6 @@ public class DslExecutor : IDslExecutor
                         break;
 
                     case TransitionCommand:
-                        // 过渡动画——投递到管道启动，然后等待动画完成
                         _ = _pipeline.SendAsync(cmd);
                         await WaitForTransitionComplete(ct);
                         if (ct.IsCancellationRequested) return;
@@ -415,17 +513,80 @@ public class DslExecutor : IDslExecutor
                         break;
 
                     case ShowElementCommand se:
-                        // 场景元素——同步追加到 Scene.Elements + 标记 Dirty
-                        // 非阻塞：立即执行，后续的 say/transition 等命令自然实现"等待后才揭示后续元素"
-                        var elements = _state.Get<List<UIElementEntity>>(StateKeys.Scene.Elements) ?? new List<UIElementEntity>();
-                        elements.Add(se.Element);
-                        _state.Set(StateKeys.Scene.Elements, elements);
-                        _state.Set(StateKeys.Scene.Dirty, true);
+                        {
+                            ApplyStyleIfExists(se.Element);
+                            var elements = _state.Get<List<UIElementEntity>>(StateKeys.Scene.Elements) ?? new List<UIElementEntity>();
+                            elements.Add(se.Element);
+                            _state.Set(StateKeys.Scene.Elements, elements);
+                            _state.Set(StateKeys.Scene.Dirty, true);
+                            _state.Set(StateKeys.Dsl.CurrentIndex, currentIndex + 1);
+                            break;
+                        }
+
+                    case CallScreenCommand cs:
+                        {
+                            // Phase 24: 设置传入参数
+                            if (cs.Params != null)
+                                _state.Set(StateKeys.Screen.Params, cs.Params);
+                            else
+                                _state.Set<object?>(StateKeys.Screen.Params, null);
+
+                            if (!_state.Get<bool>(StateKeys.Rollback.IsReplay))
+                                CreateCheckpoint(currentIndex, "call_screen");
+
+                            _state.Set(StateKeys.Dsl.WaitingType, "call_screen");
+                            _state.Set<object?>(StateKeys.Screen.Result, null);
+                            _ = _pipeline.SendAsync(new NavigateCommand { Path = cs.SceneName });
+                            await WaitForScreenResult(ct);
+                            if (ct.IsCancellationRequested) return;
+
+                            _state.Set(StateKeys.Dsl.WaitingType, "");
+
+                            var csRollback = _state.Get<bool>(StateKeys.Rollback.IsActive);
+                            if (csRollback && CanRollforward())
+                            {
+                                if (Rollforward())
+                                    return;
+                            }
+                            _state.Set(StateKeys.Rollback.IsActive, false);
+                            _state.Set(StateKeys.Rollback.IsReplay, false);
+                            AdvanceRollbackFrontier();
+
+                            if (!string.IsNullOrEmpty(cs.StoreKey))
+                            {
+                                var screenResult = _state.Get<string?>(StateKeys.Screen.Result);
+                                _state.Set(cs.StoreKey, screenResult);
+                            }
+                            _state.Set<object?>(StateKeys.Screen.Result, null);
+                            _state.Set(StateKeys.Dsl.CurrentIndex, currentIndex + 1);
+                            break;
+                        }
+
+                    case SaveLoadCommand slCmd when !slCmd.IsSave:
+                        _ = _pipeline.SendAsync(slCmd);
+                        _state.Set(StateKeys.Dsl.CurrentIndex, currentIndex + 1);
+                        // 标记执行结束——ApplySaveData 异步执行，期间 DslExecutor 不应处于 Executing 状态
+                        _state.Set(StateKeys.Dsl.Executing, false);
+                        return;
+
+                    case NavigateCommand:
+                        if (!_state.Get<bool>(StateKeys.Rollback.IsReplay))
+                        {
+                            var navCps = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
+                            if (navCps == null || navCps.Count == 0 || navCps[^1].CommandIndex != currentIndex + 1)
+                            {
+                                _state.Set(StateKeys.Dialog.Text, "");
+                                _state.Set(StateKeys.Dialog.Speaker, "");
+                                _state.Set(StateKeys.Dialog.Complete, false);
+                                CreateCheckpoint(currentIndex + 1, "navigate");
+                                AdvanceRollbackFrontier();
+                            }
+                        }
+                        _ = _pipeline.SendAsync(cmd);
                         _state.Set(StateKeys.Dsl.CurrentIndex, currentIndex + 1);
                         break;
 
                     default:
-                        // 其他命令——fire-and-forget 到管道
                         _ = _pipeline.SendAsync(cmd);
                         _state.Set(StateKeys.Dsl.CurrentIndex, currentIndex + 1);
                         break;
@@ -445,13 +606,12 @@ public class DslExecutor : IDslExecutor
 
     // ========== 异步等待方法 ==========
 
-    /// <summary>
-    /// 等待对话完成（用户点击继续）
-    /// <para>轮询 Dialog.Complete 状态，16ms 间隔。</para>
-    /// <para>PlaybackService 的 Skip/Auto 模式也会设置此标记。</para>
-    /// </summary>
+    /// <summary>交互等待超时上限（秒）——防止状态键 bug 导致永久挂起</summary>
+    private const double InteractionTimeoutSeconds = 300;
+
     private async Task WaitForDialogComplete(CancellationToken ct)
     {
+        var deadline = Environment.TickCount64 / 1000.0 + InteractionTimeoutSeconds;
         while (!ct.IsCancellationRequested)
         {
             if (_state.Get<bool>(StateKeys.Dialog.Complete))
@@ -459,37 +619,48 @@ public class DslExecutor : IDslExecutor
                 _state.Set(StateKeys.Dialog.Complete, false);
                 return;
             }
+            if (Environment.TickCount64 / 1000.0 >= deadline)
+            {
+                System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForDialogComplete 超时(300s)，强制推进");
+                return;
+            }
             try { await Task.Delay(16, ct); }
             catch (OperationCanceledException) { return; }
         }
     }
 
-    /// <summary>
-    /// 等待过渡动画完成
-    /// <para>轮询 Transition.Active 状态，16ms 间隔。</para>
-    /// <para>TransitionEngine 每帧推进 Progress，完成后设 Active=false。</para>
-    /// </summary>
     private async Task WaitForTransitionComplete(CancellationToken ct)
     {
-        // 先等一帧确保 TransitionHandler 已设置 Active=true
-        try { await Task.Delay(16, ct); }
-        catch (OperationCanceledException) { return; }
+        var activateDeadline = Environment.TickCount64 / 1000.0 + 5;
+        while (!_state.Get<bool>(StateKeys.Transition.Active) && !ct.IsCancellationRequested)
+        {
+            if (Environment.TickCount64 / 1000.0 >= activateDeadline)
+            {
+                System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForTransitionComplete: 等待激活超时(5s)，跳过等待");
+                return;
+            }
+            try { await Task.Delay(8, ct); }
+            catch (OperationCanceledException) { return; }
+        }
 
+        var completeDeadline = Environment.TickCount64 / 1000.0 + 60;
         while (!ct.IsCancellationRequested)
         {
             if (!_state.Get<bool>(StateKeys.Transition.Active))
                 return;
+            if (Environment.TickCount64 / 1000.0 >= completeDeadline)
+            {
+                System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForTransitionComplete 超时(60s)，强制推进");
+                return;
+            }
             try { await Task.Delay(16, ct); }
             catch (OperationCanceledException) { return; }
         }
     }
 
-    /// <summary>
-    /// 等待菜单选择
-    /// <para>轮询 Menu.Selected 状态（SceneView 设置），返回选中索引。</para>
-    /// </summary>
     private async Task<int> WaitForMenuSelection(CancellationToken ct)
     {
+        var deadline = Environment.TickCount64 / 1000.0 + InteractionTimeoutSeconds;
         while (!ct.IsCancellationRequested)
         {
             var selected = _state.Get<int>(StateKeys.Menu.Selected);
@@ -498,18 +669,20 @@ public class DslExecutor : IDslExecutor
                 _state.Set(StateKeys.Menu.Selected, -1);
                 return selected;
             }
+            if (Environment.TickCount64 / 1000.0 >= deadline)
+            {
+                System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForMenuSelection 超时(300s)，返回 -1");
+                return -1;
+            }
             try { await Task.Delay(16, ct); }
             catch (OperationCanceledException) { return -1; }
         }
         return -1;
     }
 
-    /// <summary>
-    /// 等待用户输入
-    /// <para>轮询 Input.Result 状态（SceneView 设置），返回输入文本。</para>
-    /// </summary>
     private async Task<string> WaitForInput(CancellationToken ct)
     {
+        var deadline = Environment.TickCount64 / 1000.0 + InteractionTimeoutSeconds;
         while (!ct.IsCancellationRequested)
         {
             var result = _state.Get<string?>(StateKeys.Input.Result);
@@ -518,13 +691,55 @@ public class DslExecutor : IDslExecutor
                 _state.Set<object?>(StateKeys.Input.Result, null);
                 return result;
             }
+            if (Environment.TickCount64 / 1000.0 >= deadline)
+            {
+                System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForInput 超时(300s)，返回空字符串");
+                return "";
+            }
             try { await Task.Delay(16, ct); }
             catch (OperationCanceledException) { return ""; }
         }
         return "";
     }
 
-    // ========== Say 级回溯 ==========
+    private async Task WaitForScreenResult(CancellationToken ct)
+    {
+        var deadline = Environment.TickCount64 / 1000.0 + InteractionTimeoutSeconds;
+        while (!ct.IsCancellationRequested)
+        {
+            var result = _state.Get<string?>(StateKeys.Screen.Result);
+            if (result != null)
+                return;
+            if (Environment.TickCount64 / 1000.0 >= deadline)
+            {
+                System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForScreenResult 超时(300s)，强制推进");
+                return;
+            }
+            try { await Task.Delay(16, ct); }
+            catch (OperationCanceledException) { return; }
+        }
+    }
+
+    /// <summary>
+    /// 样式合并——如果元素有 class 属性，查找 __style_{class} 并合并属性
+    /// </summary>
+    private void ApplyStyleIfExists(UIElementEntity element)
+    {
+        if (!element.Properties.TryGetValue("class", out var classVal) || classVal == null) return;
+        var styleName = classVal.ToString();
+        if (string.IsNullOrEmpty(styleName)) return;
+
+        var style = _state.Get<Dictionary<string, object?>>(StateKeys.Styles.Prefix + styleName);
+        if (style == null) return;
+
+        foreach (var (key, value) in style)
+        {
+            if (!element.Properties.ContainsKey(key) && value != null)
+                element.Properties[key] = value;
+        }
+    }
+
+    // ========== 统一线性回溯时间线（Phase 16/16.1）==========
 
     /// <inheritdoc/>
     public bool CanRollback()
@@ -539,7 +754,7 @@ public class DslExecutor : IDslExecutor
     {
         var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
         var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
-        return checkpoints != null && currentPos >= 0 && currentPos < checkpoints.Count - 1;
+        return checkpoints != null && currentPos >= 0 && currentPos < checkpoints.Count;
     }
 
     /// <inheritdoc/>
@@ -552,8 +767,6 @@ public class DslExecutor : IDslExecutor
         if (targetPos >= currentPos) return false;
 
         RestoreAndRestart(checkpoints[targetPos], targetPos, checkpoints.Count);
-        System.Diagnostics.Debug.WriteLine(
-            $"[DslExecutor] RollbackTo -> pos={targetPos}, cmdIdx={checkpoints[targetPos].CommandIndex}, type={checkpoints[targetPos].InteractionType}");
         return true;
     }
 
@@ -566,8 +779,6 @@ public class DslExecutor : IDslExecutor
 
         var targetPos = currentPos - 1;
         RestoreAndRestart(checkpoints[targetPos], targetPos, checkpoints.Count);
-        System.Diagnostics.Debug.WriteLine(
-            $"[DslExecutor] Rollback -> pos={targetPos}, cmdIdx={checkpoints[targetPos].CommandIndex}, type={checkpoints[targetPos].InteractionType}");
         return true;
     }
 
@@ -576,58 +787,122 @@ public class DslExecutor : IDslExecutor
     {
         var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
         var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
-        if (checkpoints == null || currentPos < 0 || currentPos >= checkpoints.Count - 1) return false;
+        if (checkpoints == null || currentPos < 0 || currentPos >= checkpoints.Count) return false;
 
         var targetPos = currentPos + 1;
+
+        if (targetPos >= checkpoints.Count)
+        {
+            RestoreAndRestart(checkpoints[^1], checkpoints.Count, checkpoints.Count);
+            return true;
+        }
+
         RestoreAndRestart(checkpoints[targetPos], targetPos, checkpoints.Count);
-        System.Diagnostics.Debug.WriteLine(
-            $"[DslExecutor] Rollforward -> pos={targetPos}, cmdIdx={checkpoints[targetPos].CommandIndex}, type={checkpoints[targetPos].InteractionType}");
         return true;
     }
 
     // ========== 检查点内部实现 ==========
 
-    /// <summary>
-    /// 恢复检查点状态并重启 RunAsync
-    /// <para>1. 取消当前 RunAsync（CancellationToken）</para>
-    /// <para>2. 恢复检查点状态快照</para>
-    /// <para>3. 设置 CurrentIndex 为检查点的命令索引</para>
-    /// <para>4. 重启 RunAsync——它会重新执行该命令并 await</para>
-    /// </summary>
+    private void AdvanceRollbackFrontier()
+    {
+        var cps = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
+        if (cps != null && cps.Count > 0)
+            _state.Set(StateKeys.Rollback.CurrentIndex, cps.Count);
+    }
+
     private void RestoreAndRestart(RollbackCheckpoint cp, int targetPos, int totalCheckpoints)
     {
-        // 1. 取消当前 RunAsync
-        _cts?.Cancel();
-        _cts = null;
-        _runTask = null;
+        // 递增 C# 场景回放代次——使过期的 C# 场景 Runner 中的 SayAsync 等阻塞调用提前返回
+        var gen = _state.Get<int>(StateKeys.Dsl.CSharpReplayGeneration) + 1;
+        _state.Set(StateKeys.Dsl.CSharpReplayGeneration, gen);
 
-        // 2. 恢复状态快照
+        var cts = Interlocked.Exchange(ref _cts, null);
+        cts?.Cancel();
+        cts?.Dispose();
+        Interlocked.Exchange(ref _runTask, null);
+
         RestoreCheckpointState(cp);
 
-        // 3. 设置 DSL 状态
+        // 解除可能正在阻塞的 C# 场景 Runner 中的 PollUntilTrue / TransitionAsync 轮询
+        // RestoreCheckpointState 恢复了快照中的值，这里覆盖为完成态以快速唤醒过期 Runner
+        _state.Set(StateKeys.Dialog.WaitingSayComplete, true);
+        _state.Set(StateKeys.Transition.Active, false);
+
         _state.Set(StateKeys.Dsl.CurrentIndex, cp.CommandIndex);
         _state.Set(StateKeys.Dsl.WaitingType, "");
         _state.Set(StateKeys.Dsl.Executing, true);
+        _state.Set(StateKeys.Scene.Dirty, true);
 
-        // 4. 更新回溯位置
         _state.Set(StateKeys.Rollback.CurrentIndex, targetPos);
         _state.Set(StateKeys.Rollback.IsActive, targetPos < totalCheckpoints - 1);
         _state.Set(StateKeys.Rollback.IsReplay, true);
 
-        // 5. 重启 RunAsync——它会从 cp.CommandIndex 重新执行
-        // 对于 dialog：重新 SendAsync（显示对话）+ await
-        // 对于 wait：重新 await Task.Delay
-        // 对于 menu：重新设置菜单状态 + await
-        // 对于 input：重新设置输入状态 + await
-        BeginRunAsync();
+        if (cp.CommandIndex < 0 && cp.InteractionType == "csharp_scene")
+        {
+            _state.Set(StateKeys.Dsl.Executing, false);
+            _state.Set(StateKeys.Scene.CurrentName, cp.SceneName);
+            _state.Set(StateKeys.Scene.Dirty, true);
+            if (OnCSharpSceneReplay != null)
+            {
+                _ = OnCSharpSceneReplay.Invoke(cp.SceneName);
+            }
+            else
+            {
+                _state.Set(StateKeys.Rollback.IsReplay, false);
+                _state.Set(StateKeys.Rollback.IsActive, false);
+            }
+        }
+        else
+        {
+            BeginRunAsync();
+        }
     }
 
     /// <summary>
-    /// 在执行交互命令前创建检查点
+    /// 创建场景级检查点（C# StoryScript 场景入口调用）
     /// </summary>
+    public void CreateSceneCheckpoint(string sceneName)
+    {
+        var currentType = _state.Get<int>(StateKeys.Scene.CurrentType);
+        if ((SceneType)currentType != SceneType.Game) return;
+
+        var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints) ?? new List<RollbackCheckpoint>();
+        var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
+
+        if (currentPos >= 0 && currentPos + 1 < checkpoints.Count)
+            checkpoints.RemoveRange(currentPos + 1, checkpoints.Count - currentPos - 1);
+
+        var snapshot = new Dictionary<string, object?>();
+        foreach (var (k, v) in _state.GetSnapshot())
+        {
+            if (s_rollbackKeys.Contains(k)) continue;
+            snapshot[k] = DeepCopyMutable(k, v);
+        }
+
+        checkpoints.Add(new RollbackCheckpoint
+        {
+            CommandIndex = -1,
+            SceneName = sceneName,
+            InteractionType = "csharp_scene",
+            StateSnapshot = snapshot
+        });
+
+        var maxCps = _options.MaxRollbackCheckpoints;
+        while (checkpoints.Count > maxCps) checkpoints.RemoveAt(0);
+
+        _state.Set(StateKeys.Rollback.Checkpoints, checkpoints);
+        _state.Set(StateKeys.Rollback.CurrentIndex, checkpoints.Count);
+        _state.Set(StateKeys.Rollback.IsActive, false);
+        _state.Set(StateKeys.Rollback.IsReplay, false);
+    }
+
     private void CreateCheckpoint(int commandIndex, string interactionType = StateKeys.Dsl.WaitingTypes.Dialog)
     {
-        // Menu/UI 场景不创建回退检查点
+        // Phase 24: block_rollback——如果当前命令索引 >= 阻止标记，跳过检查点创建
+        var blockedUntil = _state.Get<int>(StateKeys.Rollback.BlockedUntil);
+        if (blockedUntil >= 0 && commandIndex >= blockedUntil)
+            return;
+
         var currentType = _state.Get<int>(StateKeys.Scene.CurrentType);
         if ((SceneType)currentType != SceneType.Game)
             return;
@@ -635,18 +910,17 @@ public class DslExecutor : IDslExecutor
         var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints) ?? new List<RollbackCheckpoint>();
         var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
 
-        // 如果在回退状态下有新交互，截断未来检查点（新时间线）
         if (currentPos >= 0 && currentPos + 1 < checkpoints.Count)
         {
             checkpoints.RemoveRange(currentPos + 1, checkpoints.Count - currentPos - 1);
         }
 
-        // 快照当前状态（排除回溯自身键）
         var snapshot = new Dictionary<string, object?>();
         foreach (var (k, v) in _state.GetSnapshot())
         {
-            if (!s_rollbackKeys.Contains(k))
-                snapshot[k] = v;
+            if (s_rollbackKeys.Contains(k))
+                continue;
+            snapshot[k] = DeepCopyMutable(k, v);
         }
 
         var sceneName = _state.Get<string>(StateKeys.Scene.CurrentName) ?? "";
@@ -659,7 +933,6 @@ public class DslExecutor : IDslExecutor
             StateSnapshot = snapshot
         });
 
-        // 超出上限时丢弃最旧的
         var maxCps = _options.MaxRollbackCheckpoints;
         while (checkpoints.Count > maxCps)
             checkpoints.RemoveAt(0);
@@ -669,7 +942,6 @@ public class DslExecutor : IDslExecutor
         _state.Set(StateKeys.Rollback.IsActive, false);
         _state.Set(StateKeys.Rollback.IsReplay, false);
 
-        // 记录已读 Say
         if (interactionType == StateKeys.Dsl.WaitingTypes.Dialog)
         {
             var seenKey = $"{sceneName}:{commandIndex}";
@@ -677,24 +949,77 @@ public class DslExecutor : IDslExecutor
             seen.Add(seenKey);
             _state.Set(StateKeys.Playback.SeenSayIndices, seen);
         }
-
-        System.Diagnostics.Debug.WriteLine(
-            $"[DslExecutor] Checkpoint created: pos={checkpoints.Count - 1}, cmdIdx={commandIndex}, type={interactionType}");
     }
 
-    /// <summary>恢复检查点状态：先清除当前状态，再写入快照</summary>
     private void RestoreCheckpointState(RollbackCheckpoint cp)
     {
-        // 1. 清除当前状态（排除回溯自身键）
         foreach (var (k, _) in _state.GetSnapshot())
         {
             if (!s_rollbackKeys.Contains(k))
                 _state.Remove(k);
         }
 
-        // 2. 写入快照
         foreach (var (k, v) in cp.StateSnapshot)
-            _state.Set(k, v);
+            _state.Set(k, DeepCopyMutable(k, v));
+    }
+
+    private static object? DeepCopyMutable(string key, object? value)
+    {
+        switch (value)
+        {
+            case List<UIElementEntity> els:
+                // 深拷贝——UIElementEntity 是 class，Properties/Children 可变
+                // 浅拷贝（new List(els)）会导致快照和运行时共享同一元素引用，修改 Properties 会污染快照
+                var elCopy = new List<UIElementEntity>(els.Count);
+                foreach (var el in els)
+                    elCopy.Add(DeepCopyElement(el));
+                return elCopy;
+            case List<RollbackCheckpoint> rps:
+                return new List<RollbackCheckpoint>(rps);
+            case List<DialogHistoryEntry> dhes:
+                return new List<DialogHistoryEntry>(dhes);
+            case List<int> ints:
+                return new List<int>(ints);
+            case List<string> strs:
+                return new List<string>(strs);
+            case List<GalleryEntry> gals:
+                return new List<GalleryEntry>(gals);
+            case List<DebugLogEntry> logs:
+                return new List<DebugLogEntry>(logs);
+            case HashSet<string> hs:
+                return new HashSet<string>(hs, hs.Comparer);
+            case Dictionary<string, object?> dict:
+                var copy = new Dictionary<string, object?>(dict.Count, dict.Comparer as IEqualityComparer<string> ?? StringComparer.Ordinal);
+                foreach (var (k, v) in dict)
+                    copy[k] = DeepCopyMutable(k, v);
+                return copy;
+            default:
+                return value;
+        }
+    }
+
+    /// <summary>
+    /// 深拷贝 UIElementEntity——复制 Properties 字典和递归复制 Children
+    /// <para>防止回溯快照与运行时共享元素引用导致状态污染。</para>
+    /// </summary>
+    private static UIElementEntity DeepCopyElement(UIElementEntity src)
+    {
+        var clone = new UIElementEntity
+        {
+            Id = src.Id,
+            ElementType = src.ElementType,
+            InCustom = src.InCustom,
+            CustomElement = src.CustomElement,
+            Order = src.Order,
+            Command = src.Command,
+            CommandValue = src.CommandValue,
+            Properties = new Dictionary<string, object>(src.Properties.Count, src.Properties.Comparer as IEqualityComparer<string> ?? StringComparer.Ordinal)
+        };
+        foreach (var (pk, pv) in src.Properties)
+            clone.Properties[pk] = pv;
+        foreach (var child in src.Children)
+            clone.Children.Add(DeepCopyElement(child));
+        return clone;
     }
 
     /// <inheritdoc/>

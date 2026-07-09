@@ -55,7 +55,7 @@ public static class DslStatementParser
 
     // ====== 语句解析器 ======
 
-    /// <summary>say "text" [by "speaker" | speaker="speaker"]</summary>
+    /// <summary>say "text" [by "speaker" | speaker="speaker"] [clickable=true | okey]</summary>
     private static readonly Parser<char, DslStatement> _say =
         from _1 in String("say").Before(_ws)
         from text in QuotedString.Before(_ws)
@@ -65,10 +65,17 @@ public static class DslStatementParser
             // by "speaker" 语法（兼容旧格式）
             .Or(Try(String("by").Before(_ws).Then(QuotedString)).Before(_ws))
         ).Optional()
+        from clickable in (
+            // clickable=true 语法
+            Try(String("clickable=true").Before(_ws))
+            // okey 语法糖（等价于 clickable=true）
+            .Or(Try(String("okey").Before(_ws)))
+        ).Optional()
         select (DslStatement)new SayStmt
         {
             Text = text,
-            Speaker = speaker.HasValue ? speaker.Value : null
+            Speaker = speaker.HasValue ? speaker.Value : null,
+            Clickable = clickable.HasValue
         };
 
     /// <summary>navigate "path" [scene "name"]</summary>
@@ -80,6 +87,33 @@ public static class DslStatementParser
         {
             Path = path,
             SceneName = scene.HasValue ? scene.Value : null
+        };
+
+    /// <summary>character "key" name="xxx" color="#xxx" font="xxx" ...</summary>
+    private static readonly Parser<char, string> PropKey =
+        Token(c => char.IsLetter(c) || c == '_').AtLeastOnceString();
+
+    /// <summary>属性值：引号字符串或裸值（到下一个空格）</summary>
+    private static readonly Parser<char, string> PropValue =
+        QuotedString
+        .Or(AnyCharExcept(' ', '\t', '\n', '\r').AtLeastOnceString());
+
+    /// <summary>单个 key=value 属性对</summary>
+    private static readonly Parser<char, (string key, string value)> _propPair =
+        from key in PropKey.Before(_ws)
+        from _eq in Char('=').Before(_ws)
+        from value in PropValue.Before(_ws)
+        select (key, value);
+
+    /// <summary>character "key" name="xxx" color="#xxx" ...</summary>
+    private static readonly Parser<char, DslStatement> _character =
+        from _1 in String("character").Before(_ws)
+        from key in QuotedString.Before(_ws)
+        from props in _propPair.Many()
+        select (DslStatement)new CharacterStmt
+        {
+            Key = key,
+            Properties = props.ToDictionary(p => p.key, p => p.value)
         };
 
     /// <summary>set "key" value</summary>
@@ -118,11 +152,74 @@ public static class DslStatementParser
             Volume = volume.HasValue ? (float)volume.Value : null
         };
 
-    /// <summary>wait N</summary>
+    /// <summary>video "path" [volume=N] [loop=true|false] [autoplay=true|false]</summary>
+    /// <para>参数顺序固定：volume → loop → autoplay。未指定的参数使用默认值。</para>
+    private static readonly Parser<char, DslStatement> _video =
+        from _1 in String("video").Before(_ws)
+        from path in QuotedString.Before(_ws)
+        from volume in Try(String("volume=").Then(Number).Before(_ws)).Optional()
+        from loop in Try(String("loop=").Then(String("true").Or(String("false"))).Before(_ws)).Optional()
+        from autoplay in Try(String("autoplay=").Then(String("true").Or(String("false"))).Before(_ws)).Optional()
+        select (DslStatement)new VideoStmt
+        {
+            Path = path,
+            Volume = volume.HasValue ? (float)volume.Value : null,
+            Loop = loop.HasValue && loop.Value == "true",
+            AutoPlay = !autoplay.HasValue || autoplay.Value == "true"
+        };
+
+    /// <summary>stop_video</summary>
+    private static readonly Parser<char, DslStatement> _stopVideo =
+        from _1 in String("stop_video").Before(_ws.Or(End))
+        select (DslStatement)new StopVideoStmt();
+
+    /// <summary>pause_video</summary>
+    private static readonly Parser<char, DslStatement> _pauseVideo =
+        from _1 in String("pause_video").Before(_ws.Or(End))
+        select (DslStatement)new PauseVideoStmt();
+
+    /// <summary>resume_video</summary>
+    private static readonly Parser<char, DslStatement> _resumeVideo =
+        from _1 in String("resume_video").Before(_ws.Or(End))
+        select (DslStatement)new ResumeVideoStmt();
+
+    /// <summary>seek_video N</summary>
+    private static readonly Parser<char, DslStatement> _seekVideo =
+        from _1 in String("seek_video").Before(_ws)
+        from position in Number
+        select (DslStatement)new SeekVideoStmt { Position = position };
+
+    /// <summary>cutscene "path" [skipable=true|false] [volume=N]</summary>
+    /// <para>参数顺序固定：skipable → volume。未指定的参数使用默认值。</para>
+    private static readonly Parser<char, DslStatement> _cutscene =
+        from _1 in String("cutscene").Before(_ws)
+        from path in QuotedString.Before(_ws)
+        from skipable in Try(String("skipable=").Then(String("true").Or(String("false"))).Before(_ws)).Optional()
+        from volume in Try(String("volume=").Then(Number).Before(_ws)).Optional()
+        select (DslStatement)new CutsceneStmt
+        {
+            Path = path,
+            Skipable = !skipable.HasValue || skipable.Value == "true",
+            Volume = volume.HasValue ? (float)volume.Value : null
+        };
+
+    /// <summary>wait N [skipable]</summary>
     private static readonly Parser<char, DslStatement> _wait =
         from _1 in String("wait").Before(_ws)
-        from seconds in Number
-        select (DslStatement)new WaitStmt { Seconds = seconds };
+        from seconds in Number.Before(_ws)
+        from skipable in Try(String("skipable").Before(_ws)).Optional()
+        select (DslStatement)new WaitStmt { Seconds = seconds, IsSkipable = skipable.HasValue };
+
+    /// <summary>pause [N] [hard]</summary>
+    private static readonly Parser<char, DslStatement> _pause =
+        from _1 in String("pause").Before(_ws)
+        from seconds in Try(Number.Before(_ws)).Optional()
+        from hard in Try(String("hard").Before(_ws)).Optional()
+        select (DslStatement)new PauseStmt
+        {
+            Seconds = seconds.HasValue ? seconds.Value : null,
+            IsHard = hard.HasValue
+        };
 
     /// <summary>transition "type" [duration=N] [easing=xxx]</summary>
     private static readonly Parser<char, DslStatement> _transition =
@@ -191,23 +288,84 @@ public static class DslStatementParser
         from path in QuotedString
         select (DslStatement)new BackgroundStmt { Path = path };
 
-    /// <summary>show "target" [at (x, y)]</summary>
+    /// <summary>show "target" [at (x, y)] [with "transition" duration=N]</summary>
     private static readonly Parser<char, DslStatement> _show =
         from _1 in String("show").Before(_ws)
         from target in QuotedString.Before(_ws)
         from pos in Try(_position).Optional()
+        from transition in Try(_withTransition).Optional()
         select (DslStatement)new ShowStmt
         {
             Target = target,
             X = pos.HasValue ? pos.Value.x : null,
-            Y = pos.HasValue ? pos.Value.y : null
+            Y = pos.HasValue ? pos.Value.y : null,
+            Transition = transition.HasValue ? transition.Value.name : null,
+            TransitionDuration = transition.HasValue ? transition.Value.duration : null
         };
 
-    /// <summary>hide "target"</summary>
+    /// <summary>hide "target" [with "transition" duration=N]</summary>
     private static readonly Parser<char, DslStatement> _hide =
         from _1 in String("hide").Before(_ws)
-        from target in QuotedString
-        select (DslStatement)new HideStmt { Target = target };
+        from target in QuotedString.Before(_ws)
+        from transition in Try(_withTransition).Optional()
+        select (DslStatement)new HideStmt
+        {
+            Target = target,
+            Transition = transition.HasValue ? transition.Value.name : null,
+            TransitionDuration = transition.HasValue ? transition.Value.duration : null
+        };
+
+    /// <summary>with "transition" duration=N — 过渡参数解析</summary>
+    private static readonly Parser<char, (string name, double? duration)> _withTransition =
+        from _1 in String("with").Before(_ws)
+        from name in QuotedString.Before(_ws)
+        from duration in Try(_durationParam).Optional()
+        select (name, duration.HasValue ? (double?)duration.Value : null);
+
+    /// <summary>duration=N 参数解析</summary>
+    private static readonly Parser<char, double> _durationParam =
+        from _1 in String("duration=")
+        from d in Number
+        select d;
+
+    /// <summary>style "name" key=value key=value ...</summary>
+    private static readonly Parser<char, DslStatement> _style =
+        from _1 in String("style").Before(_ws)
+        from name in QuotedString.Before(_ws)
+        from props in _propPair.Many()
+        select (DslStatement)new StyleStmt
+        {
+            Name = name,
+            Properties = props.ToDictionary(p => p.key, p => p.value)
+        };
+
+    /// <summary>animate_block "target" x=100 y=200 opacity=0.5 duration=1.0 easing=xxx</summary>
+    private static readonly Parser<char, DslStatement> _animateBlock =
+        from _1 in String("animate_block").Before(_ws)
+        from target in QuotedString.Before(_ws)
+        from props in _propPair.Many()
+        select ParseAnimateBlock(target, props);
+
+    /// <summary>call_screen "scene_name" [store="key"] [with "k=v,k=v"]</summary>
+    private static readonly Parser<char, DslStatement> _callScreen =
+        from _1 in String("call_screen").Before(_ws)
+        from sceneName in QuotedString.Before(_ws)
+        from store in Try(String("store=").Then(QuotedString).Before(_ws)).Optional()
+        from withParams in Try(String("with").Before(_ws).Then(QuotedString).Before(_ws)).Optional()
+        select (DslStatement)new CallScreenStmt
+        {
+            SceneName = sceneName,
+            StoreKey = store.HasValue ? store.Value : null,
+            Params = withParams.HasValue
+                ? withParams.Value.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(p => {
+                        var eqIdx = p.IndexOf('=');
+                        return eqIdx > 0
+                            ? (p[..eqIdx].Trim(), p[(eqIdx + 1)..].Trim().Trim('"'))
+                            : (p.Trim(), "");
+                    }).ToList()
+                : null
+        };
 
     /// <summary>animate "target" property value [duration=N] [easing=xxx]</summary>
     private static readonly Parser<char, DslStatement> _animate =
@@ -241,7 +399,7 @@ public static class DslStatementParser
 
     /// <summary>shake [intensity=N] [duration=N]</summary>
     private static readonly Parser<char, DslStatement> _shake =
-        from _1 in String("shake")
+        from _1 in String("shake").Before(_ws)
         from intensity in Try(String("intensity=").Then(Number).Before(_ws)).Optional()
         from duration in Try(String("duration=").Then(Number).Before(_ws)).Optional()
         select (DslStatement)new ShakeStmt
@@ -337,6 +495,82 @@ public static class DslStatementParser
         from cond in Expression
         select (DslStatement)new WhileStmt { Condition = cond };
 
+    // ====== Phase 24: Ren'Py 功能对齐 ======
+
+    /// <summary>window auto | window show | window hide</summary>
+    private static readonly Parser<char, DslStatement> _window =
+        from _1 in String("window").Before(_ws)
+        from mode in OneOf(
+            String("auto").ThenReturn("auto"),
+            String("show").ThenReturn("show"),
+            String("hide").ThenReturn("hide")
+        )
+        select (DslStatement)new WindowStmt { Mode = mode };
+
+    /// <summary>block_rollback</summary>
+    private static readonly Parser<char, DslStatement> _blockRollback =
+        String("block_rollback").ThenReturn((DslStatement)new BlockRollbackStmt());
+
+    /// <summary>fix_rollback</summary>
+    private static readonly Parser<char, DslStatement> _fixRollback =
+        String("fix_rollback").ThenReturn((DslStatement)new FixRollbackStmt());
+
+    /// <summary>break — 退出当前循环</summary>
+    private static readonly Parser<char, DslStatement> _break =
+        String("break").ThenReturn((DslStatement)new BreakStmt());
+
+    /// <summary>continue — 跳过当前迭代</summary>
+    private static readonly Parser<char, DslStatement> _continue =
+        String("continue").ThenReturn((DslStatement)new ContinueStmt());
+
+    /// <summary>for "var" in {expr}</summary>
+    private static readonly Parser<char, DslStatement> _for =
+        from _1 in String("for").Before(_ws)
+        from varName in QuotedString.Before(_ws)
+        from _2 in String("in").Before(_ws)
+        from src in Expression
+        select (DslStatement)new ForStmt { VarName = varName, SourceExpr = src };
+
+    // ====== 辅助方法 ======
+
+    /// <summary>
+    /// 解析 animate_block 的属性列表，分离动画属性和全局参数
+    /// </summary>
+    private static DslStatement ParseAnimateBlock(string target, IEnumerable<(string key, string value)> props)
+    {
+        var animations = new List<(string Property, double Value)>();
+        double? duration = null;
+        string? easing = null;
+
+        foreach (var (key, value) in props)
+        {
+            if (key is "x" or "y" or "opacity" or "rotate" or "scale")
+            {
+                if (double.TryParse(value, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var val))
+                    animations.Add((key, val));
+            }
+            else if (key == "duration")
+            {
+                if (double.TryParse(value, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var val))
+                    duration = val;
+            }
+            else if (key == "easing")
+            {
+                easing = value;
+            }
+        }
+
+        return new AnimateBlockStmt
+        {
+            Target = target,
+            Animations = animations,
+            Duration = duration,
+            Easing = easing
+        };
+    }
+
     // ====== 主解析器 ======
 
     /// <summary>
@@ -363,14 +597,29 @@ public static class DslStatementParser
         _else,
         _if,
         _while,
+        _for,
         // 多字符关键字（长的在前）
         _navigate,
         _transition,
+        _character,
         _background,
+        _callScreen,
+        _animateBlock,
+        _blockRollback,
+        _fixRollback,
+        _continue,
+        _break,
         _forward,
         _return,
         _animate,
         _galleryUnlock,
+        // 视频关键字（长关键字在前，避免 pause_video 被 pause 截断）
+        _stopVideo,
+        _pauseVideo,
+        _resumeVideo,
+        _seekVideo,
+        _cutscene,
+        _video,
         // 单关键字
         _define,
         _scene,
@@ -386,6 +635,7 @@ public static class DslStatementParser
         _let,
         _bgm,
         _wait,
+        _pause,
         _show,
         _hide,
         _shake,
@@ -394,7 +644,9 @@ public static class DslStatementParser
         _nvl,
         _skip,
         _auto,
+        _window,
         _saveLoad,
+        _style,
     ];
 
     /// <summary>

@@ -12,8 +12,8 @@ public class AnimationService : IAnimationService
     /// <inheritdoc/>
     public void Update(double frameDelta, IStateContainer state)
     {
-        // 扫描所有 __anim_*_active 标志，推进 active 的动画
-        foreach (var key in state.Keys)
+        // P1-#9: 遍历前快照 Keys，防止遍历过程中 Remove 键触发集合被修改异常
+        foreach (var key in state.Keys.ToList())
         {
             if (key is string sk && sk.EndsWith(StateKeys.Animation.ActiveSuffix) && state.Get<bool>(sk))
             {

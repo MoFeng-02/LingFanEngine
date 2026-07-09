@@ -12,8 +12,11 @@ public interface ISceneStack
     /// <summary>最大堆栈深度（超出时丢弃最旧记录）</summary>
     int MaxDepth { get; set; }
 
-    /// <summary>当前堆栈深度</summary>
+    /// <summary>当前后退堆栈深度</summary>
     int Count { get; }
+
+    /// <summary>当前前进堆栈深度</summary>
+    int ForwardCount { get; }
 
     /// <summary>获取完整堆栈快照（用于存档）</summary>
     IReadOnlyList<SceneSnapshot> Snapshot { get; }

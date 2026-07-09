@@ -9,10 +9,10 @@ scene "town_entrance"
   text "第一章 · 小镇入口" x=50% y=10% size=32 color="#FFD700" halign=center font="Microsoft YaHei"
   text "{player.name} · HP: {player.hp}/{player.maxHp} · 金币: {player.gold}" x=5% y=88% size=14 color="#666666" font="Consolas"
   say "迷雾中隐约可见两座建筑——一座酒馆，一座广场。" speaker="旁白"
-  button "进入酒馆" x=25% y=50% width=200 height=44 color="#88CCFF" nav="tavern"
-  button "前往广场" x=50% y=50% width=200 height=44 color="#88FF88" nav="plaza"
-  button "进入森林" x=75% y=50% width=200 height=44 color="#FFAA88" nav="forest_entry"
-  button "返回标题" x=50% y=75% width=160 height=40 color="#FF8888" nav="title_main"
+  button "进入酒馆" x=25% y=50% width=200 height=44 color="#88CCFF" nav="tavern" halign=center
+  button "前往广场" x=50% y=50% width=200 height=44 color="#88FF88" nav="plaza" halign=center
+  button "进入森林" x=75% y=50% width=200 height=44 color="#FFAA88" nav="forest_entry" halign=center
+  button "返回标题" x=50% y=75% width=160 height=40 color="#FF8888" nav="title_main" halign=center
 
 // == 酒馆场景 ================================================
 scene "tavern"
@@ -21,10 +21,10 @@ scene "tavern"
   text "老张的酒馆" x=50% y=10% size=30 color="#FFD700" halign=center font="Microsoft YaHei"
   text "老板 {npc.innkeeper.name} 正在擦拭酒杯。" x=5% y=20% size=16 color="#CCCCCC" font="Microsoft YaHei"
   text "好感度: {npc.innkeeper.trust}" x=5% y=88% size=12 color="#888888" font="Consolas"
-  button "与老板聊天" x=25% y=45% width=180 height=42 color="#88CCFF" nav="tavern_chat"
-  button "买杯酒 (10金币)" x=50% y=45% width=180 height=42 color="#FFCC88" nav="tavern_drink"
-  button "打听传闻" x=75% y=45% width=180 height=42 color="#AA88FF" nav="tavern_rumors"
-  button "离开酒馆" x=50% y=75% width=160 height=40 color="#FF8888" nav="town_entrance"
+  button "与老板聊天" x=25% y=45% width=180 height=42 color="#88CCFF" nav="tavern_chat" halign=center
+  button "买杯酒 (10金币)" x=50% y=45% width=180 height=42 color="#FFCC88" nav="tavern_drink" halign=center
+  button "打听传闻" x=75% y=45% width=180 height=42 color="#AA88FF" nav="tavern_rumors" halign=center
+  button "离开酒馆" x=50% y=75% width=160 height=40 color="#FF8888" nav="town_entrance" halign=center
 
 // == 与老板聊天（好感度分支）=================================
 label tavern_chat:
@@ -80,9 +80,9 @@ scene "plaza"
   text "小镇广场" x=50% y=10% size=30 color="#FFD700" halign=center font="Microsoft YaHei"
   text "一位老人坐在喷泉旁，似乎在等什么人。" x=5% y=20% size=16 color="#CCCCCC" font="Microsoft YaHei"
   text "善行: {story.good_deeds} · 恶行: {story.bad_deeds}" x=5% y=88% size=12 color="#888888" font="Consolas"
-  button "帮助老人" x=25% y=50% width=180 height=42 color="#88CCFF" nav="plaza_help"
-  button "无视离开" x=50% y=50% width=180 height=42 color="#FF8888" nav="plaza_ignore"
-  button "返回入口" x=75% y=50% width=180 height=42 color="#FFAA88" nav="town_entrance"
+  button "帮助老人" x=25% y=50% width=180 height=42 color="#88CCFF" nav="plaza_help" halign=center
+  button "无视离开" x=50% y=50% width=180 height=42 color="#FF8888" nav="plaza_ignore" halign=center
+  button "返回入口" x=75% y=50% width=180 height=42 color="#FFAA88" nav="town_entrance" halign=center
 
 // 广场入口流程（条件对话）
 label plaza:

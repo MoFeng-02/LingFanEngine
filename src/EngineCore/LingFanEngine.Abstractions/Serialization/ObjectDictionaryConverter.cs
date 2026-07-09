@@ -133,8 +133,10 @@ public class ObjectDictionaryConverter : JsonConverter<Dictionary<string, object
                 writer.WriteEndArray();
                 break;
             default:
-                // 回退：使用标准序列化
-                JsonSerializer.Serialize(writer, value, value.GetType(), options);
+                // AOT 安全回退：不使用 JsonSerializer.Serialize(writer, value, value.GetType())
+                // 因为 GetType() 反射在 NativeAOT 下会抛 UnsupportedTypeException
+                // 改为写入 ToString() 字符串，保证不崩溃
+                writer.WriteStringValue(value.ToString());
                 break;
         }
     }

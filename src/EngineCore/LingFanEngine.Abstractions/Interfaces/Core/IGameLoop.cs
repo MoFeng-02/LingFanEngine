@@ -4,7 +4,7 @@ namespace LingFanEngine.Abstractions.Interfaces.Core;
 /// 游戏主循环接口
 /// <para>负责帧循环调度：命令消费 → 状态更新 → 补间插值 → 渲染。</para>
 /// </summary>
-public interface IGameLoop
+public interface IGameLoop : IDisposable
 {
     /// <summary>
     /// 启动主循环

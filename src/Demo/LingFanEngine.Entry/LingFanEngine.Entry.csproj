@@ -14,6 +14,7 @@
 	<ItemGroup>
 		<None Include="..\..\Resources\Images\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Images\" />
 		<None Include="..\..\Resources\Audio\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Audio\" />
+		<None Include="..\..\Resources\Video\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Video\" />
 		<None Include="..\..\Stories\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Stories\" />
 	</ItemGroup>
 

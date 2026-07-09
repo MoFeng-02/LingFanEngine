@@ -46,4 +46,11 @@ public interface IStoryRegistry
 
     /// <summary>检查场景是否可加载</summary>
     bool CanLoad(string sceneName);
+
+    /// <summary>
+    /// 热重载：重新加载指定文件的所有场景和编译结果
+    /// <para>清除该文件的已加载标记和编译缓存，重新读取、编译、注册。</para>
+    /// <para>返回该文件包含的所有场景名列表（用于 UI 刷新判断）。</para>
+    /// </summary>
+    List<string> ReloadFile(string filePath);
 }

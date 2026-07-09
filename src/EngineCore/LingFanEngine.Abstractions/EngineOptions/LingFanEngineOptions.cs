@@ -3,6 +3,33 @@ using LingFanEngine.Abstractions.Interfaces.Core;
 namespace LingFanEngine.Abstractions.EngineOptions;
 
 /// <summary>
+/// 布局缩放模式——控制设计分辨率到实际窗口的缩放策略（Phase 27）
+/// </summary>
+public enum LayoutScaleMode
+{
+    /// <summary>
+    /// 等比缩放，内容完全可见，不足部分留黑边（对标 Ren'Py 默认行为）
+    /// <para>公式：scale = Math.Min(scaleX, scaleY)</para>
+    /// <para>窗口宽高比与设计分辨率不一致时，短边方向留黑边</para>
+    /// </summary>
+    Contain,
+
+    /// <summary>
+    /// 等比缩放，填满整个窗口，超出的边缘被裁切
+    /// <para>公式：scale = Math.Max(scaleX, scaleY)</para>
+    /// <para>窗口宽高比与设计分辨率不一致时，长边方向裁切</para>
+    /// </summary>
+    Cover,
+
+    /// <summary>
+    /// 独立 X/Y 缩放，填满整个窗口，不裁切不黑边，但可能轻微变形
+    /// <para>公式：scaleX 和 scaleY 各自独立</para>
+    /// <para>窗口标题栏等导致的几像素差异几乎不可见，适合 VN 游戏</para>
+    /// </summary>
+    Stretch
+}
+
+/// <summary>
 /// 引擎配置选项
 /// <para>集中管理引擎的运行参数，包括平台适配、性能、路径等配置。</para>
 /// <para>已迁移至 Abstractions 层，便于接口定义引用。</para>
@@ -65,6 +92,26 @@ public class LingFanEngineOptions
     /// 窗口默认高度（桌面端）
     /// </summary>
     public int WindowHeight { get; set; } = 1080;
+
+    /// <summary>
+    /// 设计分辨率宽度（虚拟画布宽度）。所有场景布局基于此分辨率计算，
+    /// 再通过 RenderTransform 整体缩放到实际窗口尺寸。默认 1920。
+    /// <para>对标 Ren'Py 虚拟分辨率机制——在一个固定画布上布局，GPU 负责缩放绘制。</para>
+    /// </summary>
+    public int DesignWidth { get; set; } = 1920;
+
+    /// <summary>
+    /// 设计分辨率高度（虚拟画布高度）。默认 1080。
+    /// </summary>
+    public int DesignHeight { get; set; } = 1080;
+
+    /// <summary>
+    /// 布局缩放模式——控制设计分辨率到实际窗口的缩放策略。默认 Stretch（填满窗口，不黑边）。
+    /// <para>Contain：等比缩放留黑边（对标 Ren'Py 默认）</para>
+    /// <para>Cover：等比缩放裁边缘</para>
+    /// <para>Stretch：独立 X/Y 缩放填满窗口（轻微变形，VN 游戏推荐）</para>
+    /// </summary>
+    public LayoutScaleMode ScaleMode { get; set; } = LayoutScaleMode.Stretch;
 
     /// <summary>
     /// 是否全屏
@@ -176,6 +223,35 @@ public class LingFanEngineOptions
     public bool DefaultAutoStopVoice { get; set; } = true;
 
     // ── 自适应 ──
+
+    /// <summary>
+    /// 图片缓存最大条目数（LRU 淘汰）。默认 128。
+    /// <para>超出时自动 Dispose 最久未使用的 Bitmap，防止长时间运行 OOM。</para>
+    /// <para>移动端建议 64，桌面端建议 128~256。</para>
+    /// </summary>
+    public int MaxImageCacheSize { get; set; } = 128;
+
+    // ── 超时配置 ──
+
+    /// <summary>
+    /// 阻塞 API 默认超时秒数（SayAsync/WaitForClickAsync 等）。默认 120。
+    /// <para>PollUntilTrue 和 TransitionAsync 使用此值。</para>
+    /// </summary>
+    public int BlockingTimeoutSeconds { get; set; } = 120;
+
+    /// <summary>
+    /// 交互场景超时秒数（ShowMenuAsync/InputAsync/CallScreenAsync）。默认 300。
+    /// <para>用户长时间不操作时超时返回，防止永久阻塞。</para>
+    /// </summary>
+    public int InteractionTimeoutSeconds { get; set; } = 300;
+
+    /// <summary>
+    /// 过场动画激活等待超时秒数。默认 5。
+    /// <para>PlayCutsceneAsync 等待 CutsceneActive 变为 true 的轮询超时。</para>
+    /// </summary>
+    public int CutsceneActivationTimeoutSeconds { get; set; } = 5;
+
+    // ── 自适应方法 ──
 
     /// <summary>
     /// 根据当前平台获取目标帧率

@@ -31,7 +31,7 @@ public class OverlayManager : Grid
         // 创建各面板
         _saveLoadPanel = new SaveLoadPanel(state, saveService, controller);
         _settingsPanel = new SettingsPanel(state);
-        _historyPanel = new HistoryPanel(state);
+        _historyPanel = new HistoryPanel(state, controller);
         _quickMenuPanel = new QuickMenuPanel(state, controller);
         _galleryPanel = new GalleryPanel(state, controller);
         _debugConsolePanel = new DebugConsolePanel(state, controller);
@@ -173,6 +173,29 @@ public class OverlayManager : Grid
                 break;
         }
     }
+
+    // ========== 公开 API：供 C# 命令调用 ==========
+
+    /// <summary>显示存档面板</summary>
+    public void ShowSavePanel() { HideAll(); _saveLoadPanel.Show(saveMode: true); }
+
+    /// <summary>显示读档面板</summary>
+    public void ShowLoadPanel() { HideAll(); _saveLoadPanel.Show(saveMode: false); }
+
+    /// <summary>显示设置面板</summary>
+    public void ShowSettingsPanel() { HideAll(); _settingsPanel.Show(); }
+
+    /// <summary>显示历史面板</summary>
+    public void ShowHistoryPanel() { HideAll(); _state.Set(StateKeys.History.Visible, true); _historyPanel.Show(); }
+
+    /// <summary>显示CG鉴赏面板</summary>
+    public void ShowGalleryPanel() { HideAll(); _state.Set(StateKeys.Gallery.Visible, true); _galleryPanel.Show(); }
+
+    /// <summary>显示调试控制台</summary>
+    public void ShowDebugPanel() { HideAll(); _state.Set(StateKeys.Debug.Visible, true); _debugConsolePanel.Show(); }
+
+    /// <summary>显示快捷菜单</summary>
+    public void ShowQuickMenu() { HideAll(); _quickMenuPanel.Show(); }
 
     /// <summary>隐藏所有面板</summary>
     public void HideAll()

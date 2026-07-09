@@ -6,7 +6,7 @@ namespace LingFanEngine.Abstractions.Interfaces.Scripting;
 /// DSL 执行器接口
 /// <para>异步优先：RunAsync 为主执行循环，遇到交互命令（say/menu/input/wait）时
 /// 使用 async/await 天然等待，无需帧轮询。</para>
-/// <para>所有状态保存在状态容器中，支持 Say 级回溯。</para>
+/// <para>所有状态保存在状态容器中，支持统一线性回溯时间线（Phase 16/16.1）。</para>
 /// </summary>
 public interface IDslExecutor
 {
@@ -29,7 +29,7 @@ public interface IDslExecutor
     /// <summary>是否正在执行</summary>
     bool IsRunning { get; }
 
-    // ========== Say 级回溯 ==========
+    // ========== 统一线性回溯时间线（Phase 16/16.1）==========
 
     /// <summary>是否可以回溯</summary>
     bool CanRollback();
@@ -48,4 +48,13 @@ public interface IDslExecutor
 
     /// <summary>清除所有回溯检查点</summary>
     void ClearCheckpoints();
+
+    // ========== C# 场景混合回溯（Phase 19）==========
+
+    /// <summary>创建场景级检查点（C# StoryScript 场景入口调用）</summary>
+    /// <param name="sceneName">C# 场景名</param>
+    void CreateSceneCheckpoint(string sceneName);
+
+    /// <summary>C# 场景回溯回调（由 GameLoop 设置，回溯到 C# 场景时调用）</summary>
+    Func<string, Task>? OnCSharpSceneReplay { get; set; }
 }

@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using LingFanEngine.Abstractions;
@@ -13,19 +14,22 @@ namespace LingFanEngine.Entry.UI;
 /// 对话历史/回看面板（Demo 层 UI）
 /// <para>从状态容器读取 List&lt;DialogHistoryEntry&gt; 渲染历史对话列表。</para>
 /// <para>对标 Ren'Py 的 backlog/回看界面。</para>
+/// <para>支持点击条目跳转到对应回溯检查点（CheckpointIndex &gt;= 0 时可跳转）。</para>
 /// </summary>
 public class HistoryPanel : UserControl
 {
     private readonly IStateContainer _state;
+    private readonly IGameController? _controller;
     private readonly ScrollViewer _scrollViewer;
     private readonly StackPanel _contentPanel;
 
     /// <summary>面板关闭事件</summary>
     public event Action? Closed;
 
-    public HistoryPanel(IStateContainer state)
+    public HistoryPanel(IStateContainer state, IGameController? controller = null)
     {
         _state = state;
+        _controller = controller;
 
         var mainGrid = new Grid();
         mainGrid.Background = new SolidColorBrush(Color.FromArgb(235, 10, 10, 18));
@@ -55,10 +59,20 @@ public class HistoryPanel : UserControl
             Margin = new Thickness(0, 0, 20, 0)
         };
 
+        var hint = new TextBlock
+        {
+            Text = "💡 点击条目可回溯到该对话",
+            Foreground = new SolidColorBrush(Color.FromArgb(140, 140, 160, 200)),
+            FontSize = 13,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 20, 0)
+        };
+
         var closeBtn = new Button { Content = "✕ 关闭", MinWidth = 80 };
         closeBtn.Click += (_, _) => { Hide(); Closed?.Invoke(); };
 
         headerPanel.Children.Add(title);
+        headerPanel.Children.Add(hint);
         headerPanel.Children.Add(closeBtn);
         layoutGrid.Children.Add(headerPanel);
         Grid.SetRow(headerPanel, 0);
@@ -148,6 +162,8 @@ public class HistoryPanel : UserControl
     /// <summary>创建单条历史记录面板</summary>
     private Border CreateHistoryEntryPanel(DialogHistoryEntry entry)
     {
+        var canRollback = entry.CheckpointIndex >= 0 && _controller != null;
+
         var border = new Border
         {
             Background = new SolidColorBrush(Color.FromArgb(25, 40, 40, 60)),
@@ -156,9 +172,31 @@ public class HistoryPanel : UserControl
             Margin = new Thickness(0, 0, 0, 6)
         };
 
+        // 可回溯的条目添加悬停效果和指针样式
+        if (canRollback)
+        {
+            border.Cursor = new Cursor(StandardCursorType.Hand);
+            border.PointerEntered += (_, _) =>
+                border.Background = new SolidColorBrush(Color.FromArgb(50, 60, 80, 120));
+            border.PointerExited += (_, _) =>
+                border.Background = new SolidColorBrush(Color.FromArgb(25, 40, 40, 60));
+            border.PointerPressed += async (_, _) =>
+            {
+                if (entry.CheckpointIndex >= 0)
+                {
+                    if (_controller != null)
+                    {
+                        await _controller.RollbackToAsync(entry.CheckpointIndex);
+                        Hide();
+                        Closed?.Invoke();
+                    }
+                }
+            };
+        }
+
         var panel = new StackPanel { Orientation = Orientation.Vertical, Spacing = 4 };
 
-        // 说话者 + 场景 + 时间
+        // 说话者 + 场景 + 时间 + 回溯标记
         var headerPanel = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -188,10 +226,22 @@ public class HistoryPanel : UserControl
 
         headerPanel.Children.Add(new TextBlock
         {
-            Text = entry.Timestamp.ToString("HH:mm:ss"),
+            Text = entry.Timestamp.ToLocalTime().ToString("HH:mm:ss"),
             Foreground = new SolidColorBrush(Color.FromArgb(100, 100, 100, 120)),
             FontSize = 11
         });
+
+        // 可回溯条目显示回溯图标
+        if (canRollback)
+        {
+            headerPanel.Children.Add(new TextBlock
+            {
+                Text = "↩ 可回溯",
+                Foreground = new SolidColorBrush(Color.FromArgb(160, 100, 180, 255)),
+                FontSize = 11,
+                FontWeight = FontWeight.Medium
+            });
+        }
 
         panel.Children.Add(headerPanel);
 
@@ -199,7 +249,9 @@ public class HistoryPanel : UserControl
         panel.Children.Add(new TextBlock
         {
             Text = entry.Text,
-            Foreground = Brushes.White,
+            Foreground = canRollback
+                ? new SolidColorBrush(Color.FromArgb(240, 240, 240, 255))
+                : Brushes.White,
             FontSize = 16,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 2, 0, 0)

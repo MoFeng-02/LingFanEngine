@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿using LingFanEngine.Abstractions;
+﻿﻿﻿﻿﻿﻿﻿using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Media;
 
@@ -151,6 +151,8 @@ public class AudioManager : IAudioManager
             _bgmPlayers.Clear();
         }
         _loopCts.Cancel();
+        // P1-#19: Dispose 旧 CTS 防止资源泄漏，再创建新的
+        _loopCts.Dispose();
         _loopCts = new CancellationTokenSource();
         foreach (var p in players) { await p.StopAsync(); await p.DisposeAsync(); }
         _state.Set(StateKeys.Audio.BgmPath, "");
@@ -315,43 +317,4 @@ public class AudioManager : IAudioManager
     }
 
     private IAudioPlayer CreatePlayer() => _playerFactory();
-
-    /// <summary>
-    /// 空音频播放器——引擎默认实现，不输出任何声音。
-    /// <para>开发者可实现 IAudioPlayer 并注入到 AudioManager 构造函数以接入真实音频后端。</para>
-    /// </summary>
-    private sealed class NullAsyncAudioPlayer : IAudioPlayer
-    {
-        private PlaybackState _state = PlaybackState.Stopped;
-
-        public Task LoadAsync(string source, CancellationToken ct = default) => Task.CompletedTask;
-        public Task PlayAsync(CancellationToken ct = default)
-        {
-            _state = PlaybackState.Playing;
-            if (ct.CanBeCanceled)
-            {
-                var tcs = new TaskCompletionSource();
-                ct.Register(() => tcs.TrySetCanceled(ct));
-                return tcs.Task;
-            }
-            return Task.CompletedTask;
-        }
-        public Task PauseAsync(CancellationToken ct = default)
-        {
-            _state = PlaybackState.Paused;
-            return Task.CompletedTask;
-        }
-        public Task StopAsync(CancellationToken ct = default)
-        {
-            _state = PlaybackState.Stopped;
-            return Task.CompletedTask;
-        }
-        public Task SeekAsync(TimeSpan position, CancellationToken ct = default) => Task.CompletedTask;
-        public ValueTask<TimeSpan> GetPositionAsync() => ValueTask.FromResult(TimeSpan.Zero);
-        public ValueTask<TimeSpan> GetDurationAsync() => ValueTask.FromResult(TimeSpan.Zero);
-        public ValueTask SetVolumeAsync(float volume) => ValueTask.CompletedTask;
-        public ValueTask SetMuteAsync(bool mute) => ValueTask.CompletedTask;
-        public ValueTask<PlaybackState> GetStateAsync() => ValueTask.FromResult(_state);
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-    }
 }

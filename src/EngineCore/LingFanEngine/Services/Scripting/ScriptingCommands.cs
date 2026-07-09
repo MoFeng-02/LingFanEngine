@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿using System.Collections.Concurrent;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿using System.Collections.Concurrent;
 using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Services.Core;
@@ -13,8 +13,8 @@ public readonly record struct JumpCommand : ICommand
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
     public CommandPriority Priority { get; init; } = CommandPriority.Normal;
 
-    /// <summary>目标标签名</summary>
-    public required string TargetLabel { get; init; }
+    /// <summary>目标标签名（可选，仅用于诊断；break/continue 等内部跳转可不设置）</summary>
+    public string TargetLabel { get; init; } = string.Empty;
 
     /// <summary>要跳转到的命令索引（编译时填入，运行时直接跳转）</summary>
     public int TargetIndex { get; init; } = -1;
@@ -106,7 +106,9 @@ public readonly record struct TransitionCommand : ICommand
 }
 
 /// <summary>
-/// 等待命令——DSL 中 wait 2.0 编译结果
+/// 等待命令——DSL 中 wait 2.0 / pause 2.0 编译结果
+/// <para>IsSkipable=true 时用户可点击跳过等待（对标 Ren'Py pause(delay, hard=False)）</para>
+/// <para>IsSkipable=false 时不可跳过（对标 Ren'Py pause(delay, hard=True)）</para>
 /// </summary>
 public readonly record struct WaitCommand : ICommand
 {
@@ -115,6 +117,9 @@ public readonly record struct WaitCommand : ICommand
 
     /// <summary>等待秒数</summary>
     public required double Seconds { get; init; }
+
+    /// <summary>是否可跳过——true 时用户点击可提前结束等待</summary>
+    public bool IsSkipable { get; init; }
 
     public WaitCommand() { }
 }
@@ -142,10 +147,10 @@ public readonly record struct ShowHideCommand : ICommand
     /// <summary>是否为背景操作（background 命令）</summary>
     public bool IsBackground { get; init; }
 
-    /// <summary>元素标签（按 tag 匹配 hide，对标 Ren'Py image tag）</summary>
-    public string? Tag { get; init; }
+/// <summary>元素标签（按 tag 匹配 hide，对标 Ren'Py image tag）</summary>
+public string? Tag { get; init; }
 
-    public ShowHideCommand() { }
+public ShowHideCommand() { }
 }
 
 /// <summary>
@@ -760,4 +765,53 @@ public readonly record struct ShowElementCommand : ICommand
     public required UIElementEntity Element { get; init; }
 
     public ShowElementCommand() { }
+}
+
+/// <summary>
+/// 时间线回退命令——在 DSL 检查点列表中向后移动一步
+/// <para>对应鼠标滚轮上滚（Ren'Py 风格 rollback）。</para>
+/// <para>跨场景：检查点包含全量状态快照，恢复时自动还原场景命令和元素。</para>
+/// <para>与 BackCommand（场景级导航）不同——本命令不操作 SceneStack。</para>
+/// </summary>
+public readonly record struct RollbackCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+
+    public RollbackCommand() { }
+}
+
+/// <summary>
+/// 时间线前进命令——在 DSL 检查点列表中向前移动一步
+/// <para>对应鼠标滚轮下滚（Ren'Py 风格 rollforward）。</para>
+/// <para>只有回退过后才能前进——到达时间线前沿后此命令无效。</para>
+/// </summary>
+public readonly record struct RollforwardCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+
+    public RollforwardCommand() { }
+}
+
+/// <summary>
+/// 调用界面命令——对标 Ren'Py call screen
+/// <para>导航到 UI 场景并等待返回结果。</para>
+/// <para>DslExecutor 投递 NavigateCommand 后等待 __screen_result 状态键。</para>
+/// </summary>
+public readonly record struct CallScreenCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+
+    /// <summary>要调用的 UI 场景名</summary>
+    public required string SceneName { get; init; }
+
+    /// <summary>存储返回结果的变量键名（null=不存储）</summary>
+    public string? StoreKey { get; init; }
+
+    /// <summary>传给 UI 场景的参数字典（Phase 24，null=无参数）</summary>
+    public Dictionary<string, object?>? Params { get; init; }
+
+    public CallScreenCommand() { }
 }

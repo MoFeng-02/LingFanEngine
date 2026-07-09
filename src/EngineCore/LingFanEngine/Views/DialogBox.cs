@@ -8,16 +8,21 @@ using LingFanEngine.Abstractions.Interfaces.Core;
 
 namespace LingFanEngine.Views;
 
-public class DialogBox : UserControl
+public class DialogBox : UserControl, IDialogBox
 {
+    /// <summary>侧脸图列宽度（像素）</summary>
+    private const double SideImageColumnWidth = 120;
+
     private readonly TextBlock _speakerText;
     private readonly TextBlock _contentText;
     private readonly Border _root;
     private readonly Image _bgImage;
+    private readonly Image _sideImage;
     private readonly IStateContainer _state;
     private string _fullText = "";
     private int _charIndex;
     private double _typeTimer;
+    private string? _lastSideImage;
 
     public double TypeSpeed { get; set; } = 60;
     public bool IsComplete => _charIndex >= _fullText.Length;
@@ -35,7 +40,7 @@ public class DialogBox : UserControl
                 _ = Task.Run(() =>
                 {
                     try { Avalonia.Threading.Dispatcher.UIThread.Invoke(() => _bgImage.Source = new Avalonia.Media.Imaging.Bitmap(value)); }
-                    catch { }
+                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[DialogBox] BackgroundImage load failed: {value} — {ex.Message}"); }
                 });
         }
     }
@@ -58,13 +63,27 @@ public class DialogBox : UserControl
         stack.Children.Add(_speakerText);
         stack.Children.Add(_contentText);
         _bgImage = new Image { Stretch = Avalonia.Media.Stretch.UniformToFill, Opacity = 0.3 };
+        _sideImage = new Image
+        {
+            Stretch = Avalonia.Media.Stretch.UniformToFill,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            IsVisible = false
+        };
         var overlay = new Grid();
         overlay.Children.Add(_bgImage);
         overlay.Children.Add(stack);
+        // 对话框内容区域：左侧侧脸图 + 右侧文本
+        var contentGrid = new Grid();
+        contentGrid.ColumnDefinitions.Add(new ColumnDefinition(SideImageColumnWidth, GridUnitType.Pixel));
+        contentGrid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
+        Grid.SetColumn(_sideImage, 0);
+        Grid.SetColumn(overlay, 1);
+        contentGrid.Children.Add(_sideImage);
+        contentGrid.Children.Add(overlay);
         _root = new Border
         {
             Background = new SolidColorBrush(Color.FromArgb(200, 0, 0, 0)),
-            Child = overlay, IsVisible = false
+            Child = contentGrid, IsVisible = false
         };
         Content = _root;
         _root.PointerPressed += (_, _) =>
@@ -84,6 +103,9 @@ public class DialogBox : UserControl
         IsPausedByTag = false;
         // 标记打字机未完成（供 Skip/Auto 模式检测）
         _state.Set(StateKeys.Dialog.TypewriterDone, false);
+
+        // Phase 24: 更新侧脸图
+        UpdateSideImage();
 
         // NVL 模式：调整对话框样式（全屏半透明，而非底部小条）
         var nvlActive = _state.Get<bool>(StateKeys.Nvl.Active);
@@ -128,6 +150,8 @@ public class DialogBox : UserControl
     public void Advance(double deltaSeconds)
     {
         if (!_root.IsVisible || IsComplete) return;
+        // Phase 24: 每帧同步侧脸图（可能在对话期间切换）
+        UpdateSideImage();
         var twEnabled = _state.ContainsKey(StateKeys.Dialog.TypewriterEnabled)
             ? _state.Get<bool>(StateKeys.Dialog.TypewriterEnabled) : true;
         if (!twEnabled) { SkipToEnd(); return; }
@@ -165,7 +189,38 @@ public class DialogBox : UserControl
     }
 
     public void SkipToEnd() { _charIndex = _fullText.Length; IsPausedByTag = false; ApplyInlineMarkup(_fullText); _state.Set(StateKeys.Dialog.TypewriterDone, true); }
-    public void Hide() { _root.IsVisible = false; }
+    public void Hide() { _root.IsVisible = false; _sideImage.IsVisible = false; }
+
+    /// <summary>
+    /// Phase 24: 从 __dialog_side_image 状态键读取侧脸图路径并渲染
+    /// <para>路径为空或无法加载时隐藏侧脸图区域</para>
+    /// </summary>
+    private void UpdateSideImage()
+    {
+        var sidePath = _state.Get<string>(StateKeys.Dialog.SideImage);
+        if (sidePath == _lastSideImage) return; // 路径未变化，跳过
+        _lastSideImage = sidePath;
+
+        if (string.IsNullOrEmpty(sidePath))
+        {
+            _sideImage.IsVisible = false;
+            _sideImage.Source = null;
+            return;
+        }
+
+        try
+        {
+            _sideImage.Source = new Avalonia.Media.Imaging.Bitmap(sidePath);
+            _sideImage.IsVisible = true;
+        }
+        catch
+        {
+            _sideImage.IsVisible = false;
+        }
+    }
+
+    /// <inheritdoc/>
+    public Control AsControl() => this;
 
     /// <summary>去掉末尾未闭合的 {xxx 片段（不包含 }），防止渲染时字符泄露</summary>
     private static string StripTrailingUnclosedTag(string raw)

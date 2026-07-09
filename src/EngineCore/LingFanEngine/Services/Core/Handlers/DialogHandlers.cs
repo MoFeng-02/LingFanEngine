@@ -80,12 +80,39 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>, IDefaultCom
             ctx.State.Set(StateKeys.Dialog.Text, dialogText);
             ctx.State.Set(StateKeys.Dialog.Speaker, speakerName ?? "");
         }
-        // 角色样式（对标 Ren'Py Character 对象）
-        ctx.State.Set(StateKeys.Dialog.SpeakerColor, sd.SpeakerColor ?? (string?)null);
-        ctx.State.Set(StateKeys.Dialog.TextColor, sd.TextColor ?? (string?)null);
-        ctx.State.Set(StateKeys.Dialog.SpeakerFont, sd.SpeakerFont ?? (string?)null);
-        ctx.State.Set(StateKeys.Dialog.TextFont, sd.TextFont ?? (string?)null);
+        // 角色样式——先查 character 定义，say 显式参数覆盖
+        Dictionary<string, object?>? charDef = null;
+        if (!string.IsNullOrEmpty(speakerName))
+        {
+            charDef = ctx.State.Get<Dictionary<string, object?>>(StateKeys.Characters.Prefix + speakerName);
+        }
+
+        // 角色定义中的 name 可覆盖说话者显示名
+        if (charDef != null && charDef.TryGetValue("name", out var charName) && charName is string cn && !string.IsNullOrEmpty(cn))
+        {
+            speakerName = cn;
+            // NVL 模式下也需要更新
+            if (nvlActive)
+            {
+                // 修正 NVL 累积中的最后一行说话者
+                var nvlSpeakers = ctx.State.Get<string>(StateKeys.Nvl.Speakers) ?? "";
+                var lines = nvlSpeakers.Split('\n');
+                if (lines.Length > 0) lines[^1] = cn;
+                ctx.State.Set(StateKeys.Nvl.Speakers, string.Join("\n", lines));
+            }
+            else
+            {
+                ctx.State.Set(StateKeys.Dialog.Speaker, speakerName);
+            }
+        }
+
+        ctx.State.Set(StateKeys.Dialog.SpeakerColor, sd.SpeakerColor ?? GetCharProp(charDef, "color"));
+        ctx.State.Set(StateKeys.Dialog.TextColor, sd.TextColor ?? GetCharProp(charDef, "textcolor"));
+        ctx.State.Set(StateKeys.Dialog.SpeakerFont, sd.SpeakerFont ?? GetCharProp(charDef, "font"));
+        ctx.State.Set(StateKeys.Dialog.TextFont, sd.TextFont ?? GetCharProp(charDef, "textfont"));
         ctx.State.Set(StateKeys.Dialog.TypewriterEnabled, sd.TypewriterEnabled);
+        // Phase 24: 设置侧脸图——优先使用 say 命令显式参数，其次角色定义的 side 属性
+        ctx.State.Set<object?>(StateKeys.Dialog.SideImage, sd.SideImage ?? GetCharProp(charDef, "side"));
         // 对话栏尺寸（单句值优先，null=用全局默认）
         ctx.State.Set(StateKeys.Dialog.WidthPercent, sd.DialogPercentW);
         ctx.State.Set(StateKeys.Dialog.HeightPercent, sd.DialogPercentH);
@@ -94,8 +121,20 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>, IDefaultCom
         // 重置 dialog_complete 防止上一个对话的标记跳过这一句
         ctx.State.Set(StateKeys.Dialog.Complete, false);
 
+        // 设置模态遮罩开关（say clickable=true / say okey 时按钮可点击）
+        ctx.State.Set(StateKeys.Dialog.Clickable, sd.Clickable);
+
         // 记录对话历史（对标 Ren'Py _history_list）
         RecordHistory(sd, dialogText, speakerName, ctx);
+    }
+
+    /// <summary>
+    /// 从角色定义字典中获取字符串属性
+    /// </summary>
+    private static string? GetCharProp(Dictionary<string, object?>? charDef, string key)
+    {
+        if (charDef == null) return null;
+        return charDef.TryGetValue(key, out var val) && val is string s ? s : null;
     }
 
     /// <summary>

@@ -126,6 +126,7 @@ public class BinarySaveService : ISaveService
                         Name = data.Name,
                         CreateTime = data.CreateTime,
                         UpdateTime = data.UpdateTime,
+                        Thumbnail = data.Thumbnail,
                         GameVersion = data.GameVersion
                     });
                 }

@@ -6,6 +6,7 @@ using LingFanEngine.Abstractions.EngineOptions;
 using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Media;
+using LingFanEngine.Services.Media;
 // Router 已移除
 using LingFanEngine.Abstractions.Interfaces.Saves;
 using LingFanEngine.Abstractions.Interfaces.Scripting;
@@ -36,6 +37,7 @@ public class GameLoop : IGameLoop
     private readonly IStoryRegistry? _storyRegistry;
     private readonly ITransitionEngine? _transitionEngine;
     private readonly IAudioManager? _audioManager;
+    private readonly IVideoManager? _videoManager;
     private readonly IDslExecutor? _dslExecutor;
     private CancellationTokenSource? _stopCts;
     private Task? _loopTask;
@@ -131,7 +133,8 @@ public class GameLoop : IGameLoop
         IStoryRegistry? storyRegistry = null,
         IDslExecutor? dslExecutor = null,
         ITransitionEngine? transitionEngine = null,
-        IAudioManager? audioManager = null)
+        IAudioManager? audioManager = null,
+        IVideoManager? videoManager = null)
     {
         _pipeline = pipeline;
         _state = state;
@@ -147,6 +150,7 @@ public class GameLoop : IGameLoop
         _dslExecutor = dslExecutor;
         _transitionEngine = transitionEngine;
         _audioManager = audioManager;
+        _videoManager = videoManager;
 
         _stateInitializer = stateInitializer;
         _animationService = animationService;
@@ -161,9 +165,55 @@ public class GameLoop : IGameLoop
             sds.TryGetScriptEntry = name => _scriptEntries.TryGetValue(name, out var entry) ? entry : null;
         }
 
+        // 连接 DslExecutor 的 C# 场景回溯回调
+        // 回溯到 C# 场景检查点时，重新执行 StoryScript.Run()
+        if (_dslExecutor is DslExecutor dslExec)
+        {
+            dslExec.OnCSharpSceneReplay = async sceneName =>
+            {
+                if (_scriptEntries.TryGetValue(sceneName, out var entry))
+                {
+                    // 设置 C# 场景回放代次——SayAsync 等方法通过此值检测是否已被回溯/前进取消
+                    var startGen = _state.Get<int>(StateKeys.Dsl.CSharpReplayGeneration);
+                    GameController.CSharpReplayGen.Value = startGen;
+
+                    try
+                    {
+                        // IsReplay 已由 RestoreAndRestart 设置为 true
+                        // C# 场景的 SayAsync 通过管道发送 ShowDialogCommand，不经过 DslExecutor.RunAsync，
+                        // 因此不会创建逐句检查点——符合 C# 场景仅场景级检查点的设计
+                        await entry.Runner();
+                    }
+                    catch (CSharpSceneReplayCancelledException)
+                    {
+                        // 回溯/前进取消了此回放——Runner 已被异常终止，无需处理
+                        System.Diagnostics.Debug.WriteLine($"[GameLoop] C# 场景回放 [{sceneName}] 被回溯/前进取消");
+                    }
+                    finally
+                    {
+                        // 清除 AsyncLocal 代次
+                        GameController.CSharpReplayGen.Value = 0;
+                    }
+
+                    // 仅当代次未变化时重置——如果回溯/前进已启动新执行，不覆盖新设置的标志
+                    var currentGen = _state.Get<int>(StateKeys.Dsl.CSharpReplayGeneration);
+                    if (currentGen == startGen)
+                    {
+                        // Run() 完成后用户进入 idle 状态（与按钮交互）
+                        // 重置 IsReplay，使后续 DSL 场景能正常创建检查点
+                        _state.Set(StateKeys.Rollback.IsReplay, false);
+                        _state.Set(StateKeys.Rollback.IsActive, false);
+                    }
+                }
+            };
+        }
+
         _context = new CommandContext(this);
         RegisterDefaultHandlers(defaultHandlers);
         _stateInitializer.Initialize(_state);
+
+        // 根据 EngineOptions 初始化性能 HUD 可见性
+        _state.Set(StateKeys.Performance.ShowHud, _options.ShowPerformanceHud);
 
         StartBackgroundWorker();
     }
@@ -296,6 +346,13 @@ public class GameLoop : IGameLoop
                     }
                 }
 
+                // 性能指标收集（每帧更新到状态容器，SceneView 读取显示）
+                UpdatePerformanceMetrics(frameDelta);
+
+                // 视频结束事件轮询（检查 IsFinished 状态变化，触发 OnFinished 回调）
+                if (_videoManager is VideoManager vm)
+                    vm.PollFinished();
+
                 // 触发帧回调（投递到 UI 线程执行 SceneView.Update）
                 if (_uiFrameAction != null)
                 {
@@ -378,11 +435,14 @@ public class GameLoop : IGameLoop
                 case ICommandHandler<HardPauseCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<BackCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<ForwardCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<RollbackCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<RollforwardCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<RollbackToCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<SceneCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<NavToLabelCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<BuildSceneCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<ClearStackCommand> h: _dispatcher.Register(h); break;
+case ICommandHandler<ResetGameStateCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<MergeDefinesCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<ShakeCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<ToggleSkipCommand> h: _dispatcher.Register(h); break;
@@ -390,6 +450,12 @@ public class GameLoop : IGameLoop
                 case ICommandHandler<UnlockGalleryCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<DebugLogCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<NvlCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<PlayVideoCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<StopVideoCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<PauseVideoCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<ResumeVideoCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<SeekVideoCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<CutsceneCommand> h: _dispatcher.Register(h); break;
                 default:
                     Debug.WriteLine($"[GameLoop] 未知的默认处理器类型: {handler.GetType().Name}");
                     break;
@@ -437,6 +503,9 @@ public class GameLoop : IGameLoop
         _state.Set(StateKeys.Dialog.TextColor, (string?)null);
         _state.Set(StateKeys.Dialog.SpeakerFont, (string?)null);
         _state.Set(StateKeys.Dialog.TextFont, (string?)null);
+        _state.Set(StateKeys.Dialog.Clickable, false);
+_state.Set<object?>(StateKeys.Dialog.SideImage, null);
+// Phase 24: 不重置 WindowMode——window hide/show 是显式控制，场景切换不应自动重置
 
         // 菜单相关
         _state.Set(StateKeys.Menu.Prompt, "");
@@ -474,6 +543,9 @@ public class GameLoop : IGameLoop
         _state.Set(StateKeys.Nvl.Speakers, "");
         _state.Set(StateKeys.Nvl.Count, 0);
 
+        // 视频停止
+        _videoManager?.Stop();
+
         // 音频生命周期：根据配置标记决定是否自动停止 BGM/Voice
         var options = _options;
         if (ShouldAutoStop(StateKeys.Audio.BgmAutoStop, options.DefaultAutoStopBgm))
@@ -487,6 +559,69 @@ public class GameLoop : IGameLoop
         var val = _state.Get<object?>(stateKey);
         if (val is bool b) return b;
         return defaultVal;
+    }
+
+    // ========== 性能监控 ==========
+
+    private double _fpsAccumulator;
+    private int _fpsFrameCount;
+    private double _fpsUpdateTimer;
+
+    /// <summary>
+    /// 更新性能监控指标（每帧调用）
+    /// </summary>
+    private void UpdatePerformanceMetrics(double frameDelta)
+    {
+        // FPS 计算（滑动平均，每 0.5 秒更新一次）
+        _fpsAccumulator += frameDelta;
+        _fpsFrameCount++;
+        _fpsUpdateTimer += frameDelta;
+
+        if (_fpsUpdateTimer >= 0.5)
+        {
+            var fps = _fpsFrameCount / _fpsAccumulator;
+            _state.Set(StateKeys.Performance.Fps, Math.Round(fps, 1));
+            _state.Set(StateKeys.Performance.FrameTimeMs, Math.Round(_fpsAccumulator / _fpsFrameCount * 1000, 2));
+            _fpsAccumulator = 0;
+            _fpsFrameCount = 0;
+            _fpsUpdateTimer = 0;
+        }
+
+        // 命令管道队列深度
+        _state.Set(StateKeys.Performance.CommandQueueDepth, _pipeline.Count);
+
+        // DSL 执行位置
+        var dslIndex = _state.Get<int>(StateKeys.Dsl.CurrentIndex);
+        var dslTotal = _state.Get<int>(StateKeys.Dsl.TotalCommands);
+        _state.Set(StateKeys.Performance.DslCurrentIndex, dslIndex);
+        _state.Set(StateKeys.Performance.DslTotalCommands, dslTotal);
+
+        // 活跃动画数量（P1-#10: 仅在 FPS 更新周期(0.5s)扫描一次，而非每帧 LINQ 遍历所有键）
+        if (_fpsUpdateTimer < 0.01) // 刚更新 FPS 时顺便扫描动画数
+        {
+            var animCount = 0;
+            foreach (var k in _state.Keys)
+            {
+                if (k.StartsWith(StateKeys.Animation.Prefix) && k.EndsWith(StateKeys.Animation.ActiveSuffix))
+                    animCount++;
+            }
+            _state.Set(StateKeys.Performance.ActiveAnimations, animCount);
+        }
+
+        // 场景元素数量
+        var elements = _state.Get<List<Abstractions.Entities.UIs.UIElementEntity>>(StateKeys.Scene.Elements);
+        _state.Set(StateKeys.Performance.SceneElementCount, elements?.Count ?? 0);
+
+        // 回溯检查点数量
+        var checkpoints = _state.Get<List<Abstractions.Models.RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
+        _state.Set(StateKeys.Performance.CheckpointCount, checkpoints?.Count ?? 0);
+
+        // 托管内存（每 2 秒更新一次，避免频繁 GC 查询）
+        if (_fpsUpdateTimer < 0.01) // 刚更新 FPS 时顺便更新内存
+        {
+            var memMb = GC.GetTotalMemory(false) / 1024.0 / 1024.0;
+            _state.Set(StateKeys.Performance.MemoryMb, Math.Round(memMb, 1));
+        }
     }
 
     // ========== CommandContext — ICommandContext 实现 ==========
@@ -505,6 +640,7 @@ public class GameLoop : IGameLoop
         public IDslExecutor? DslExecutor => loop._dslExecutor;
         public ITransitionEngine? TransitionEngine => loop._transitionEngine;
         public IAudioManager? AudioManager => loop._audioManager;
+public IVideoManager? VideoManager => loop._videoManager;
         public ISaveService? SaveService => loop._saveService;
         public LingFanEngineOptions Options => loop._options;
         public Func<byte[]?>? CaptureThumbnail => loop._sceneView == null ? null : () => loop._sceneView.CaptureThumbnail();
@@ -522,201 +658,32 @@ public Abstractions.Models.SaveData? BuildSaveData() => loop._saveDataService.Bu
 public void ApplySaveData(Abstractions.Models.SaveData data) => loop._saveDataService.ApplySaveData(data);
         public void ReportException(Exception ex, string source) => loop.OnException?.Invoke(ex, source);
     }
-}
 
-/// <summary>
-/// 设置变量命令
-/// <para>IsDefine=true 表示"仅在变量不存在时设置"，用于 DSL define ... once 语法。</para>
-/// </summary>
-public readonly record struct SetVariableCommand : ICommand
-{
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
-    public required string Key { get; init; }
-    public object? Value { get; init; }
+    // ========== IDisposable ==========
 
-    /// <summary>
-    /// 是否为定义模式（只在键不存在时写入，用于 DSL define 语法）
-    /// </summary>
-    public bool IsDefine { get; init; }
+    private bool _disposed;
 
-    public SetVariableCommand() { }
-}
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
 
-/// <summary>
-/// 路由导航命令
-/// </summary>
-public readonly record struct NavigateCommand : ICommand
-{
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
-    public required string Path { get; init; }
-    public int? SceneIndex { get; init; }
+        // 停止主循环
+        try { _stopCts?.Cancel(); } catch { }
+        try { if (_loopTask != null && !_loopTask.IsCompleted) _loopTask.Wait(2000); } catch { }
 
-    /// <summary>
-    /// 可选：直接指定场景名称（配合 scene "name" 语法）
-    /// </summary>
-    public string? SceneName { get; init; }
+        // 释放工作线程 CTS
+        try { _workerCts.Cancel(); } catch { }
+        try { _jobChannel.Writer.TryComplete(); } catch { }
+        _workerCts.Dispose();
 
-    /// <summary>
-    /// 可选：入口标签名。场景从 story 文件懒加载后从此 label 开始执行
-    /// </summary>
-    public string? EntryLabel { get; init; }
+        // 释放停止 CTS
+        _stopCts?.Dispose();
 
-    public NavigateCommand() { }
-}
+        // 释放管道（CommandPipeline 实现了 IDisposable，但接口未暴露，用 is 检查）
+        if (_pipeline is IDisposable disposablePipeline)
+            try { disposablePipeline.Dispose(); } catch { }
 
-/// <summary>
-/// 播放 BGM 命令
-/// </summary>
-public readonly record struct PlayBgmCommand : ICommand
-{
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
-    public required string Path { get; init; }
-    public float Volume { get; init; } = 1.0f;
-
-    /// <summary>fadein 渐变持续时间（秒），0 = 即时</summary>
-    public double FadeIn { get; init; }
-
-    /// <summary>fadeout 渐变持续时间（秒），0 = 即时</summary>
-    public double FadeOut { get; init; }
-
-    /// <summary>场景切换时是否自动停止（null=跟随全局配置）。默认 null。</summary>
-    public bool? AutoStop { get; init; }
-
-    public PlayBgmCommand() { }
-}
-
-/// <summary>
-/// 停止 BGM 命令
-/// </summary>
-public readonly record struct StopBgmCommand : ICommand
-{
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
-    public StopBgmCommand() { }
-}
-
-/// <summary>
-/// 播放音效命令（独立通道，不覆盖 BGM）
-/// </summary>
-public readonly record struct PlaySeCommand : ICommand
-{
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
-    public required string Path { get; init; }
-    public float Volume { get; init; } = 1.0f;
-    public PlaySeCommand() { }
-}
-
-/// <summary>
-/// 播放语音命令（独立通道，不覆盖 BGM/SE）
-/// </summary>
-public readonly record struct PlayVoiceCommand : ICommand
-{
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
-    public required string Path { get; init; }
-    public float Volume { get; init; } = 1.0f;
-
-    /// <summary>场景切换时是否自动停止（null=跟随全局配置）。默认 null。</summary>
-    public bool? AutoStop { get; init; }
-
-    public PlayVoiceCommand() { }
-}
-
-/// <summary>
-/// 显示对话命令
-/// </summary>
-public readonly record struct ShowDialogCommand : ICommand
-{
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
-    public required string Text { get; init; }
-    public string? Speaker { get; init; }
-
-    /// <summary>说话者名字颜色（如 "#FF88FF"）</summary>
-    public string? SpeakerColor { get; init; }
-
-    /// <summary>对话文本颜色</summary>
-    public string? TextColor { get; init; }
-
-    /// <summary>说话者字体名</summary>
-    public string? SpeakerFont { get; init; }
-
-    /// <summary>对话文本字体名</summary>
-    public string? TextFont { get; init; }
-
-    /// <summary>打字机效果开关（默认 true）</summary>
-    public bool TypewriterEnabled { get; init; } = true;
-
-    /// <summary>对话栏宽度（屏幕百分比，null=全局默认/全宽）</summary>
-    public double? DialogPercentW { get; init; }
-
-    /// <summary>对话栏高度（屏幕百分比，null=全局默认/自适应）</summary>
-    public double? DialogPercentH { get; init; }
-
-    /// <summary>对话栏左偏移（像素，null=全局默认/0）</summary>
-    public double? DialogMarginL { get; init; }
-
-    /// <summary>对话栏底偏移（像素，null=全局默认/0）</summary>
-    public double? DialogMarginB { get; init; }
-
-    public ShowDialogCommand() { }
-}
-
-/// <summary>
-/// 追加对话命令（对标 Ren'Py extend）
-/// </summary>
-public readonly record struct ExtendDialogCommand : ICommand
-{
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
-    public required string Append { get; init; }
-    public ExtendDialogCommand() { }
-}
-
-/// <summary>
-/// BGM 交叉淡入队列命令（下一个 BGM 渐出+新 BGM 渐入）
-/// </summary>
-public readonly record struct BgmQueueCommand : ICommand
-{
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
-    public required string Path { get; init; }
-    public float Volume { get; init; } = 1.0f;
-    public double CrossFadeDuration { get; init; } = 2.0;
-    public BgmQueueCommand() { }
-}
-
-/// <summary>
-/// 可中断等待命令（对标 Ren'Py pause hard=True）
-/// </summary>
-public readonly record struct HardPauseCommand : ICommand
-{
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
-    public HardPauseCommand() { }
-}
-
-/// <summary>
-/// 清空场景堆栈命令
-/// </summary>
-public readonly record struct ClearStackCommand : ICommand
-{
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
-    public ClearStackCommand() { }
-}
-
-/// <summary>
-/// 深合并变量定义命令（补缺+修类型）
-/// </summary>
-public readonly record struct MergeDefinesCommand : ICommand
-{
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
-    public required Dictionary<string, object?> Defines { get; init; }
-    public MergeDefinesCommand() { }
+        GC.SuppressFinalize(this);
+    }
 }

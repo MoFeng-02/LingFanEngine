@@ -5,7 +5,11 @@ namespace LingFanEngine.Services.Core;
 
 /// <summary>
 /// 命令分发器 — 按命令类型路由到注册的处理器
-/// <para>AOT 兼容：使用显式注册，不依赖反射。</para>
+/// <para>AOT 兼容性说明：</para>
+/// <para>• Register&lt;TCommand&gt; 使用 typeof(TCommand) 作为 key，编译时已知类型</para>
+/// <para>• Dispatch 使用 command.GetType() 查找，运行时返回的 Type 对象与 typeof(T) 是同一引用</para>
+/// <para>• ConcurrentDictionary 默认使用 ReferenceEquals 比较 Type，不依赖反射</para>
+/// <para>• RegisterDefaultHandlers 使用显式 switch 类型匹配，完全 AOT 安全</para>
 /// <para>线程安全：使用 ConcurrentDictionary 支持运行时注册自定义命令。</para>
 /// </summary>
 public class CommandDispatcher : ICommandDispatcher

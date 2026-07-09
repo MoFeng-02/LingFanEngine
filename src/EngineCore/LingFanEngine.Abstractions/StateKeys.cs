@@ -49,6 +49,36 @@ public static class StateKeys
 
         /// <summary>当前场景类型 (int, SceneType)，存档/回溯/导航行为依据此值</summary>
         public const string CurrentType = "__current_scene_type";
+
+        /// <summary>
+        /// 进入 Menu/UI 前的游戏 DSL 执行位置 (int)
+        /// <para>当从 Game 场景导航到 Menu/UI 场景时，DslExecutor.LoadCommands 会重置 CurrentIndex=0。</para>
+        /// <para>此键保存进入菜单前的游戏 DSL 位置，供 Menu 场景存档使用。</para>
+        /// </summary>
+        public const string GameDslIndex = "__game_dsl_index";
+
+        /// <summary>
+        /// 进入 Menu/UI 前的游戏 DSL 等待类型 (string)
+        /// <para>同 <see cref="GameDslIndex"/>，保存进入菜单前的游戏 DSL 等待状态。</para>
+        /// </summary>
+        public const string GameDslWaitingType = "__game_dsl_waiting_type";
+
+        /// <summary>
+        /// 进入 Menu/UI 前的游戏场景元素列表 (List&lt;UIElementEntity&gt;)
+        /// <para>Menu 场景会覆盖 __scene_elements，此键保存游戏的原元素列表供存档使用。</para>
+        /// </summary>
+        public const string GameSceneElements = "__game_scene_elements";
+
+        /// <summary>
+        /// 进入 Menu/UI 前的游戏运行时元素列表 (List&lt;UIElementEntity&gt;)
+        /// <para>同 <see cref="GameSceneElements"/>，保存游戏的原运行时元素。</para>
+        /// </summary>
+        public const string GameRuntimeElements = "__game_runtime_elements";
+
+        /// <summary>
+        /// 进入 Menu/UI 前的游戏背景路径 (string)
+        /// </summary>
+        public const string GameCurrentBackground = "__game_current_background";
     }
 
     // ==================== 对话 ====================
@@ -118,6 +148,22 @@ public static class StateKeys
 
         /// <summary>打字机速度 (double, 字符/秒)，null=使用控件默认值</summary>
         public const string TypewriterSpeed = "__typewriter_speed";
+
+        /// <summary>
+        /// 对话期间场景按钮是否可点击 (bool)，默认 false（模态遮罩激活）
+        /// <para>true = say clickable=true / say okey，遮罩隐藏，按钮可交互</para>
+        /// <para>false = 默认模态，透明遮罩拦截点击，仅推进对话</para>
+        /// </summary>
+        public const string Clickable = "__dialog_clickable";
+
+        /// <summary>对话侧脸图路径 (string?)，由角色定义的 side 属性或 SayAsync 参数设置</summary>
+        public const string SideImage = "__dialog_side_image";
+
+        /// <summary>
+        /// 对话窗口模式 (string)："auto"=对话时显示无对话隐藏 | "show"=强制显示 | "hide"=强制隐藏
+        /// <para>对标 Ren'Py window auto/show/hide</para>
+        /// </summary>
+        public const string WindowMode = "__dialog_window_mode";
     }
 
     // ==================== 过渡动画 ====================
@@ -195,15 +241,24 @@ public static class StateKeys
         public const string JumpIndex = "__dsl_jump_index";
 
         /// <summary>
+        /// C# 场景回放代次 (int)——每次 RestoreAndRestart 递增
+        /// <para>用于取消过期的 C# 场景 Runner：SayAsync 等阻塞方法检测代次变化后提前返回。</para>
+        /// </para>排除出回溯快照（s_rollbackKeys），不随检查点保存/恢复。</para>
+        /// </summary>
+        public const string CSharpReplayGeneration = "__csharp_replay_generation";
+
+        /// <summary>
         /// 阻塞类型 (string)："wait" / "menu" / "input" / "dialog" / ""
         /// <para>联动: <see cref="WaitingType"/></para>
         /// </summary>
         public static class WaitingTypes
         {
-            public const string Wait = "wait";
-            public const string Menu = "menu";
-            public const string Input = "input";
-            public const string Dialog = "dialog";
+public const string Wait = "wait";
+public const string WaitSkipable = "wait_skipable";
+public const string Menu = "menu";
+public const string Input = "input";
+public const string Dialog = "dialog";
+public const string Pause = "pause";
         }
     }
 
@@ -285,6 +340,51 @@ public static class StateKeys
         public const string BgmPath = "__bgm_path";
     }
 
+    // ==================== 视频 ====================
+
+    /// <summary>视频相关状态键</summary>
+    public static class Video
+    {
+        /// <summary>当前视频文件路径 (string)</summary>
+        public const string CurrentPath = "__video_current_path";
+
+        /// <summary>视频是否正在播放 (bool)</summary>
+        public const string IsPlaying = "__video_is_playing";
+
+        /// <summary>视频是否暂停 (bool)</summary>
+        public const string IsPaused = "__video_is_paused";
+
+        /// <summary>视频音量 (float, 0~1)</summary>
+        public const string Volume = "__video_volume";
+
+        /// <summary>是否循环播放 (bool)</summary>
+        public const string Loop = "__video_loop";
+
+        /// <summary>是否自动播放 (bool)</summary>
+        public const string AutoPlay = "__video_autoplay";
+
+        /// <summary>跳转目标位置（秒）(double?)，SceneView 读取后清空</summary>
+        public const string SeekPosition = "__video_seek_position";
+
+        /// <summary>视频总时长（秒）(double)，由 SceneView 回写</summary>
+        public const string Duration = "__video_duration";
+
+        /// <summary>视频当前播放位置（秒）(double)，由 SceneView 回写</summary>
+        public const string Position = "__video_position";
+
+        /// <summary>视频是否已播放结束 (bool)，由 SceneView 回写</summary>
+        public const string IsFinished = "__video_is_finished";
+
+        /// <summary>是否处于全屏过场动画模式 (bool)</summary>
+        public const string CutsceneActive = "__video_cutscene_active";
+
+        /// <summary>过场动画是否被用户跳过 (bool)</summary>
+        public const string CutsceneSkipped = "__video_cutscene_skipped";
+
+        /// <summary>过场动画是否允许用户跳过 (bool)</summary>
+        public const string CutsceneSkipable = "__video_cutscene_skipable";
+    }
+
     // ==================== 游戏时间 ====================
 
     /// <summary>游戏时间相关状态键</summary>
@@ -346,8 +446,14 @@ public static class StateKeys
     /// <summary>通知/提示相关状态键</summary>
     public static class Notify
     {
-        /// <summary>提示消息文本 (string)</summary>
+        /// <summary>提示消息文本 (string)，设为非 null 时触发 Toast 显示</summary>
         public const string Text = "__notify_text";
+
+        /// <summary>通知类型 (string)："info" / "warning" / "error"，默认 "info"</summary>
+        public const string Type = "__notify_type";
+
+        /// <summary>通知队列 (List&lt;NotificationItem&gt;)，支持排队显示多条通知</summary>
+        public const string Queue = "__notify_queue";
     }
 
     // ==================== call/return 调用栈 ====================
@@ -554,12 +660,94 @@ public const string SeenSayIndices = "__seen_say_indices";
         public const string Count = "__nvl_count";
     }
 
+    // ==================== 角色定义 ====================
+
+    /// <summary>
+    /// 角色定义状态键
+    /// <para>character "boss" name="魔王" color="#FF4444" → state["__char_boss"] = {"name":"魔王","color":"#FF4444"}</para>
+    /// </summary>
+    public static class Characters
+    {
+        /// <summary>角色定义键前缀（__char_ + speaker 名）</summary>
+        public const string Prefix = "__char_";
+    }
+
+    // ==================== 样式表 ====================
+
+    /// <summary>
+    /// 样式表状态键
+    /// <para>style "btn_primary" color=#88CCFF → state["__style_btn_primary"] = {"color":"#88CCFF"}</para>
+    /// <para>元素通过 class="btn_primary" 引用样式，样式属性作为默认值，元素自身属性覆盖。</para>
+    /// </summary>
+    public static class Styles
+    {
+        /// <summary>样式定义键前缀（__style_ + 样式名）</summary>
+        public const string Prefix = "__style_";
+    }
+
+    /// <summary>call_screen 返回结果 (string?)，UI 场景设置此键通知 DslExecutor 继续</summary>
+/// <summary>
+/// Screen 相关状态键
+/// </summary>
+public static class Screen
+{
+/// <summary>call_screen 返回结果 (string?)，UI 场景通过 SetScreenResult 设置</summary>
+public const string Result = "__screen_result";
+
+/// <summary>call_screen 传入的参数字典 (Dictionary&lt;string, object?&gt;?)，UI 场景可读取</summary>
+public const string Params = "__screen_params";
+
+/// <summary>当前显示的场景名 (string)，由 SceneView/Gameloop 写入</summary>
+public const string ActiveScreen = "__active_screen";
+}
+
+// 向后兼容：保留旧引用
+/// <summary>call_screen 返回结果 (string?)，UI 场景通过 SetScreenResult 设置</summary>
+public const string ScreenResult = Screen.Result;
+
+    // ==================== 性能监控 ====================
+
+    /// <summary>性能监控相关状态键</summary>
+    public static class Performance
+    {
+        /// <summary>FPS (double)</summary>
+        public const string Fps = "__perf_fps";
+
+        /// <summary>帧时间毫秒 (double)</summary>
+        public const string FrameTimeMs = "__perf_frame_ms";
+
+        /// <summary>命令管道队列深度 (int)</summary>
+        public const string CommandQueueDepth = "__perf_cmd_queue";
+
+        /// <summary>DSL 当前执行索引 (int)</summary>
+        public const string DslCurrentIndex = "__perf_dsl_index";
+
+        /// <summary>DSL 命令总数 (int)</summary>
+        public const string DslTotalCommands = "__perf_dsl_total";
+
+        /// <summary>活跃动画数量 (int)</summary>
+        public const string ActiveAnimations = "__perf_animations";
+
+        /// <summary>场景元素数量 (int)</summary>
+        public const string SceneElementCount = "__perf_scene_elements";
+
+        /// <summary>托管内存 MB (double)</summary>
+        public const string MemoryMb = "__perf_memory_mb";
+
+        /// <summary>回溯检查点数量 (int)</summary>
+        public const string CheckpointCount = "__perf_checkpoints";
+
+        /// <summary>是否显示性能 HUD (bool)</summary>
+        public const string ShowHud = "__perf_show_hud";
+    }
+
     // ==================== 回溯（Rollback） ====================
 
     /// <summary>
-    /// Say 级回溯相关状态键
-    /// <para>DSL 场景中每个 ShowDialogCommand 创建一个检查点，</para>
-    /// <para>支持在对话级别前进/后退（对标 Ren'Py rollback）。</para>
+    /// 统一线性回溯时间线相关状态键（Phase 16/16.1）
+    /// <para>检查点列表 + CurrentIndex 前沿模型，支持跨场景回溯。</para>
+    /// <para>say/menu/input/wait/scene_idle/navigate 创建 RollbackCheckpoint（全量状态快照）。</para>
+    /// <para>新交互截断未来检查点，IsReplay 控制回溯重展示不记录历史。</para>
     /// </summary>
     public static class Rollback
     {
@@ -574,5 +762,12 @@ public const string SeenSayIndices = "__seen_say_indices";
 
         /// <summary>是否为回溯重展示（bool），true = 回退/前进重新展示 Say，不应记录历史</summary>
         public const string IsReplay = "__rollback_is_replay";
+
+        /// <summary>
+        /// 回溯阻止标记 (int)：命令索引，>=此索引的检查点不创建
+        /// <para>对标 Ren'Py renpy.block_rollback()——block_rollback 设置此键为当前命令索引，
+        /// 后续 CreateCheckpoint 检查并跳过。fix_rollback 清除此键。</para>
+        /// </summary>
+        public const string BlockedUntil = "__rollback_blocked_until";
     }
 }

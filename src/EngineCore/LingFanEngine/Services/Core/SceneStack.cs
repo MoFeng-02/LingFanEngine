@@ -178,9 +178,14 @@ public class SceneStack : ISceneStack
     }
 
     /// <summary>
-    /// 当前堆栈深度
+    /// 当前后退堆栈深度
     /// </summary>
     public int Count => _state.Get<List<SceneSnapshot>>(KeyStack)?.Count ?? 0;
+
+    /// <summary>
+    /// 当前前进堆栈深度
+    /// </summary>
+    public int ForwardCount => _state.Get<List<SceneSnapshot>>(KeyForward)?.Count ?? 0;
 
     /// <summary>
     /// 获取完整堆栈快照（用于存档）

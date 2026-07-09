@@ -1,4 +1,5 @@
 using System.Globalization;
+using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Scripting;
 using LingFanEngine.Services.Core;
@@ -12,6 +13,21 @@ namespace LingFanEngine.Services.Scripting;
 /// </summary>
 public class LingFanDslEngine : IScriptEngine
 {
+    /// <summary>
+    /// 循环上下文栈——用于编译 break/continue
+    /// <para>记录循环内 break/continue 的 JumpCommand 索引，在循环编译完成后直接解析目标。</para>
+    /// <para>不使用 labels 字典注册循环内部标签，避免 InsertEndSentinels 在循环边界插入多余的 EndCommand。</para>
+    /// </summary>
+    private readonly Stack<LoopContext> _loopStack = new();
+
+    /// <summary>循环编译上下文——跟踪 break/continue 跳转目标</summary>
+    private sealed class LoopContext
+    {
+        /// <summary>break 跳转的 JumpCommand 索引列表（循环体编译完成后解析）</summary>
+        public List<int> BreakJumpIndices { get; } = [];
+        /// <summary>continue 跳转的 JumpCommand 索引列表（循环体编译完成后解析）</summary>
+        public List<int> ContinueJumpIndices { get; } = [];
+    }
     /// <inheritdoc/>
     public string Name => "LingFanDSL";
 
@@ -20,6 +36,9 @@ public class LingFanDslEngine : IScriptEngine
     {
         if (string.IsNullOrWhiteSpace(script))
             return new ScriptResult(true, []);
+
+        // 清理循环上下文栈——防止上次编译异常中断导致栈残留
+        _loopStack.Clear();
 
         try
         {
@@ -35,7 +54,16 @@ public class LingFanDslEngine : IScriptEngine
                     continue;
 
                 var indent = CountIndent(rawLine);
-                var stmt = DslStatementParser.ParseLine(trimmed, i);
+                DslStatement? stmt;
+                try
+                {
+                    stmt = DslStatementParser.ParseLine(trimmed, i);
+                }
+                catch (Exception parseEx)
+                {
+                    return new ScriptResult(false, [],
+                        $"DSL 解析错误（第 {i + 1} 行）: {parseEx.Message}\n  → {trimmed}");
+                }
 
                 parsed.Add(new ParsedLine(indent, stmt, trimmed, i));
             }
@@ -73,12 +101,19 @@ public class LingFanDslEngine : IScriptEngine
                     continue;
                 }
 
-                // while 块
-                if (stmt is WhileStmt)
-                {
-                    idx = CompileWhileBlock(parsed, idx, commands, labels, pendingJumps);
-                    continue;
-                }
+        // while 块
+        if (stmt is WhileStmt)
+        {
+            idx = CompileWhileBlock(parsed, idx, commands, labels, pendingJumps);
+            continue;
+        }
+
+        // for 块（Phase 24）
+        if (stmt is ForStmt)
+        {
+            idx = CompileForBlock(parsed, idx, commands, labels, pendingJumps);
+            continue;
+        }
 
                 // menu 块（含选项）
                 if (stmt is MenuStmt)
@@ -91,6 +126,43 @@ public class LingFanDslEngine : IScriptEngine
                 var cmd = StatementToCommand(stmt, labels, pendingJumps, commands.Count);
                 if (cmd != null)
                     commands.Add(cmd);
+
+                // show/hide 带过渡——在 ShowHideCommand 之后追加 TransitionCommand
+                // 命令流：[ShowHideCommand, TransitionCommand]
+                // 执行顺序：先显示/隐藏元素 → 再启动过渡效果作用于新出现的元素
+                if (stmt is ShowStmt sh && !string.IsNullOrEmpty(sh.Transition))
+                {
+                    commands.Add(new TransitionCommand
+                    {
+                        Type = MapTransitionType(sh.Transition),
+                        Duration = sh.TransitionDuration ?? 1.0
+                    });
+                }
+                else if (stmt is HideStmt hd && !string.IsNullOrEmpty(hd.Transition))
+                {
+                    commands.Add(new TransitionCommand
+                    {
+                        Type = MapTransitionType(hd.Transition),
+                        Duration = hd.TransitionDuration ?? 1.0
+                    });
+                }
+
+                // 批量动画——追加额外命令（第一个已由 StatementToCommand 返回）
+                if (stmt is AnimateBlockStmt ab && ab.Animations.Count > 1)
+                {
+                    for (int i = 1; i < ab.Animations.Count; i++)
+                    {
+                        commands.Add(new AnimateCommand
+                        {
+                            Target = ab.Target,
+                            Property = ab.Animations[i].Property,
+                            TargetValue = ab.Animations[i].Value,
+                            Duration = ab.Duration ?? 1.0,
+                            Easing = ab.Easing ?? "EaseOutQuad"
+                        });
+                    }
+                }
+
                 idx++;
             }
 
@@ -106,7 +178,8 @@ public class LingFanDslEngine : IScriptEngine
         }
         catch (Exception ex)
         {
-            return new ScriptResult(false, [], $"DSL 编译错误: {ex.Message}");
+            return new ScriptResult(false, [],
+                $"DSL 编译错误: {ex.GetType().Name}: {ex.Message}\n  堆栈: {ex.StackTrace?.AsSpan(0, Math.Min(200, ex.StackTrace.Length)).ToString()}");
         }
     }
 
@@ -229,6 +302,9 @@ public class LingFanDslEngine : IScriptEngine
     /// <para>  ...body commands...</para>
     /// <para>  JumpCommand(condIdx)                              — 循环回条件</para>
     /// <para>  [endIdx] 下一条指令</para>
+    /// <para>注意：不向 labels 注册循环内部标签，避免 InsertEndSentinels 在循环边界</para>
+    /// <para>插入多余 EndCommand 导致 BranchCommand SkipCount 失效。</para>
+    /// <para>break/continue 的 JumpCommand 目标在循环编译完成后直接解析。</para>
     /// </summary>
     private int CompileWhileBlock(List<ParsedLine> parsed, int startIndex,
         List<ICommand> commands, Dictionary<string, int> labels,
@@ -246,17 +322,125 @@ public class LingFanDslEngine : IScriptEngine
             HasMatched = false
         });
 
-        // body（缩进 > baseIndent 的行）
+        // 循环上下文——跟踪 break/continue 跳转
+        // continue 目标 = condIdx（条件检查），break 目标 = 循环之后（编译完 body + 回跳后确定）
+        var ctx = new LoopContext();
+        _loopStack.Push(ctx);
         int nextIdx = CompileBody(parsed, startIndex + 1, baseIndent, commands, labels, pendingJumps);
+        _loopStack.Pop();
 
         // 循环回条件检查
-        commands.Add(new JumpCommand { TargetLabel = $"__while_{condIdx}", TargetIndex = condIdx });
+        commands.Add(new JumpCommand { TargetIndex = condIdx });
 
         // 填充 SkipCount = body 大小 + 1（JumpCommand）
+        // BranchCommand 处理器 false 跳转: currentIndex + SkipCount + 1
+        // 需要跳过 body + JumpCommand，所以 SkipCount = body + JumpCommand = commands.Count - condIdx - 1
         commands[condIdx] = (BranchCommand)commands[condIdx] with
         {
-            SkipCount = commands.Count - condIdx - 2 // body + JumpCommand - 1
+            SkipCount = commands.Count - condIdx - 1 // body + JumpCommand
         };
+
+        // 解析 continue 跳转：目标 = condIdx（条件检查）
+        foreach (var jumpIdx in ctx.ContinueJumpIndices)
+            commands[jumpIdx] = ((JumpCommand)commands[jumpIdx]) with { TargetIndex = condIdx };
+
+        // 解析 break 跳转：目标 = commands.Count（循环之后）
+        var breakTarget = commands.Count;
+        foreach (var jumpIdx in ctx.BreakJumpIndices)
+            commands[jumpIdx] = ((JumpCommand)commands[jumpIdx]) with { TargetIndex = breakTarget };
+
+        return nextIdx;
+    }
+
+    /// <summary>
+    /// 编译 for 块（Phase 24）——展开为 while + 索引变量
+    /// <para>语法：for "var" in {expr} { ... }</para>
+    /// <para>编译为：</para>
+    /// <para>  SetVariableCommand(__for_idx = 0)</para>
+    /// <para>  SetVariableCommand(__for_len = len(expr))</para>
+    /// <para>  [condIdx] BranchCommand(__for_idx < __for_len)</para>
+    /// <para>  SetVariableCommand(var = expr[__for_idx])</para>
+    /// <para>  ...body commands...</para>
+    /// <para>  SetVariableCommand(__for_idx = __for_idx + 1)</para>
+    /// <para>  JumpCommand(condIdx)</para>
+    /// <para>  SetVariableCommand(__for_idx = null)  — 清理</para>
+    /// <para>注意：不向 labels 注册循环内部标签，break/continue 直接解析。</para>
+    /// <para>continue 目标 = 递增指令位置，break 目标 = 清理之后。</para>
+    /// </summary>
+    private int CompileForBlock(List<ParsedLine> parsed, int startIndex,
+        List<ICommand> commands, Dictionary<string, int> labels,
+        List<(int CmdIndex, string TargetLabel)> pendingJumps)
+    {
+        var baseIndent = parsed[startIndex].Indent;
+        var forStmt = (ForStmt)parsed[startIndex].Stmt!;
+
+        // 生成唯一变量名（基于命令索引避免冲突）
+        var idxVar = $"_local___for_idx_{commands.Count}";
+        var lenVar = $"_local___for_len_{commands.Count}";
+
+        // __for_idx = 0
+        commands.Add(new SetVariableCommand { Key = idxVar, Value = 0 });
+
+        // __for_len = len(expr) — 使用表达式占位符在运行时求值
+        commands.Add(new SetVariableCommand
+        {
+            Key = lenVar,
+            Value = new DslForLengthPlaceholder(forStmt.SourceExpr)
+        });
+
+        // 条件检查：__for_idx < __for_len
+        var condIdx = commands.Count;
+        commands.Add(new BranchCommand
+        {
+            Condition = $"{idxVar} < {lenVar}",
+            SkipCount = 0,
+            HasMatched = false
+        });
+
+        // var = expr[__for_idx] — 使用表达式占位符
+        commands.Add(new SetVariableCommand
+        {
+            Key = "_local_" + forStmt.VarName.Replace('.', '_'),
+            Value = new DslForIndexPlaceholder(forStmt.SourceExpr, idxVar)
+        });
+
+        // 循环上下文——跟踪 break/continue 跳转
+        var ctx = new LoopContext();
+        _loopStack.Push(ctx);
+        int nextIdx = CompileBody(parsed, startIndex + 1, baseIndent, commands, labels, pendingJumps);
+        _loopStack.Pop();
+
+        // continue 跳转目标 = 递增指令位置（当前 commands.Count）
+        var continueTarget = commands.Count;
+
+        // __for_idx = __for_idx + 1
+        commands.Add(new SetVariableCommand
+        {
+            Key = idxVar,
+            Value = new DslExpressionPlaceholder($"{idxVar} + 1")
+        });
+
+        // 循环回条件检查
+        commands.Add(new JumpCommand { TargetIndex = condIdx });
+
+        // 填充 SkipCount = body + increment + JumpCommand
+        commands[condIdx] = (BranchCommand)commands[condIdx] with
+        {
+            SkipCount = commands.Count - condIdx - 1
+        };
+
+        // 清理临时变量
+        commands.Add(new SetVariableCommand { Key = idxVar, Value = null });
+        commands.Add(new SetVariableCommand { Key = lenVar, Value = null });
+
+        // 解析 continue 跳转：目标 = 递增指令位置
+        foreach (var jumpIdx in ctx.ContinueJumpIndices)
+            commands[jumpIdx] = ((JumpCommand)commands[jumpIdx]) with { TargetIndex = continueTarget };
+
+        // 解析 break 跳转：目标 = 清理之后（当前 commands.Count）
+        var breakTarget = commands.Count;
+        foreach (var jumpIdx in ctx.BreakJumpIndices)
+            commands[jumpIdx] = ((JumpCommand)commands[jumpIdx]) with { TargetIndex = breakTarget };
 
         return nextIdx;
     }
@@ -294,6 +478,34 @@ public class LingFanDslEngine : IScriptEngine
                 continue;
             }
 
+            // break — 跳出当前循环（目标在循环编译完成后解析）
+            if (stmt is BreakStmt)
+            {
+                if (_loopStack.Count > 0)
+                {
+                    var ctx = _loopStack.Peek();
+                    var jumpIdx = commands.Count;
+                    commands.Add(new JumpCommand { TargetIndex = -1 });
+                    ctx.BreakJumpIndices.Add(jumpIdx);
+                }
+                idx++;
+                continue;
+            }
+
+            // continue — 跳回循环条件检查/递增（目标在循环编译完成后解析）
+            if (stmt is ContinueStmt)
+            {
+                if (_loopStack.Count > 0)
+                {
+                    var ctx = _loopStack.Peek();
+                    var jumpIdx = commands.Count;
+                    commands.Add(new JumpCommand { TargetIndex = -1 });
+                    ctx.ContinueJumpIndices.Add(jumpIdx);
+                }
+                idx++;
+                continue;
+            }
+
             // 嵌套 if 块
             if (stmt is IfStmt)
             {
@@ -308,6 +520,13 @@ public class LingFanDslEngine : IScriptEngine
                 continue;
             }
 
+            // 嵌套 for 块（Phase 24）
+            if (stmt is ForStmt)
+            {
+                idx = CompileForBlock(parsed, idx, commands, labels, pendingJumps);
+                continue;
+            }
+
             // 嵌套 menu 块
             if (stmt is MenuStmt)
             {
@@ -319,6 +538,41 @@ public class LingFanDslEngine : IScriptEngine
             var cmd = StatementToCommand(stmt, labels, pendingJumps, commands.Count);
             if (cmd != null)
                 commands.Add(cmd);
+
+            // show/hide 带过渡——在 ShowHideCommand 之后追加 TransitionCommand
+            if (stmt is ShowStmt sh2 && !string.IsNullOrEmpty(sh2.Transition))
+            {
+                commands.Add(new TransitionCommand
+                {
+                    Type = MapTransitionType(sh2.Transition),
+                    Duration = sh2.TransitionDuration ?? 1.0
+                });
+            }
+            else if (stmt is HideStmt hd2 && !string.IsNullOrEmpty(hd2.Transition))
+            {
+                commands.Add(new TransitionCommand
+                {
+                    Type = MapTransitionType(hd2.Transition),
+                    Duration = hd2.TransitionDuration ?? 1.0
+                });
+            }
+
+            // 批量动画——追加额外命令（第一个已由 StatementToCommand 返回）
+            if (stmt is AnimateBlockStmt ab2 && ab2.Animations.Count > 1)
+            {
+                for (int i = 1; i < ab2.Animations.Count; i++)
+                {
+                    commands.Add(new AnimateCommand
+                    {
+                        Target = ab2.Target,
+                        Property = ab2.Animations[i].Property,
+                        TargetValue = ab2.Animations[i].Value,
+                        Duration = ab2.Duration ?? 1.0,
+                        Easing = ab2.Easing ?? "EaseOutQuad"
+                    });
+                }
+            }
+
             idx++;
         }
         return idx;
@@ -421,6 +675,23 @@ public class LingFanDslEngine : IScriptEngine
 
     // ========== 辅助 ==========
 
+    /// <summary>
+    /// 将 DSL 过渡类型名映射为引擎过渡类型标识符
+    /// <para>与 TransitionStmt 编译逻辑保持一致</para>
+    /// </summary>
+    private static string MapTransitionType(string type) => type.ToLowerInvariant() switch
+    {
+        "fade" or "crossfade" => "FadeIn",
+        "fadeout" => "FadeOut",
+        "slideleft" or "slideleftin" => "SlideLeftIn",
+        "slideright" or "sliderightin" => "SlideRightIn",
+        "slideup" or "slideupin" => "SlideUpIn",
+        "slidedown" or "slidedownin" => "SlideDownIn",
+        "zoomin" or "zoom" => "ZoomIn",
+        "blink" or "blinkout" => "BlinkOut",
+        _ => "CrossFade"
+    };
+
     /// <summary>计算行的缩进空格数（Tab 按 4 空格）</summary>
     private static int CountIndent(string line)
     {
@@ -444,11 +715,12 @@ public class LingFanDslEngine : IScriptEngine
 
         return stmt switch
         {
-            SayStmt s => new ShowDialogCommand
-            {
-                Text = s.Text,
-                Speaker = s.Speaker
-            },
+SayStmt s => new ShowDialogCommand
+{
+Text = s.Text,
+Speaker = s.Speaker,
+Clickable = s.Clickable
+},
 
             NavigateStmt n => new NavigateCommand { Path = n.Path, SceneName = n.SceneName },
 
@@ -485,24 +757,37 @@ public class LingFanDslEngine : IScriptEngine
                 Volume = bg.Volume ?? 1.0f
             },
 
-            WaitStmt w => new WaitCommand { Seconds = w.Seconds },
-
-            TransitionStmt t => new TransitionCommand
+            VideoStmt v => new PlayVideoCommand
             {
-                Type = t.Type.ToLowerInvariant() switch
-                {
-                    "fade" or "crossfade" => "FadeIn",
-                    "fadeout" => "FadeOut",
-                    "slideleft" or "slideleftin" => "SlideLeftIn",
-                    "slideright" or "sliderightin" => "SlideRightIn",
-                    "slideup" or "slideupin" => "SlideUpIn",
-                    "slidedown" or "slidedownin" => "SlideDownIn",
-                    "zoomin" or "zoom" => "ZoomIn",
-                    "blink" or "blinkout" => "BlinkOut",
-                    _ => "CrossFade"
-                },
-                Duration = t.Duration ?? 0.5
+                Path = v.Path,
+                Volume = v.Volume ?? 1.0f,
+                Loop = v.Loop,
+                AutoPlay = v.AutoPlay
             },
+
+            StopVideoStmt => new StopVideoCommand(),
+            PauseVideoStmt => new PauseVideoCommand(),
+            ResumeVideoStmt => new ResumeVideoCommand(),
+            SeekVideoStmt s => new SeekVideoCommand { Position = s.Position },
+
+            CutsceneStmt c => new CutsceneCommand
+            {
+                Path = c.Path,
+                Skipable = c.Skipable,
+                Volume = c.Volume ?? 1.0f
+            },
+
+            WaitStmt w => new WaitCommand { Seconds = w.Seconds, IsSkipable = w.IsSkipable },
+
+            PauseStmt p => p.Seconds.HasValue
+                ? new WaitCommand { Seconds = p.Seconds.Value, IsSkipable = !p.IsHard }
+                : new HardPauseCommand(),
+
+TransitionStmt t => new TransitionCommand
+{
+Type = MapTransitionType(t.Type),
+Duration = t.Duration ?? 0.5
+},
 
             CallStmt c => new CallCommand { TargetLabel = c.TargetLabel },
 
@@ -579,6 +864,13 @@ public class LingFanDslEngine : IScriptEngine
 
             NvlStmt n => new NvlCommand { IsClear = n.IsClear },
 
+            // 角色定义——存储到 __characters[key] 字典
+            CharacterStmt ch => new SetVariableCommand
+            {
+                Key = StateKeys.Characters.Prefix + ch.Key,
+                Value = ch.Properties.ToDictionary(p => p.Key, p => (object?)p.Value)
+            },
+
             SaveStmt sv => new SaveLoadCommand { SlotId = sv.SlotId, IsSave = true },
             LoadStmt ld => new SaveLoadCommand { SlotId = ld.SlotId, IsSave = false },
 
@@ -588,10 +880,58 @@ public class LingFanDslEngine : IScriptEngine
             ForwardStmt => new ForwardCommand(),
 
             // 块结构语句已被 CompileIfBlock/CompileWhileBlock 处理，不应到达此处
-            IfStmt or ElseIfStmt or ElseStmt or WhileStmt or LabelStmt or MenuOptionStmt => null,
+            IfStmt or ElseIfStmt or ElseStmt or WhileStmt or ForStmt or LabelStmt or MenuOptionStmt => null,
 
             // 场景元素——编译为 ShowElementCommand（由 DslExecutor 按序追加到 Scene.Elements）
             ShowElementStmt se => new ShowElementCommand { Element = se.Element },
+
+            // 样式定义——存储到 __style_{name} 字典
+            StyleStmt st => new SetVariableCommand
+            {
+                Key = StateKeys.Styles.Prefix + st.Name,
+                Value = st.Properties.ToDictionary(p => p.Key, p => (object?)p.Value)
+            },
+
+            // 批量动画——第一个 AnimateCommand（其余在编译循环中追加）
+            AnimateBlockStmt ab when ab.Animations.Count > 0 => new AnimateCommand
+            {
+                Target = ab.Target,
+                Property = ab.Animations[0].Property,
+                TargetValue = ab.Animations[0].Value,
+                Duration = ab.Duration ?? 1.0,
+                Easing = ab.Easing ?? "EaseOutQuad"
+            },
+
+            AnimateBlockStmt => null, // 空动画块
+
+            // Phase 24: window 窗口管理——存储到 __dialog_window_mode
+            WindowStmt w => new SetVariableCommand
+            {
+                Key = StateKeys.Dialog.WindowMode,
+                Value = w.Mode
+            },
+
+            // Phase 24: block_rollback——设置阻止标记为当前命令索引
+            BlockRollbackStmt => new SetVariableCommand
+            {
+                Key = StateKeys.Rollback.BlockedUntil,
+                Value = currentCmdIndex
+            },
+
+            // Phase 24: fix_rollback——清除阻止标记
+            FixRollbackStmt => new SetVariableCommand
+            {
+                Key = StateKeys.Rollback.BlockedUntil,
+                Value = -1
+            },
+
+            // call_screen——导航到 UI 场景并等待返回
+            CallScreenStmt cs => new CallScreenCommand
+            {
+                SceneName = cs.SceneName,
+                StoreKey = cs.StoreKey,
+                Params = cs.Params?.ToDictionary(p => p.Key, p => (object?)p.Value)
+            },
 
             _ => null
         };
@@ -647,6 +987,27 @@ public class DslExpressionPlaceholder
     public string Expression { get; }
     public DslExpressionPlaceholder(string expression) { Expression = expression; }
     public override string ToString() => $"{{{Expression}}}";
+}
+
+/// <summary>
+/// for 循环长度占位符——运行时对迭代源求值并返回其长度
+/// </summary>
+public class DslForLengthPlaceholder
+{
+    public string SourceExpr { get; }
+    public DslForLengthPlaceholder(string sourceExpr) { SourceExpr = sourceExpr; }
+    public override string ToString() => $"len({{{SourceExpr}}})";
+}
+
+/// <summary>
+/// for 循环索引访问占位符——运行时从迭代源中取出指定索引的元素
+/// </summary>
+public class DslForIndexPlaceholder
+{
+    public string SourceExpr { get; }
+    public string IndexVar { get; }
+    public DslForIndexPlaceholder(string sourceExpr, string indexVar) { SourceExpr = sourceExpr; IndexVar = indexVar; }
+    public override string ToString() => $"{{{SourceExpr}}}[{{{IndexVar}}}]";
 }
 
 /// <summary>

@@ -119,7 +119,7 @@ internal static class LayoutHelper
         var t = elementType.ToLowerInvariant();
         return t is "panel" or "frame" or "window" or "dialogbox" or "choicebox"
             or "infobox" or "overlay" or "popup" or "grid" or "stack"
-            or "stackpanel" or "canvas" or "border" or "scroll" or "scrollviewer";
+            or "stackpanel" or "canvas" or "border" or "scroll" or "scrollviewer" or "viewport";
     }
 
     // ========== 百分比布局核心 ==========

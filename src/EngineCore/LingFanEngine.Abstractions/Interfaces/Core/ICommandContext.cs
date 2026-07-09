@@ -40,6 +40,9 @@ public interface ICommandContext
     /// <summary>音频管理器</summary>
     IAudioManager? AudioManager { get; }
 
+    /// <summary>视频管理器</summary>
+    IVideoManager? VideoManager { get; }
+
     /// <summary>存档服务</summary>
     ISaveService? SaveService { get; }
 

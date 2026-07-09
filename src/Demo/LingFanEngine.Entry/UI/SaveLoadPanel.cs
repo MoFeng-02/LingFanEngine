@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Saves;
@@ -13,8 +14,8 @@ namespace LingFanEngine.Entry.UI;
 
 /// <summary>
 /// 存档/读档面板（Demo 层 UI）
-/// <para>从状态容器读取存档槽信息，支持保存/读取/删除操作。</para>
-/// <para>设计为覆盖在 SceneView 上的半透明面板，便于后续迁移。</para>
+/// <para>从存档服务读取存档槽信息，支持保存/读取/删除操作。</para>
+/// <para>显示缩略图 + 存档名 + 存档时间，覆盖在 SceneView 上的半透明面板。</para>
 /// </summary>
 public class SaveLoadPanel : UserControl
 {
@@ -48,8 +49,8 @@ public class SaveLoadPanel : UserControl
             Margin = new Thickness(0, 20, 0, 10)
         };
 
-        var saveBtn = new Button { Content = "保存", Margin = new Thickness(5), MinWidth = 100 };
-        var loadBtn = new Button { Content = "读取", Margin = new Thickness(5), MinWidth = 100 };
+        var saveBtn = new Button { Content = "💾 保存", Margin = new Thickness(5), MinWidth = 100 };
+        var loadBtn = new Button { Content = "📂 读取", Margin = new Thickness(5), MinWidth = 100 };
         var closeBtn = new Button { Content = "✕ 关闭", Margin = new Thickness(5), MinWidth = 80 };
 
         saveBtn.Click += (_, _) => { _isSaveMode = true; RefreshSlots(); };
@@ -122,8 +123,8 @@ public class SaveLoadPanel : UserControl
         var slots = await _saveService.GetAllSaveSlotsAsync();
         var slotList = slots.ToList();
 
-        // 生成 9 个槽位（如果已有存档则显示，否则显示空槽）
-        for (int i = 1; i <= 9; i++)
+        // 生成 12 个槽位（如果已有存档则显示，否则显示空槽）
+        for (int i = 1; i <= 12; i++)
         {
             var slotId = $"slot_{i}";
             var slotInfo = slotList.FirstOrDefault(s => s.SlotId == slotId);
@@ -141,17 +142,14 @@ public class SaveLoadPanel : UserControl
             CornerRadius = new CornerRadius(6),
             Margin = new Thickness(0, 0, 0, 8),
             Padding = new Thickness(12),
-            MinHeight = 70
+            MinHeight = 80
         };
 
         var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Pixel));
+        grid.ColumnDefinitions.Add(new ColumnDefinition(50, GridUnitType.Pixel));
+        grid.ColumnDefinitions.Add(new ColumnDefinition(128, GridUnitType.Pixel));
         grid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
-        grid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Auto));
-        // 修复：使用精确列宽
-        grid.ColumnDefinitions[0].Width = new GridLength(60);
-        grid.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star);
-        grid.ColumnDefinitions[2].Width = new GridLength(0, GridUnitType.Auto);
+        grid.ColumnDefinitions.Add(new ColumnDefinition(0, GridUnitType.Auto));
 
         // 槽位编号
         var indexText = new TextBlock
@@ -161,13 +159,70 @@ public class SaveLoadPanel : UserControl
             FontSize = 28,
             FontWeight = FontWeight.Bold,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 10, 0)
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0)
         };
         grid.Children.Add(indexText);
         Grid.SetColumn(indexText, 0);
 
+        // 缩略图
+        var thumbContainer = new Border
+        {
+            Width = 128,
+            Height = 72,
+            CornerRadius = new CornerRadius(4),
+            Background = new SolidColorBrush(Color.FromArgb(60, 30, 30, 40)),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 12, 0),
+            ClipToBounds = true
+        };
+
+        if (info?.Thumbnail != null && info.Thumbnail.Length > 0)
+        {
+            try
+            {
+                using var ms = new System.IO.MemoryStream(info.Thumbnail);
+                var bitmap = new Bitmap(ms);
+                var img = new Image
+                {
+                    Source = bitmap,
+                    Stretch = Stretch.UniformToFill,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                thumbContainer.Child = img;
+            }
+            catch
+            {
+                // 缩略图数据损坏，显示占位图标
+                thumbContainer.Child = new TextBlock
+                {
+                    Text = "🖼",
+                    FontSize = 24,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = new SolidColorBrush(Color.FromArgb(100, 120, 120, 140))
+                };
+            }
+        }
+        else
+        {
+            thumbContainer.Child = new TextBlock
+            {
+                Text = "🖼",
+                FontSize = 24,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = new SolidColorBrush(Color.FromArgb(60, 120, 120, 140))
+            };
+        }
+
+        grid.Children.Add(thumbContainer);
+        Grid.SetColumn(thumbContainer, 1);
+
         // 存档信息
-        var infoPanel = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        var infoPanel = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 3 };
 
         if (info != null)
         {
@@ -180,11 +235,20 @@ public class SaveLoadPanel : UserControl
             });
             infoPanel.Children.Add(new TextBlock
             {
-                Text = info.UpdateTime.ToString("yyyy-MM-dd HH:mm"),
+                Text = info.UpdateTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
                 Foreground = new SolidColorBrush(Color.FromArgb(160, 160, 160, 180)),
                 FontSize = 12,
                 Margin = new Thickness(0, 2, 0, 0)
             });
+            if (!string.IsNullOrEmpty(info.GameVersion))
+            {
+                infoPanel.Children.Add(new TextBlock
+                {
+                    Text = $"v{info.GameVersion}",
+                    Foreground = new SolidColorBrush(Color.FromArgb(100, 100, 120, 140)),
+                    FontSize = 11
+                });
+            }
         }
         else
         {
@@ -198,7 +262,7 @@ public class SaveLoadPanel : UserControl
         }
 
         grid.Children.Add(infoPanel);
-        Grid.SetColumn(infoPanel, 1);
+        Grid.SetColumn(infoPanel, 2);
 
         // 操作按钮
         var btnPanel = new StackPanel
@@ -228,7 +292,7 @@ public class SaveLoadPanel : UserControl
         }
 
         grid.Children.Add(btnPanel);
-        Grid.SetColumn(btnPanel, 2);
+        Grid.SetColumn(btnPanel, 3);
         border.Child = grid;
 
         return border;
@@ -238,7 +302,7 @@ public class SaveLoadPanel : UserControl
     private async Task DoSave(string slotId)
     {
         _controller?.Save(slotId);
-        await Task.Delay(200); // 等待保存完成
+        await Task.Delay(300); // 等待保存完成
         RefreshSlots();
     }
 
@@ -246,7 +310,7 @@ public class SaveLoadPanel : UserControl
     private async Task DoLoad(string slotId)
     {
         _controller?.Load(slotId);
-        await Task.Delay(200);
+        await Task.Delay(300);
         Hide();
         Closed?.Invoke();
     }

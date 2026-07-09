@@ -21,5 +21,14 @@
   "⏱ 时间系统": "⏱ Time System",
   "📜 沙盒模式": "📜 Sandbox",
   "🎬 过渡动画": "🎬 Transitions",
-  "旅人 · 金币: {player.gold} · HP: {player.hp}/{player.maxHp}": "Traveler · Gold: {player.gold} · HP: {player.hp}/{player.maxHp}"
+  "旅人 · 金币: {player.gold} · HP: {player.hp}/{player.maxHp}": "Traveler · Gold: {player.gold} · HP: {player.hp}/{player.maxHp}",
+  "勇者": "Hero",
+  "魔王": "Dark Lord",
+  "老人": "Old Man",
+  "旁白": "Narrator",
+  "系统": "System",
+  "吟游诗人": "Bard",
+  "沙盒模式": "Sandbox Mode",
+  "开始故事": "Start Story",
+  "返回标题": "Back to Title"
 }

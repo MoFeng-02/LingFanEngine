@@ -124,8 +124,13 @@ public class StateContainer : IStateContainer
     /// <inheritdoc/>
     public IReadOnlyDictionary<string, object?> GetSnapshot()
     {
-        // 创建快照拷贝，保证渲染层读到的是一致状态
-        return new Dictionary<string, object?>(_store, StringComparer.Ordinal);
+        // P0-#4: 使用 ToArray() 原子快照，避免 ConcurrentDictionary 弱一致性枚举器
+        // 在遍历过程中遗漏并发写入的键
+        var pairs = _store.ToArray();
+        var dict = new Dictionary<string, object?>(pairs.Length, StringComparer.Ordinal);
+        foreach (var (k, v) in pairs)
+            dict[k] = v;
+        return dict;
     }
 
     /// <inheritdoc/>

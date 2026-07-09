@@ -1,3 +1,6 @@
+[English] | [中文](./README.md)  
+*This article uses AI translation.*  
+
 # LingFan Engine
 
 is a narrative and sandbox novel game engine built on .NET, C#, and Avalonia.

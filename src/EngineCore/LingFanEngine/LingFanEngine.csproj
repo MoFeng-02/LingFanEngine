@@ -31,6 +31,8 @@
 
 	<ItemGroup>
 		<PackageReference Include="Avalonia" />
+		<PackageReference Include="LibVLCSharp" />
+		<PackageReference Include="MediaPlayer.Controls" />
 		<PackageReference Include="SkiaSharp" />
 		<PackageReference Include="ThisAssembly">
 		  <PrivateAssets>all</PrivateAssets>
@@ -39,8 +41,13 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\..\..\Pidgin\Pidgin.csproj" />
 		<ProjectReference Include="..\LingFanEngine.Abstractions\LingFanEngine.Abstractions.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Reference Include="Pidgin">
+	    <HintPath>..\..\..\DLL\Pidgin.dll</HintPath>
+	  </Reference>
 	</ItemGroup>
 
 </Project>

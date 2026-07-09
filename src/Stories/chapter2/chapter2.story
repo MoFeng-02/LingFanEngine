@@ -10,8 +10,8 @@ scene "forest_entry"
   text "树木在雾中若隐若现，脚下是松软的落叶。" x=5% y=20% size=16 color="#CCCCCC" font="Microsoft YaHei"
   text "{player.name} · HP: {player.hp}/{player.maxHp}" x=5% y=88% size=14 color="#666666" font="Consolas"
   say "森林比想象中更安静，静得有些不自然。" speaker="旁白"
-  button "深入森林" x=50% y=50% width=200 height=44 color="#88CCFF" nav="forest_wolf"
-  button "返回小镇" x=50% y=75% width=160 height=40 color="#FF8888" nav="town_entrance"
+  button "深入森林" x=50% y=50% width=200 height=44 color="#88CCFF" nav="forest_wolf" halign=center
+  button "返回小镇" x=50% y=75% width=160 height=40 color="#FF8888" nav="town_entrance" halign=center
 
 // == 野狼遭遇 =================================================
 label forest_wolf:
@@ -73,5 +73,5 @@ scene "forest_deep"
   else
     say "洞口漆黑一片，你没有任何线索，不知道里面有什么。" speaker="旁白"
     say "也许该回镇上打听一下消息。" speaker="系统"
-  button "进入洞穴" x=50% y=50% width=200 height=44 color="#FFD700" nav="cavern"
-  button "返回小镇" x=50% y=75% width=160 height=40 color="#FF8888" nav="town_entrance"
+  button "进入洞穴" x=50% y=50% width=200 height=44 color="#FFD700" nav="cavern" halign=center
+  button "返回小镇" x=50% y=75% width=160 height=40 color="#FF8888" nav="town_entrance" halign=center

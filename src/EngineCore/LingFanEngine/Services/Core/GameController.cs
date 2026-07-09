@@ -7,22 +7,44 @@ using LingFanEngine.Services.Scripting;
 namespace LingFanEngine.Services.Core;
 
 /// <summary>
+/// C# 场景回放被回溯/前进取消时抛出，用于彻底终止过期的 Runner 执行。
+/// <para>SayAsync/TransitionAsync 等阻塞方法检测到代次过期时抛出此异常，
+/// 异常沿 async 调用链传播到 Runner()，终止后续所有同步代码（AddButton/Set 等），
+/// 由 OnCSharpSceneReplay / RunScriptEntryWithGeneration 捕获。</para>
+/// </summary>
+internal sealed class CSharpSceneReplayCancelledException : Exception
+{
+    public CSharpSceneReplayCancelledException() : base("C# 场景回放已被回溯/前进取消") { }
+}
+
+/// <summary>
 /// 游戏控制器——C# 端主命令 API
 /// <para>fire-and-forget 版直接投递命令到管道（不等待）。</para>
 /// <para>Async 版等待命令执行完成后返回。</para>
 /// </summary>
 public class GameController : IGameController
 {
+    private readonly LingFanEngine.Abstractions.EngineOptions.LingFanEngineOptions _options;
     private readonly ICommandPipeline _pipeline;
     private readonly IStateContainer _state;
     /// <summary>等待表——键名→TaskCompletionSource，供 SignalComplete 零延迟唤醒</summary>
     private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _waitTable = new();
 
-    public GameController(ICommandPipeline pipeline, IStateContainer state)
-    {
-        _pipeline = pipeline;
-        _state = state;
-    }
+    /// <summary>
+    /// C# 场景回放代次（AsyncLocal——随 async 调用链流动）
+    /// <para>由 GameLoop.OnCSharpSceneReplay 在启动 Runner 前设置。</para>
+    /// <para>SayAsync/TransitionAsync 等阻塞方法检测 StateKeys.Dsl.CSharpReplayGeneration 与此值不一致时提前返回。</para>
+    /// <para>0 = 不在 C# 场景回放上下文中（DSL 执行路径无需检测）。</para>
+    /// </summary>
+    internal static readonly AsyncLocal<int> CSharpReplayGen = new();
+
+public GameController(ICommandPipeline pipeline, IStateContainer state,
+    LingFanEngine.Abstractions.EngineOptions.LingFanEngineOptions? options = null)
+{
+_pipeline = pipeline;
+_state = state;
+_options = options ?? new();
+}
 
     // ========== 导航 ==========
 
@@ -34,30 +56,52 @@ public class GameController : IGameController
     // ========== 对话 ==========
 
     /// <summary>投递对话，不等待</summary>
-    public void Say(string text, string? speaker = null,
-        string? speakerColor = null, string? textColor = null,
-        bool typewriter = true,
-        double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null) =>
-        _pipeline.SendAsync(new ShowDialogCommand { Text = text, Speaker = speaker,
-            SpeakerColor = speakerColor, TextColor = textColor,
-            TypewriterEnabled = typewriter,
-            DialogPercentW = wPct, DialogPercentH = hPct,
-            DialogMarginL = marginL, DialogMarginB = marginB });
+public void Say(string text, string? speaker = null,
+string? speakerColor = null, string? textColor = null,
+bool typewriter = true,
+double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
+bool clickable = false) =>
+_pipeline.SendAsync(new ShowDialogCommand { Text = text, Speaker = speaker,
+SpeakerColor = speakerColor, TextColor = textColor,
+TypewriterEnabled = typewriter,
+DialogPercentW = wPct, DialogPercentH = hPct,
+DialogMarginL = marginL, DialogMarginB = marginB,
+Clickable = clickable });
 
     /// <summary>投递对话，等待用户点击后返回</summary>
-     public async Task SayAsync(string text, string? speaker = null,
-         string? speakerColor = null, string? textColor = null,
-         bool typewriter = true,
-         double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null)
-     {
-         await _pipeline.SendAsync(new ShowDialogCommand { Text = text, Speaker = speaker,
-             SpeakerColor = speakerColor, TextColor = textColor,
-             TypewriterEnabled = typewriter,
-             DialogPercentW = wPct, DialogPercentH = hPct,
-             DialogMarginL = marginL, DialogMarginB = marginB });
-         _state.Set(StateKeys.Dialog.WaitingSayComplete, false);
-         await PollUntilTrue(StateKeys.Dialog.WaitingSayComplete, CancellationToken.None);
-     }
+    public async Task SayAsync(string text, string? speaker = null,
+    string? speakerColor = null, string? textColor = null,
+    bool typewriter = true,
+    double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
+    bool clickable = false)
+    {
+        // C# 场景回放被回溯/前进取消时，抛异常终止整个 Runner（不只是跳过此调用）
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+
+        await _pipeline.SendAsync(new ShowDialogCommand { Text = text, Speaker = speaker,
+        SpeakerColor = speakerColor, TextColor = textColor,
+        TypewriterEnabled = typewriter,
+        DialogPercentW = wPct, DialogPercentH = hPct,
+        DialogMarginL = marginL, DialogMarginB = marginB,
+        Clickable = clickable });
+        _state.Set(StateKeys.Dialog.WaitingSayComplete, false);
+        await PollUntilTrue(StateKeys.Dialog.WaitingSayComplete, CancellationToken.None);
+
+        // PollUntilTrue 返回后再次检查——回溯可能在等待期间发生
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+    }
+
+    /// <summary>
+    /// 检测当前 C# 场景回放是否已被回溯/前进取消
+    /// <para>AsyncLocal 代次与 StateContainer 中的代次不一致 = 已过期</para>
+    /// <para>AsyncLocal 为 0 = 不在 C# 场景回放上下文中，返回 false</para>
+    /// </summary>
+    private bool IsCSharpReplayStale()
+    {
+        var replayGen = CSharpReplayGen.Value;
+        if (replayGen == 0) return false; // 不在 C# 场景回放中
+        return _state.Get<int>(StateKeys.Dsl.CSharpReplayGeneration) != replayGen;
+    }
 
     /// <summary>通知某个等待键已完成（由 UI 层点击时调用，零延迟唤醒）</summary>
     public void SignalComplete(string key)
@@ -71,33 +115,61 @@ public class GameController : IGameController
     {
         var tcs = new TaskCompletionSource<bool>();
         _waitTable[key] = tcs;
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
-        using var registration = linked.Token.Register(() => tcs.TrySetCanceled());
-
-        // 双保险：SignalComplete 零延迟唤醒 + 16ms 轮询回退
-        while (!tcs.Task.IsCompleted)
+        try
         {
-            if (_state.Get<bool>(key))
-            {
-                tcs.TrySetResult(true);
-                break;
-            }
-            try { await Task.Delay(16, linked.Token); }
-            catch (OperationCanceledException) { break; }
-        }
+using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.BlockingTimeoutSeconds));
+using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+using var registration = linked.Token.Register(() => tcs.TrySetCanceled());
 
-        _waitTable.TryRemove(key, out _);
-        _state.Set(key, false);
+            // 双保险：SignalComplete 零延迟唤醒 + 16ms 轮询回退
+            while (!tcs.Task.IsCompleted)
+            {
+                if (_state.Get<bool>(key))
+                {
+                    tcs.TrySetResult(true);
+                    break;
+                }
+                // C# 场景回放被取消时抛异常终止整个 Runner
+                if (IsCSharpReplayStale())
+                    throw new CSharpSceneReplayCancelledException();
+                try { await Task.Delay(16, linked.Token); }
+                catch (OperationCanceledException) { break; }
+            }
+
+            _state.Set(key, false);
+        }
+        finally
+        {
+            // 确保 _waitTable 始终被清理（即使异常抛出）
+            _waitTable.TryRemove(key, out _);
+        }
     }
 
     /// <summary>追加文本到当前对话（对标 Ren'Py extend）</summary>
     public async Task ExtendDialogAsync(string append)
     {
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
         await _pipeline.SendAsync(new ExtendDialogCommand { Append = append });
         _state.Set(StateKeys.Dialog.WaitingSayComplete, false);
         await PollUntilTrue(StateKeys.Dialog.WaitingSayComplete, CancellationToken.None);
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
     }
+
+    /// <inheritdoc/>
+public void DefineCharacter(string key, string? name = null,
+string? color = null, string? font = null,
+string? textColor = null, string? textFont = null,
+string? sideImage = null)
+{
+var props = new Dictionary<string, object?>();
+if (name != null) props["name"] = name;
+if (color != null) props["color"] = color;
+if (font != null) props["font"] = font;
+if (textColor != null) props["textcolor"] = textColor;
+if (textFont != null) props["textfont"] = textFont;
+if (sideImage != null) props["side"] = sideImage;
+_state.Set(StateKeys.Characters.Prefix + key, props);
+}
 
     // ========== 变量 ==========
 
@@ -124,13 +196,27 @@ public class GameController : IGameController
     public void Transition(string type, double duration = 0.5) =>
         _pipeline.SendAsync(new TransitionCommand { Type = type, Duration = duration });
 
-    /// <summary>等待过渡完成（__transition_active == false）</summary>
+    /// <summary>等待过渡完成（__transition_active == false，120 秒超时兜底）</summary>
     public async Task TransitionAsync(string type, double duration = 0.5)
     {
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+
         await _pipeline.SendAsync(new TransitionCommand { Type = type, Duration = duration });
         _state.Set(StateKeys.Transition.Active, true);
-        while (_state.Get<bool>(StateKeys.Transition.Active))
+
+        // P0-#2: 超时保护——防止过渡引擎 bug 导致永久阻塞
+var deadline = Environment.TickCount64 / 1000.0 + _options.BlockingTimeoutSeconds;
+while (_state.Get<bool>(StateKeys.Transition.Active))
+{
+if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+            if (Environment.TickCount64 / 1000.0 >= deadline)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GameController] TransitionAsync 超时({_options.BlockingTimeoutSeconds}s)，强制清除 Active");
+                _state.Set(StateKeys.Transition.Active, false);
+                break;
+            }
             await Task.Delay(16);
+        }
     }
 
     // ========== 等待 ==========
@@ -138,11 +224,59 @@ public class GameController : IGameController
     public void Wait(double seconds) =>
         _pipeline.SendAsync(new WaitCommand { Seconds = seconds });
 
-    /// <summary>等待指定时长，期间 UI 保持响应</summary>
+    /// <summary>等待指定时长，不可跳过（对标 Ren'Py pause(delay, hard=True)）</summary>
     public async Task WaitAsync(double seconds) =>
         await Task.Delay((int)(seconds * 1000));
 
-    /// <summary>可中断等待——等待用户点击/按键后返回（对标 Ren'Py pause hard）</summary>
+    /// <summary>
+/// 可跳过的定时等待——用户点击可提前结束（对标 Ren'Py pause(delay, hard=False)）
+/// <para>并行监听 Task.Delay 和用户点击，任一触发即完成。</para>
+    /// </summary>
+    public async Task SkipableWaitAsync(double seconds)
+    {
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+
+        _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.WaitSkipable);
+        _state.Set(StateKeys.Dialog.Text, "");
+        _state.Set(StateKeys.Dialog.Speaker, "");
+        _state.Set(StateKeys.Dialog.Clickable, false);
+        _state.Set(StateKeys.Dialog.Complete, false);
+        _state.Set(StateKeys.Dialog.WaitingSayComplete, false);
+
+        using var cts = new CancellationTokenSource();
+        var delayTask = Task.Delay(TimeSpan.FromSeconds(seconds), cts.Token);
+        var clickTask = PollUntilTrue(StateKeys.Dialog.WaitingSayComplete, cts.Token);
+
+        var winner = await Task.WhenAny(delayTask, clickTask);
+        cts.Cancel();
+
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+
+        _state.Set(StateKeys.Dsl.WaitingType, "");
+        _state.Set(StateKeys.Dialog.Clickable, false);
+    }
+
+    /// <summary>等待用户点击（对标 Ren'Py pause()）</summary>
+    public async Task WaitForClickAsync()
+    {
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+
+        _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Pause);
+        _state.Set(StateKeys.Dialog.Text, "");
+        _state.Set(StateKeys.Dialog.Speaker, "");
+        _state.Set(StateKeys.Dialog.Clickable, false);
+        _state.Set(StateKeys.Dialog.Complete, false);
+        _state.Set(StateKeys.Dialog.WaitingSayComplete, false);
+
+        await PollUntilTrue(StateKeys.Dialog.WaitingSayComplete, CancellationToken.None);
+
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+
+        _state.Set(StateKeys.Dsl.WaitingType, "");
+    }
+
+    /// <summary>已废弃——请用 WaitForClickAsync</summary>
+    [Obsolete("Use WaitForClickAsync instead")]
     public async Task HardPauseAsync()
     {
         await _pipeline.SendAsync(new HardPauseCommand());
@@ -193,11 +327,16 @@ public class GameController : IGameController
     /// <summary>展示菜单选择面板，返回选中索引</summary>
     public async Task<int> ShowMenuAsync(string prompt, string[] options)
     {
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
         _state.Set(StateKeys.Menu.Prompt, prompt);
         _state.Set<object>(StateKeys.Menu.Options, options);
         _state.Set(StateKeys.Menu.Selected, -1);
-        while (true)
-        {
+
+// 安全轮询：超时兜底（交互场景不应永久阻塞）
+using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.InteractionTimeoutSeconds));
+while (!timeoutCts.Token.IsCancellationRequested)
+{
+if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
             var selected = _state.Get<int>(StateKeys.Menu.Selected);
             if (selected >= 0 && selected < options.Length)
             {
@@ -206,8 +345,14 @@ public class GameController : IGameController
                 _state.Set(StateKeys.Menu.Selected, -1);
                 return selected;
             }
-            await Task.Delay(33);
+            try { await Task.Delay(33, timeoutCts.Token); }
+            catch (OperationCanceledException) { break; }
         }
+        // 超时返回 -1（无选择）
+        _state.Set(StateKeys.Menu.Prompt, "");
+        _state.Set(StateKeys.Menu.Options, Array.Empty<string>());
+        _state.Set(StateKeys.Menu.Selected, -1);
+        return -1;
     }
 
     // ========== 用户输入 ==========
@@ -215,11 +360,16 @@ public class GameController : IGameController
     /// <summary>展示输入框，返回用户输入文本</summary>
     public async Task<string?> InputAsync(string prompt, string[]? options = null)
     {
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
         _state.Set(StateKeys.Input.Prompt, prompt);
         _state.Set<object>(StateKeys.Input.Options, options ?? Array.Empty<string>());
         _state.Set<object?>(StateKeys.Input.Result, null);
-        while (true)
-        {
+
+// 安全轮询：超时兜底（交互场景不应永久阻塞）
+using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.InteractionTimeoutSeconds));
+while (!timeoutCts.Token.IsCancellationRequested)
+{
+if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
             var result = _state.Get<string?>(StateKeys.Input.Result);
             if (result != null)
             {
@@ -228,8 +378,14 @@ public class GameController : IGameController
                 _state.Set<object?>(StateKeys.Input.Result, null);
                 return result;
             }
-            await Task.Delay(33);
+            try { await Task.Delay(33, timeoutCts.Token); }
+            catch (OperationCanceledException) { break; }
         }
+        // 超时返回 null
+        _state.Set(StateKeys.Input.Prompt, "");
+        _state.Set(StateKeys.Input.Options, Array.Empty<string>());
+        _state.Set<object?>(StateKeys.Input.Result, null);
+        return null;
     }
 
     // ========== 音效 ==========
@@ -263,6 +419,14 @@ public class GameController : IGameController
     public void Forward() => _pipeline.SendAsync(new ForwardCommand());
     public async Task ForwardAsync() { await _pipeline.SendAsync(new ForwardCommand()); await Task.Yield(); }
 
+    // ========== 回溯时间线（Ren'Py 风格）==========
+    public void Rollback() => _pipeline.SendAsync(new RollbackCommand());
+    public async Task RollbackAsync() { await _pipeline.SendAsync(new RollbackCommand()); await Task.Yield(); }
+    public void Rollforward() => _pipeline.SendAsync(new RollforwardCommand());
+    public async Task RollforwardAsync() { await _pipeline.SendAsync(new RollforwardCommand()); await Task.Yield(); }
+    public void RollbackTo(int targetCheckpointIndex) => _pipeline.SendAsync(new RollbackToCommand { TargetCheckpointIndex = targetCheckpointIndex });
+    public async Task RollbackToAsync(int targetCheckpointIndex) { await _pipeline.SendAsync(new RollbackToCommand { TargetCheckpointIndex = targetCheckpointIndex }); await Task.Yield(); }
+
     // ========== 存档 ==========
 
     public void Save(string slot) =>
@@ -275,11 +439,18 @@ public class GameController : IGameController
     public async Task LoadAsync(string slot)
     { await _pipeline.SendAsync(new SaveLoadCommand { SlotId = slot, IsSave = false }); await Task.Yield(); }
 
-    /// <summary>清空场景堆栈（返回主菜单时调）</summary>
+    /// <summary>清空场景堆栈（返回主菜单时调用）</summary>
     public void ClearStack() =>
         _pipeline.SendAsync(new ClearStackCommand());
     public async Task ClearStackAsync()
     { await _pipeline.SendAsync(new ClearStackCommand()); await Task.Yield(); }
+
+    /// <summary>重置全部游戏状态（返回主菜单时手动调用）</summary>
+    public void ResetGameState() =>
+        _pipeline.SendAsync(new ResetGameStateCommand());
+
+    public async Task ResetGameStateAsync()
+    { await _pipeline.SendAsync(new ResetGameStateCommand()); await Task.Yield(); }
 
     /// <summary>深合并变量定义（补缺+修类型）</summary>
     public void MergeDefSets(Dictionary<string, object?> dict) =>
@@ -448,6 +619,15 @@ public class GameController : IGameController
         _state.Set(StateKeys.Debug.Visible, !visible);
     }
 
+    // ========== 通知 ==========
+
+    /// <summary>显示通知 Toast</summary>
+    public void Notify(string text, string type = "info")
+    {
+        _state.Set(StateKeys.Notify.Text, text);
+        _state.Set(StateKeys.Notify.Type, type);
+    }
+
     // ========== NVL 模式 ==========
 
     /// <summary>进入 NVL 模式（后续对话累积显示）</summary>
@@ -484,4 +664,228 @@ public class GameController : IGameController
     public string GetNvlSpeakers() =>
         _state.Get<string>(StateKeys.Nvl.Speakers) ?? "";
 
+    // ========== Call Screen ==========
+    // Phase 24: CallScreenAsync 带参数版已移至 Phase 24 区域，无参版通过接口默认实现转发
+
+    /// <summary>设置 call_screen 返回结果</summary>
+    public void SetScreenResult(string? result)
+    {
+        _state.Set(StateKeys.ScreenResult, result);
+    }
+
+    // ========== 视频 ==========
+
+    /// <inheritdoc/>
+    public void PlayVideo(string path, float volume = 1.0f, bool loop = false, bool autoPlay = true) =>
+        _pipeline.SendAsync(new PlayVideoCommand
+        {
+            Path = path,
+            Volume = volume,
+            Loop = loop,
+            AutoPlay = autoPlay
+        });
+
+    /// <inheritdoc/>
+    public async Task PlayVideoAsync(string path, float volume = 1.0f, bool loop = false, bool autoPlay = true)
+    {
+        await _pipeline.SendAsync(new PlayVideoCommand
+        {
+            Path = path,
+            Volume = volume,
+            Loop = loop,
+            AutoPlay = autoPlay
+        });
+        await Task.Yield();
+    }
+
+    /// <inheritdoc/>
+    public void StopVideo() =>
+        _pipeline.SendAsync(new StopVideoCommand());
+
+    /// <inheritdoc/>
+    public async Task StopVideoAsync()
+    { await _pipeline.SendAsync(new StopVideoCommand()); await Task.Yield(); }
+
+    /// <inheritdoc/>
+    public void PauseVideo() =>
+        _pipeline.SendAsync(new PauseVideoCommand());
+
+    /// <inheritdoc/>
+    public async Task PauseVideoAsync()
+    { await _pipeline.SendAsync(new PauseVideoCommand()); await Task.Yield(); }
+
+    /// <inheritdoc/>
+    public void ResumeVideo() =>
+        _pipeline.SendAsync(new ResumeVideoCommand());
+
+    /// <inheritdoc/>
+    public async Task ResumeVideoAsync()
+    { await _pipeline.SendAsync(new ResumeVideoCommand()); await Task.Yield(); }
+
+    /// <inheritdoc/>
+    public void SeekVideo(TimeSpan position) =>
+        _pipeline.SendAsync(new SeekVideoCommand { Position = position.TotalSeconds });
+
+    /// <inheritdoc/>
+    public async Task SeekVideoAsync(TimeSpan position)
+    { await _pipeline.SendAsync(new SeekVideoCommand { Position = position.TotalSeconds }); await Task.Yield(); }
+
+    // ========== 过场动画 ==========
+
+    /// <inheritdoc/>
+    public async Task<bool> PlayCutsceneAsync(string path, bool skipable = true, float volume = 1.0f, CancellationToken ct = default)
+    {
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+        // 1. 发送过场命令（CutsceneHandler → VideoManager.PlayCutscene → 写状态键）
+        await _pipeline.SendAsync(new CutsceneCommand
+        {
+            Path = path,
+            Skipable = skipable,
+            Volume = volume
+        });
+
+        // 2. 阻塞等待：cutscene 结束（CutsceneActive=false）或用户跳过（CutsceneSkipped=true）
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.InteractionTimeoutSeconds));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+
+        try
+        {
+            // 2a. 等待命令被 GameLoop 处理（CutsceneActive 变为 true）
+            //     SendAsync 仅入队，命令在下一帧才被消费执行
+            var waitDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(_options.CutsceneActivationTimeoutSeconds);
+            while (!_state.Get<bool>(StateKeys.Video.CutsceneActive) && DateTime.UtcNow < waitDeadline)
+            {
+                if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+                if (linkedCts.IsCancellationRequested) break;
+                await Task.Delay(16, linkedCts.Token);
+            }
+
+            // 2b. 轮询等待 cutscene 结束或用户跳过
+            while (_state.Get<bool>(StateKeys.Video.CutsceneActive) && !linkedCts.IsCancellationRequested)
+            {
+                if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+                if (_state.Get<bool>(StateKeys.Video.CutsceneSkipped))
+                    break;
+                await Task.Delay(50, linkedCts.Token);
+            }
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+        {
+            // 超时兜底
+        }
+
+        // 3. 清理：停止视频并重置过场状态
+        var skipped = _state.Get<bool>(StateKeys.Video.CutsceneSkipped);
+        _state.Set(StateKeys.Video.CutsceneActive, false);
+        _state.Set(StateKeys.Video.CutsceneSkipped, false);
+        _state.Set(StateKeys.Video.IsPlaying, false);
+        _state.Set(StateKeys.Video.IsPaused, false);
+        _state.Set(StateKeys.Video.IsFinished, false);
+        _state.Set(StateKeys.Video.CurrentPath, "");
+
+        return skipped;
+    }
+
+    // ========== Phase 24: Ren'Py 功能对齐 ==========
+
+    /// <inheritdoc/>
+    public void BlockRollback()
+    {
+        // 设置为当前 DSL 命令索引——后续检查点 CommandIndex >= 此值则跳过
+        var idx = _state.Get<int>(StateKeys.Dsl.CurrentIndex);
+        _state.Set(StateKeys.Rollback.BlockedUntil, idx);
+    }
+
+    /// <inheritdoc/>
+    public void FixRollback()
+    {
+        _state.Set(StateKeys.Rollback.BlockedUntil, -1);
+    }
+
+    /// <inheritdoc/>
+    public void ShowWindow()
+    {
+        _state.Set(StateKeys.Dialog.WindowMode, "show");
+    }
+
+    /// <inheritdoc/>
+    public void HideWindow()
+    {
+        _state.Set(StateKeys.Dialog.WindowMode, "hide");
+    }
+
+    /// <inheritdoc/>
+    public void SetWindowAuto()
+    {
+        _state.Set(StateKeys.Dialog.WindowMode, "auto");
+    }
+
+    /// <inheritdoc/>
+    public bool HasScreen(string sceneName)
+    {
+        var current = _state.Get<string>(StateKeys.Screen.ActiveScreen) ?? "";
+        return string.Equals(current, sceneName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <inheritdoc/>
+    public string? GetCurrentScreen()
+    {
+        var current = _state.Get<string>(StateKeys.Screen.ActiveScreen);
+        return string.IsNullOrEmpty(current) ? null : current;
+    }
+
+    /// <inheritdoc/>
+    public async Task<string?> CallScreenAsync(string sceneName, CancellationToken ct = default,
+        params (string Key, object? Value)[] parameters)
+    {
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+        // 设置传入参数
+        if (parameters.Length > 0)
+        {
+            var paramDict = new Dictionary<string, object?>();
+            foreach (var (key, value) in parameters)
+                paramDict[key] = value;
+            _state.Set(StateKeys.Screen.Params, paramDict);
+        }
+        else
+        {
+            _state.Set<object?>(StateKeys.Screen.Params, null);
+        }
+
+        _state.Set<object?>(StateKeys.Screen.Result, null);
+        _ = _pipeline.SendAsync(new NavigateCommand { Path = sceneName });
+
+        // 等待 ScreenResult
+        var deadline = Environment.TickCount64 / 1000.0 + _options.InteractionTimeoutSeconds;
+        while (!ct.IsCancellationRequested)
+        {
+            if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+            var result = _state.Get<string?>(StateKeys.Screen.Result);
+            if (result != null)
+            {
+                _state.Set<object?>(StateKeys.Screen.Params, null);
+                _state.Set<object?>(StateKeys.Screen.Result, null);
+                return result;
+            }
+            if (Environment.TickCount64 / 1000.0 >= deadline)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GameController] CallScreenAsync 超时({_options.InteractionTimeoutSeconds}s)");
+                _state.Set<object?>(StateKeys.Screen.Params, null);
+                return null;
+            }
+            try { await Task.Delay(16, ct); }
+            catch (OperationCanceledException) { return null; }
+        }
+        return null;
+    }
+
+    /// <inheritdoc/>
+    public T? GetScreenParam<T>(string key)
+    {
+        var dict = _state.Get<Dictionary<string, object?>>(StateKeys.Screen.Params);
+        if (dict == null || !dict.TryGetValue(key, out var val) || val == null) return default;
+        if (val is T typed) return typed;
+        try { return (T)System.Convert.ChangeType(val, typeof(T)); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[GameController] GetScreenParam<{typeof(T).Name}> conversion failed for key '{key}': {ex.Message}"); return default; }
+    }
 }

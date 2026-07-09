@@ -1,3 +1,5 @@
+[中文] | [English](./README.en.md)  
+
 # 灵泛引擎（LingFan Engine）
 
 是一个基于 .NET、C#、Avalonia 为核心框架开发的叙事、沙盒类小说游戏引擎。
