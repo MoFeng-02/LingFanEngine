@@ -1,8 +1,22 @@
 <Project>
 	<PropertyGroup>
-		<Description>灵泛引擎，一款通用文字视觉游戏引擎</Description>
+		<!-- NuGet 包信息 -->
 		<Version>0.1.0</Version>
-		<!--<AssemblyVersion>0.0.1</AssemblyVersion>
-		<FileVersion>0.0.1</FileVersion>-->
+		<AssemblyVersion>0.1.0.0</AssemblyVersion>
+		<FileVersion>0.1.0.0</FileVersion>
+		<PackageVersion>0.1.0</PackageVersion>
+		<Description>灵泛引擎，一款通用文字视觉游戏引擎</Description>
+		<Authors>MoFeng-02</Authors>
+		<Copyright>Copyright (c) 2026 MoFeng-02</Copyright>
+		<PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MoFeng-02/LingFanEngine</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MoFeng-02/LingFanEngine</RepositoryUrl>
+		<PackageTags>game-engine;visual-novel;narrative;avalonia;dotnet</PackageTags>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<!--<PackageIcon>icon.png</PackageIcon>-->
 	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="Docs/**" Pack="true" PackagePath=""/>
+	</ItemGroup>
 </Project>

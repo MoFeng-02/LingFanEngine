@@ -288,6 +288,19 @@ public static class DslStatementParser
         from path in QuotedString
         select (DslStatement)new BackgroundStmt { Path = path };
 
+    /// <summary>duration=N 参数解析</summary>
+    private static readonly Parser<char, double> _durationParam =
+        from _1 in String("duration=")
+        from d in Number
+        select d;
+
+    /// <summary>with "transition" duration=N — 过渡参数解析</summary>
+    private static readonly Parser<char, (string name, double? duration)> _withTransition =
+        from _1 in String("with").Before(_ws)
+        from name in QuotedString.Before(_ws)
+        from duration in Try(_durationParam).Optional()
+        select (name, duration.HasValue ? (double?)duration.Value : null);
+
     /// <summary>show "target" [at (x, y)] [with "transition" duration=N]</summary>
     private static readonly Parser<char, DslStatement> _show =
         from _1 in String("show").Before(_ws)
@@ -314,19 +327,6 @@ public static class DslStatementParser
             Transition = transition.HasValue ? transition.Value.name : null,
             TransitionDuration = transition.HasValue ? transition.Value.duration : null
         };
-
-    /// <summary>with "transition" duration=N — 过渡参数解析</summary>
-    private static readonly Parser<char, (string name, double? duration)> _withTransition =
-        from _1 in String("with").Before(_ws)
-        from name in QuotedString.Before(_ws)
-        from duration in Try(_durationParam).Optional()
-        select (name, duration.HasValue ? (double?)duration.Value : null);
-
-    /// <summary>duration=N 参数解析</summary>
-    private static readonly Parser<char, double> _durationParam =
-        from _1 in String("duration=")
-        from d in Number
-        select d;
 
     /// <summary>style "name" key=value key=value ...</summary>
     private static readonly Parser<char, DslStatement> _style =

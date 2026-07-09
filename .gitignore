@@ -480,3 +480,5 @@ Media/
 /diag_for.txt
 /diag_while.txt
 /save_dump.txt
+/src/EngineCore/LingFanEngine.Abstractions/nupkgs
+/src/EngineCore/LingFanEngine/nupkgs
