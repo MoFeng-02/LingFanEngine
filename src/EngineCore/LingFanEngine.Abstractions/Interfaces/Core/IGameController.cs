@@ -25,9 +25,6 @@ public interface IGameController
         double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
         bool clickable = false);
 
-    /// <summary>通知某个等待键已完成（由 UI 层点击时调用，零延迟唤醒）</summary>
-    void SignalComplete(string key);
-
     /// <summary>追加文本到当前对话（对标 Ren'Py extend）</summary>
     Task ExtendDialogAsync(string append);
 

@@ -23,6 +23,10 @@ public class DialogBox : UserControl, IDialogBox
     private int _charIndex;
     private double _typeTimer;
     private string? _lastSideImage;
+    /// <summary>NVL 模式下已显示的文本长度（打字机跳过此部分，只打新追加的行）</summary>
+    private int _nvlSkipLength;
+    /// <summary>NVL 模式下上一帧的文本（用于检测是追加还是 nvl clear 后的新开始）</summary>
+    private string _nvlPrevText = "";
 
     public double TypeSpeed { get; set; } = 60;
     public bool IsComplete => _charIndex >= _fullText.Length;
@@ -107,28 +111,7 @@ public class DialogBox : UserControl, IDialogBox
         // Phase 24: 更新侧脸图
         UpdateSideImage();
 
-        // NVL 模式：调整对话框样式（全屏半透明，而非底部小条）
-        var nvlActive = _state.Get<bool>(StateKeys.Nvl.Active);
-        if (nvlActive)
-        {
-            _root.VerticalAlignment = VerticalAlignment.Stretch;
-            _root.HorizontalAlignment = HorizontalAlignment.Stretch;
-            _contentText.FontSize = 16;
-            _contentText.Margin = new Thickness(20, 10, 20, 20);
-            // NVL 模式下隐藏单个说话者（多角色累积文本已包含说话者）
-            _speakerText.IsVisible = false;
-            _root.IsVisible = true;
-            ApplyInlineMarkup("");
-            return;
-        }
-        else
-        {
-            _root.VerticalAlignment = VerticalAlignment.Bottom;
-            _root.HorizontalAlignment = HorizontalAlignment.Stretch;
-            _contentText.FontSize = 18;
-            _contentText.Margin = new Thickness(10, 4, 10, 10);
-        }
-
+        // 颜色/字体样式（NVL 和 ADV 模式都需要）
         var spkColor = _state.Get<string>(StateKeys.Dialog.SpeakerColor) ?? _state.Get<string>(StateKeys.Dialog.SpeakerColorDefault);
         var txtColor = _state.Get<string>(StateKeys.Dialog.TextColor) ?? _state.Get<string>(StateKeys.Dialog.TextColorDefault);
         var spkFont = _state.Get<string>(StateKeys.Dialog.SpeakerFont);
@@ -140,6 +123,50 @@ public class DialogBox : UserControl, IDialogBox
             ? new SolidColorBrush(Color.Parse(txtColor)) : Brushes.White;
         if (!string.IsNullOrEmpty(spkFont)) _speakerText.FontFamily = new FontFamily(spkFont);
         if (!string.IsNullOrEmpty(txtFont)) _contentText.FontFamily = new FontFamily(txtFont);
+
+        // NVL 模式：调整对话框样式（全屏半透明，而非底部小条）
+        var nvlActive = _state.Get<bool>(StateKeys.Nvl.Active);
+        if (nvlActive)
+        {
+            _root.VerticalAlignment = VerticalAlignment.Stretch;
+            _root.HorizontalAlignment = HorizontalAlignment.Stretch;
+            _contentText.FontSize = 16;
+            _contentText.Margin = new Thickness(20, 10, 20, 20);
+            // NVL 模式下隐藏单个说话者（累积文本已包含说话者名称内联）
+            _speakerText.IsVisible = false;
+            _root.IsVisible = true;
+
+            // 计算打字机跳过长度——已有文本立即显示，只对新追加的行打字机
+            if (!string.IsNullOrEmpty(_nvlPrevText) && text.StartsWith(_nvlPrevText) && text.Length > _nvlPrevText.Length)
+            {
+                // 文本被追加——跳过已有部分，只打字机新内容
+                _nvlSkipLength = _nvlPrevText.Length;
+                _charIndex = _nvlSkipLength;
+                // 调整计时器使打字机从新内容开始
+                var speed = _state.Get<double?>(StateKeys.Dialog.TypewriterSpeed) ?? TypeSpeed;
+                _typeTimer = _nvlSkipLength / Math.Max(speed, 1.0);
+                // 立即显示已有文本
+                ApplyInlineMarkup(_fullText[.._nvlSkipLength]);
+            }
+            else
+            {
+                // 文本完全变化（nvl clear 后新开始）——从零开始打字机
+                _nvlSkipLength = 0;
+                _charIndex = 0;
+                ApplyInlineMarkup("");
+            }
+            _nvlPrevText = text;
+            return;
+        }
+
+        // ADV 模式——重置 NVL 内部追踪状态
+        _nvlSkipLength = 0;
+        _nvlPrevText = "";
+
+        _root.VerticalAlignment = VerticalAlignment.Bottom;
+        _root.HorizontalAlignment = HorizontalAlignment.Stretch;
+        _contentText.FontSize = 18;
+        _contentText.Margin = new Thickness(10, 4, 10, 10);
 
         _speakerText.IsVisible = !string.IsNullOrEmpty(speaker);
         if (_speakerText.IsVisible) _speakerText.Text = speaker;
@@ -156,6 +183,12 @@ public class DialogBox : UserControl, IDialogBox
             ? _state.Get<bool>(StateKeys.Dialog.TypewriterEnabled) : true;
         if (!twEnabled) { SkipToEnd(); return; }
         if (IsPausedByTag) return;
+
+        // NVL 模式：跳过已显示的旧文本，只对新追加的行打字机
+        if (_nvlSkipLength > 0 && _charIndex < _nvlSkipLength)
+        {
+            _charIndex = _nvlSkipLength;
+        }
 
         var fastIdx = _fullText.IndexOf("{fast}", StringComparison.Ordinal);
         if (fastIdx >= 0) { SkipToEnd(); return; }
@@ -190,6 +223,9 @@ public class DialogBox : UserControl, IDialogBox
 
     public void SkipToEnd() { _charIndex = _fullText.Length; IsPausedByTag = false; ApplyInlineMarkup(_fullText); _state.Set(StateKeys.Dialog.TypewriterDone, true); }
     public void Hide() { _root.IsVisible = false; _sideImage.IsVisible = false; }
+
+    /// <summary>重置 NVL 模式内部状态（场景切换或退出 NVL 模式时调用）</summary>
+    public void ResetNvlState() { _nvlSkipLength = 0; _nvlPrevText = ""; }
 
     /// <summary>
     /// Phase 24: 从 __dialog_side_image 状态键读取侧脸图路径并渲染

@@ -1,14 +1,12 @@
-﻿﻿﻿using System;
-using System.Threading.Tasks;
+using Avalonia.Controls.ApplicationLifetimes;
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Entry;
 using LingFanEngine.Abstractions.Interfaces.Media;
 using LingFanEngine.Abstractions.Interfaces.Saves;
-using LingFanEngine.Entry.Demos;
 using LingFanEngine.Abstractions.Scripting;
+using LingFanEngine.Entry.Demos;
 using LingFanEngine.Services.Core;
-using LingFanEngine.Games;
 using LingFanEngine.Services.Scripting;
 
 namespace LingFanEngine.Entry;
@@ -50,33 +48,33 @@ public static class CSharpScripts
         // 存档/读档面板
         cmdService.RegisterCommand("open_save", (_, _) =>
         {
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => overlay?.ShowSavePanel());
+            overlay?.ShowSavePanel();
             return Task.CompletedTask;
         });
         cmdService.RegisterCommand("open_load", (_, _) =>
         {
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => overlay?.ShowLoadPanel());
+            overlay?.ShowLoadPanel();
             return Task.CompletedTask;
         });
 
         // 设置面板
         cmdService.RegisterCommand("open_settings", (_, _) =>
         {
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => overlay?.ShowSettingsPanel());
+            overlay?.ShowSettingsPanel();
             return Task.CompletedTask;
         });
 
         // CG 鉴赏面板
         cmdService.RegisterCommand("open_gallery", (_, _) =>
         {
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => overlay?.ShowGalleryPanel());
+            overlay?.ShowGalleryPanel();
             return Task.CompletedTask;
         });
 
         // 历史面板
         cmdService.RegisterCommand("open_history", (_, _) =>
         {
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => overlay?.ShowHistoryPanel());
+            overlay?.ShowHistoryPanel();
             return Task.CompletedTask;
         });
 
@@ -89,7 +87,7 @@ public static class CSharpScripts
                 if (exists)
                 {
                     ctrl.Load("quick_save");
-                    Avalonia.Threading.Dispatcher.UIThread.Post(() => overlay?.HideAll());
+                    overlay?.HideAll();
                 }
                 else
                 {
@@ -117,6 +115,10 @@ public static class CSharpScripts
             if (Avalonia.Application.Current?.ApplicationLifetime
                 is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
                 desktop.Shutdown();
+            else if (Avalonia.Application.Current?.ApplicationLifetime is IActivityApplicationLifetime singleView)
+            {
+                singleView.MainViewFactory?.Invoke();
+            }
             return Task.CompletedTask;
         });
 

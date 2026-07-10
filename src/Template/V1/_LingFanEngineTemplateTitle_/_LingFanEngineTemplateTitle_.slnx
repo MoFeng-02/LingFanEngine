@@ -1,0 +1,14 @@
+<Solution>
+  <Project Path="_LingFanEngineTemplateTitle_.Android/_LingFanEngineTemplateTitle_.Android.csproj">
+    <Deploy />
+  </Project>
+  <Project Path="_LingFanEngineTemplateTitle_.Browser/_LingFanEngineTemplateTitle_.Browser.csproj" />
+  <Project Path="_LingFanEngineTemplateTitle_.Desktop.Linux/_LingFanEngineTemplateTitle_.Desktop.Linux.csproj" />
+  <Project Path="_LingFanEngineTemplateTitle_.Desktop.Mac/_LingFanEngineTemplateTitle_.Desktop.Mac.csproj" />
+  <Project Path="_LingFanEngineTemplateTitle_.Desktop.Windows/_LingFanEngineTemplateTitle_.Desktop.Windows.csproj" />
+  <Project Path="_LingFanEngineTemplateTitle_.Desktop/_LingFanEngineTemplateTitle_.Desktop.csproj" />
+  <Project Path="_LingFanEngineTemplateTitle_.iOS/_LingFanEngineTemplateTitle_.iOS.csproj">
+    <Deploy />
+  </Project>
+  <Project Path="_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.csproj" />
+</Solution>

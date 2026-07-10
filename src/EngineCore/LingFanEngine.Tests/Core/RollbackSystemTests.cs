@@ -19,7 +19,7 @@ public class RollbackSystemTests
 
     public RollbackSystemTests()
     {
-        _executor = new DslExecutor(_state, _pipeline);
+        _executor = new DslExecutor(_state, _pipeline, waitService: null);
     }
 
     // ========== CanRollback / CanRollforward ==========

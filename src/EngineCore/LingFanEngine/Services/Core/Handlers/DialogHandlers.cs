@@ -44,11 +44,25 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>, IDefaultCom
             dialogText = DslExpressionEvaluator.ReplaceText(dialogText, ctx.State);
 
         // 替换 speaker 中的 {变量} 表达式（如 speaker="{npc.innkeeper.name}"）
-        var speakerName = sd.Speaker;
-        if (!string.IsNullOrEmpty(speakerName) && speakerName.Contains('{'))
-            speakerName = DslExpressionEvaluator.ReplaceText(speakerName, ctx.State);
+        var speakerKey = sd.Speaker;
+        if (!string.IsNullOrEmpty(speakerKey) && speakerKey.Contains('{'))
+            speakerKey = DslExpressionEvaluator.ReplaceText(speakerKey, ctx.State);
 
-        // NVL 模式：累积文本而非替换
+        // 1. 先查角色定义，解析显示名和样式
+        Dictionary<string, object?>? charDef = null;
+        if (!string.IsNullOrEmpty(speakerKey))
+        {
+            charDef = ctx.State.Get<Dictionary<string, object?>>(StateKeys.Characters.Prefix + speakerKey);
+        }
+
+        // 角色定义中的 name 覆盖说话者显示名
+        var speakerName = speakerKey;
+        if (charDef != null && charDef.TryGetValue("name", out var charName) && charName is string cn && !string.IsNullOrEmpty(cn))
+        {
+            speakerName = cn;
+        }
+
+        // 2. NVL 模式：累积文本（含说话者名称内联）而非替换
         var nvlActive = ctx.State.Get<bool>(StateKeys.Nvl.Active);
         if (nvlActive)
         {
@@ -56,22 +70,26 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>, IDefaultCom
             var nvlSpeakers = ctx.State.Get<string>(StateKeys.Nvl.Speakers) ?? "";
             var nvlCount = ctx.State.Get<int>(StateKeys.Nvl.Count);
 
-            // 累积说话者（带换行，使用已求值的 speakerName）
-            var speakerLine = speakerName ?? "";
+            // 累积说话者（带换行）
             if (!string.IsNullOrEmpty(nvlSpeakers))
                 nvlSpeakers += "\n";
-            nvlSpeakers += speakerLine;
+            nvlSpeakers += speakerName ?? "";
 
-            // 累积文本（带换行）
+            // 累积显示文本——说话者名称内联（对标 Ren'Py NVL 默认布局）
+            // 格式："说话者：对话文本" 或 "对话文本"（无说话者时）
+            var displayLine = string.IsNullOrEmpty(speakerName)
+                ? dialogText
+                : $"{speakerName}：{dialogText}";
+
             if (!string.IsNullOrEmpty(nvlText))
                 nvlText += "\n";
-            nvlText += dialogText;
+            nvlText += displayLine;
 
             ctx.State.Set(StateKeys.Nvl.Text, nvlText);
             ctx.State.Set(StateKeys.Nvl.Speakers, nvlSpeakers);
             ctx.State.Set(StateKeys.Nvl.Count, nvlCount + 1);
 
-            // NVL 模式下也设置常规对话状态（但用累积文本）
+            // NVL 模式下也设置常规对话状态（用累积文本）
             ctx.State.Set(StateKeys.Dialog.Text, nvlText);
             ctx.State.Set(StateKeys.Dialog.Speaker, speakerName ?? "");
         }
@@ -80,32 +98,8 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>, IDefaultCom
             ctx.State.Set(StateKeys.Dialog.Text, dialogText);
             ctx.State.Set(StateKeys.Dialog.Speaker, speakerName ?? "");
         }
-        // 角色样式——先查 character 定义，say 显式参数覆盖
-        Dictionary<string, object?>? charDef = null;
-        if (!string.IsNullOrEmpty(speakerName))
-        {
-            charDef = ctx.State.Get<Dictionary<string, object?>>(StateKeys.Characters.Prefix + speakerName);
-        }
 
-        // 角色定义中的 name 可覆盖说话者显示名
-        if (charDef != null && charDef.TryGetValue("name", out var charName) && charName is string cn && !string.IsNullOrEmpty(cn))
-        {
-            speakerName = cn;
-            // NVL 模式下也需要更新
-            if (nvlActive)
-            {
-                // 修正 NVL 累积中的最后一行说话者
-                var nvlSpeakers = ctx.State.Get<string>(StateKeys.Nvl.Speakers) ?? "";
-                var lines = nvlSpeakers.Split('\n');
-                if (lines.Length > 0) lines[^1] = cn;
-                ctx.State.Set(StateKeys.Nvl.Speakers, string.Join("\n", lines));
-            }
-            else
-            {
-                ctx.State.Set(StateKeys.Dialog.Speaker, speakerName);
-            }
-        }
-
+        // 3. 设置角色样式（say 显式参数覆盖角色定义）
         ctx.State.Set(StateKeys.Dialog.SpeakerColor, sd.SpeakerColor ?? GetCharProp(charDef, "color"));
         ctx.State.Set(StateKeys.Dialog.TextColor, sd.TextColor ?? GetCharProp(charDef, "textcolor"));
         ctx.State.Set(StateKeys.Dialog.SpeakerFont, sd.SpeakerFont ?? GetCharProp(charDef, "font"));

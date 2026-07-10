@@ -1,14 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-	  <OutputType>WinExe</OutputType>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>WinExe</OutputType>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\LingFanEngine.Desktop\LingFanEngine.Desktop.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\LingFanEngine.Desktop\LingFanEngine.Desktop.csproj" />
+	</ItemGroup>
 
 </Project>

@@ -46,4 +46,11 @@ public interface IStateContainer
     /// 清空所有状态
     /// </summary>
     void Clear();
+
+    /// <summary>
+    /// 值变更事件——Set 被调用且值写入成功后触发。
+    /// <para>参数：(key, newValue)。</para>
+    /// <para>轻量级：无订阅者时为 null，调用方做 null 检查后直接 invoke。</para>
+    /// </summary>
+    event Action<string, object?>? ValueChanged;
 }

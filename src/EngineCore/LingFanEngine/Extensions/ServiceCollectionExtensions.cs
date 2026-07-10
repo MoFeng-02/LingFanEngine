@@ -43,6 +43,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IGameTimeService, GameTimeService>();
         services.AddSingleton<ICommandDispatcher, CommandDispatcher>();
         services.AddSingleton<ITweenEngine>(sp => new TweenEngine(sp.GetRequiredService<IStateContainer>()));
+        // 注册异步等待服务（订阅 IStateContainer.ValueChanged，供 DslExecutor/GameController 零延迟等待）
+        services.AddSingleton<IAsyncWaitService>(sp => new AsyncWaitService(sp.GetRequiredService<IStateContainer>()));
         // RouterService 已移除，场景切换基于 SceneRegistry + SceneStack
         services.AddSingleton<IEventScheduler, EventScheduler>();
         services.AddSingleton(sp => new DlcScanner(sp.GetRequiredService<LingFanEngineOptions>().ModsDirectory));
@@ -71,9 +73,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDslExecutor>(sp => new DslExecutor(
             sp.GetRequiredService<IStateContainer>(),
             sp.GetRequiredService<ICommandPipeline>(),
-            sp.GetRequiredService<LingFanEngineOptions>()));
+            sp.GetRequiredService<LingFanEngineOptions>(),
+            sp.GetRequiredService<IAsyncWaitService>()));
         services.AddSingleton<IPreferencesService, PreferencesService>();
-        services.AddSingleton<IGameController, GameController>();
+        services.AddSingleton<IGameController>(sp => new GameController(
+            sp.GetRequiredService<ICommandPipeline>(),
+            sp.GetRequiredService<IStateContainer>(),
+            sp.GetRequiredService<LingFanEngineOptions>(),
+            sp.GetRequiredService<IAsyncWaitService>()));
 services.AddSingleton<IEventAggregator, EventAggregator>();
 services.AddSingleton<II18nService, I18nService>();
 
@@ -145,6 +152,16 @@ services.TryAddSingleton<IEngineLogger, DebugEngineLogger>();
         services.AddSingleton<IPlaybackService, PlaybackService>();
         // 对话框工厂（游戏可注册自定义实现替换内置 DialogBox）
         services.TryAddSingleton<Views.IDialogBoxFactory, Views.DefaultDialogBoxFactory>();
+
+        // Phase 32: SceneView 模块化——注册子模块接口
+        services.AddSingleton<Views.IControlFactory, Views.ControlFactory>();
+        services.AddSingleton<Views.IInteractionBinder>(sp => new Views.InteractionBinder(
+            sp.GetRequiredService<IStateContainer>(),
+            sp.GetRequiredService<ICommandPipeline>(),
+            sp.GetService<ICommandService>()));
+        services.AddSingleton<Views.IOverlayRenderer, Views.OverlayRenderer>();
+        services.AddSingleton<Views.IVideoPresenter, Views.VideoPresenter>();
+        services.AddSingleton<Views.IAnimationApplier, Views.AnimationApplier>();
         services.AddSingleton<ISaveDataService>(sp => new SaveDataService(
             sp.GetRequiredService<IStateContainer>(),
             sp.GetRequiredService<IJsonValueConverter>(),

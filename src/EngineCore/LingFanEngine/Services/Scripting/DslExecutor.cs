@@ -23,6 +23,7 @@ public class DslExecutor : IDslExecutor
     private readonly IStateContainer _state;
     private readonly ICommandPipeline _pipeline;
     private readonly LingFanEngineOptions _options;
+    private readonly IAsyncWaitService _waitService;
     private IStoryRegistry? _storyRegistry;
 
     /// <summary>异步执行取消令牌（线程安全——使用 Interlocked.Exchange 原子替换）</summary>
@@ -45,11 +46,14 @@ public class DslExecutor : IDslExecutor
     /// <summary>C# 场景回溯回调（由 GameLoop 设置，回溯到 C# 场景时调用）</summary>
     public Func<string, Task>? OnCSharpSceneReplay { get; set; }
 
-    public DslExecutor(IStateContainer state, ICommandPipeline pipeline, LingFanEngineOptions? options = null)
+    public DslExecutor(IStateContainer state, ICommandPipeline pipeline, LingFanEngineOptions? options = null,
+        IAsyncWaitService? waitService = null)
     {
         _state = state;
         _pipeline = pipeline;
         _options = options ?? new LingFanEngineOptions();
+        // waitService 可为 null（仅测试场景——测试不执行 RunAsync 中的交互等待方法）
+        _waitService = waitService!;
     }
 
     /// <inheritdoc/>
@@ -611,112 +615,141 @@ public class DslExecutor : IDslExecutor
 
     private async Task WaitForDialogComplete(CancellationToken ct)
     {
-        var deadline = Environment.TickCount64 / 1000.0 + InteractionTimeoutSeconds;
-        while (!ct.IsCancellationRequested)
+        // Fast path
+        if (_state.Get<bool>(StateKeys.Dialog.Complete))
         {
-            if (_state.Get<bool>(StateKeys.Dialog.Complete))
-            {
-                _state.Set(StateKeys.Dialog.Complete, false);
-                return;
-            }
-            if (Environment.TickCount64 / 1000.0 >= deadline)
-            {
-                System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForDialogComplete 超时(300s)，强制推进");
-                return;
-            }
-            try { await Task.Delay(16, ct); }
-            catch (OperationCanceledException) { return; }
+            _state.Set(StateKeys.Dialog.Complete, false);
+            return;
         }
+
+        try
+        {
+            await _waitService.WaitForAsync(
+                () => _state.Get<bool>(StateKeys.Dialog.Complete),
+                TimeSpan.FromSeconds(InteractionTimeoutSeconds),
+                ct);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForDialogComplete 超时(300s)，强制推进");
+        }
+        catch (OperationCanceledException)
+        {
+            // ct 被取消（如 WaitCommand 中 Task.WhenAny 后 waitCts.Cancel）——正常返回，避免未观察任务异常
+            return;
+        }
+
+        _state.Set(StateKeys.Dialog.Complete, false);
     }
 
     private async Task WaitForTransitionComplete(CancellationToken ct)
     {
-        var activateDeadline = Environment.TickCount64 / 1000.0 + 5;
-        while (!_state.Get<bool>(StateKeys.Transition.Active) && !ct.IsCancellationRequested)
+        // 阶段 1：等待过渡激活（5 秒超时）
+        try
         {
-            if (Environment.TickCount64 / 1000.0 >= activateDeadline)
-            {
-                System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForTransitionComplete: 等待激活超时(5s)，跳过等待");
-                return;
-            }
-            try { await Task.Delay(8, ct); }
-            catch (OperationCanceledException) { return; }
+            await _waitService.WaitForAsync(
+                () => _state.Get<bool>(StateKeys.Transition.Active),
+                TimeSpan.FromSeconds(5),
+                ct);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForTransitionComplete: 等待激活超时(5s)，跳过等待");
+            return;
         }
 
-        var completeDeadline = Environment.TickCount64 / 1000.0 + 60;
-        while (!ct.IsCancellationRequested)
+        if (ct.IsCancellationRequested) return;
+
+        // 阶段 2：等待过渡完成（60 秒超时）
+        try
         {
-            if (!_state.Get<bool>(StateKeys.Transition.Active))
-                return;
-            if (Environment.TickCount64 / 1000.0 >= completeDeadline)
-            {
-                System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForTransitionComplete 超时(60s)，强制推进");
-                return;
-            }
-            try { await Task.Delay(16, ct); }
-            catch (OperationCanceledException) { return; }
+            await _waitService.WaitForAsync(
+                () => !_state.Get<bool>(StateKeys.Transition.Active),
+                TimeSpan.FromSeconds(60),
+                ct);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForTransitionComplete 超时(60s)，强制推进");
         }
     }
 
     private async Task<int> WaitForMenuSelection(CancellationToken ct)
     {
-        var deadline = Environment.TickCount64 / 1000.0 + InteractionTimeoutSeconds;
-        while (!ct.IsCancellationRequested)
+        // Fast path
+        var selected = _state.Get<int>(StateKeys.Menu.Selected);
+        if (selected >= 0)
         {
-            var selected = _state.Get<int>(StateKeys.Menu.Selected);
-            if (selected >= 0)
-            {
-                _state.Set(StateKeys.Menu.Selected, -1);
-                return selected;
-            }
-            if (Environment.TickCount64 / 1000.0 >= deadline)
-            {
-                System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForMenuSelection 超时(300s)，返回 -1");
-                return -1;
-            }
-            try { await Task.Delay(16, ct); }
-            catch (OperationCanceledException) { return -1; }
+            _state.Set(StateKeys.Menu.Selected, -1);
+            return selected;
         }
-        return -1;
+
+        try
+        {
+            await _waitService.WaitForAsync(
+                () => _state.Get<int>(StateKeys.Menu.Selected) >= 0,
+                TimeSpan.FromSeconds(InteractionTimeoutSeconds),
+                ct);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForMenuSelection 超时(300s)，返回 -1");
+            return -1;
+        }
+
+        if (ct.IsCancellationRequested) return -1;
+
+        var result = _state.Get<int>(StateKeys.Menu.Selected);
+        _state.Set(StateKeys.Menu.Selected, -1);
+        return result;
     }
 
     private async Task<string> WaitForInput(CancellationToken ct)
     {
-        var deadline = Environment.TickCount64 / 1000.0 + InteractionTimeoutSeconds;
-        while (!ct.IsCancellationRequested)
+        // Fast path
+        var result = _state.Get<string?>(StateKeys.Input.Result);
+        if (result != null)
         {
-            var result = _state.Get<string?>(StateKeys.Input.Result);
-            if (result != null)
-            {
-                _state.Set<object?>(StateKeys.Input.Result, null);
-                return result;
-            }
-            if (Environment.TickCount64 / 1000.0 >= deadline)
-            {
-                System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForInput 超时(300s)，返回空字符串");
-                return "";
-            }
-            try { await Task.Delay(16, ct); }
-            catch (OperationCanceledException) { return ""; }
+            _state.Set<object?>(StateKeys.Input.Result, null);
+            return result;
         }
-        return "";
+
+        try
+        {
+            await _waitService.WaitForAsync(
+                () => _state.Get<string?>(StateKeys.Input.Result) != null,
+                TimeSpan.FromSeconds(InteractionTimeoutSeconds),
+                ct);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForInput 超时(300s)，返回空字符串");
+            return "";
+        }
+
+        if (ct.IsCancellationRequested) return "";
+
+        var inputResult = _state.Get<string?>(StateKeys.Input.Result);
+        _state.Set<object?>(StateKeys.Input.Result, null);
+        return inputResult ?? "";
     }
 
     private async Task WaitForScreenResult(CancellationToken ct)
     {
-        var deadline = Environment.TickCount64 / 1000.0 + InteractionTimeoutSeconds;
-        while (!ct.IsCancellationRequested)
+        // Fast path
+        if (_state.Get<string?>(StateKeys.Screen.Result) != null)
+            return;
+
+        try
         {
-            var result = _state.Get<string?>(StateKeys.Screen.Result);
-            if (result != null)
-                return;
-            if (Environment.TickCount64 / 1000.0 >= deadline)
-            {
-                System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForScreenResult 超时(300s)，强制推进");
-                return;
-            }
-            try { await Task.Delay(16, ct); }
-            catch (OperationCanceledException) { return; }
+            await _waitService.WaitForAsync(
+                () => _state.Get<string?>(StateKeys.Screen.Result) != null,
+                TimeSpan.FromSeconds(InteractionTimeoutSeconds),
+                ct);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForScreenResult 超时(300s)，强制推进");
         }
     }
 

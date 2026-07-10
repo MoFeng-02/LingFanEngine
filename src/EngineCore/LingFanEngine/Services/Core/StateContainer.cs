@@ -16,6 +16,11 @@ public class StateContainer : IStateContainer
     private readonly IJsonValueConverter? _jsonConverter;
 
     /// <summary>
+    /// 值变更事件——Set 写入成功后触发
+    /// </summary>
+    public event Action<string, object?>? ValueChanged;
+
+    /// <summary>
     /// 构造函数
     /// </summary>
     /// <param name="jsonConverter">JSON 值转换器（可选，用于归一化存档反序列化后的 JsonElement）</param>
@@ -29,8 +34,12 @@ public class StateContainer : IStateContainer
     {
         // 支持点分路径：若 key 含 '.' 且父级字典已存在，则更新嵌套字典中的叶节点
         if (key.Contains('.') && TrySetPath(key, value))
+        {
+            ValueChanged?.Invoke(key, value);
             return;
+        }
         _store[key] = value;
+        ValueChanged?.Invoke(key, value);
     }
 
     /// <inheritdoc/>

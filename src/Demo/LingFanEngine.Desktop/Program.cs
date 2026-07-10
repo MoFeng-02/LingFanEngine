@@ -4,22 +4,29 @@ using LingFanEngine.Entry;
 
 namespace LingFanEngine.Desktop;
 
-public sealed class Program
+public sealed class Setup
 {
+    // Initialization code. Don't use any Avalonia, third-party APIs or any
+    // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
+    // yet and stuff might break.
+    public static AppBuilder AppBuilder { get; set; } = null!;
     [STAThread]
-    public static void Main(string[] args) => BuildAvaloniaApp()
+    public static void Main(string[] args)
+    {
+        AppBuilder
         .StartWithClassicDesktopLifetime(args);
+    }
 
     public static AppBuilder BuildAvaloniaApp()
     {
-
-
-        return AppBuilder.Configure<App>()
+        AppBuilder = AppBuilder.Configure<App>()
                 .UsePlatformDetect()
-#if DEBUG
-                .WithDeveloperTools()
-#endif
                 .WithInterFont()
                 .LogToTrace();
+
+        return AppBuilder;
     }
+
+
+
 }

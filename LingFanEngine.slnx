@@ -13,8 +13,9 @@
   </Folder>
   <Folder Name="/EngineCore/">
     <Project Path="src/EngineCore/LingFanEngine.Abstractions/LingFanEngine.Abstractions.csproj" />
-    <Project Path="src/EngineCore/LingFanEngine/LingFanEngine.csproj" />
+    <Project Path="src/EngineCore/LingFanEngine.DslCore/LingFanEngine.DslCore.csproj" />
     <Project Path="src/EngineCore/LingFanEngine.Tests/LingFanEngine.Tests.csproj" />
+    <Project Path="src/EngineCore/LingFanEngine/LingFanEngine.csproj" />
   </Folder>
   <Folder Name="/SDK_Toolkit/">
     <Project Path="src/SDK_Toolkit/LingFanEngine.SDK.Android/LingFanEngine.SDK.Android.csproj" Id="5518a90b-abe9-46ad-80c7-6e0663bfa929">
@@ -29,17 +30,13 @@
   </Folder>
   <Folder Name="/Template/" />
   <Folder Name="/Template/V1/">
-    <Project Path="src/Template/V1/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}.Android/{LingFanEngineTemplateTitle}.Android.csproj" Id="dc77b022-428d-487e-8b28-03c55c223e7d">
-      <Deploy />
-    </Project>
-    <Project Path="src/Template/V1/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}.Browser/{LingFanEngineTemplateTitle}.Browser.csproj" Id="d472ffdb-23c5-4b56-86d2-b76cd6aee9ac" />
-    <Project Path="src/Template/V1/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}.Desktop/{LingFanEngineTemplateTitle}.Desktop.csproj" Id="37b5270c-c9a1-4195-a044-b02cf1b03230" />
-    <Project Path="src/Template/V1/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}.iOS/{LingFanEngineTemplateTitle}.iOS.csproj" Id="2ec1d0c2-ad12-46fa-82d2-d2ac11cef151">
-      <Deploy />
-    </Project>
-    <Project Path="src/Template/V1/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}.csproj" Id="1dd96d3d-7eeb-4118-b302-727b5e8a08c6" />
-    <Project Path="src/Template/V1/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}.Desktop.Linux/{LingFanEngineTemplateTitle}.Desktop.Linux.csproj" />
-    <Project Path="src/Template/V1/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}.Desktop.Mac/{LingFanEngineTemplateTitle}.Desktop.Mac.csproj" />
-    <Project Path="src/Template/V1/{LingFanEngineTemplateTitle}/{LingFanEngineTemplateTitle}.Desktop.Windows/{LingFanEngineTemplateTitle}.Desktop.Windows.csproj" />
+    <Project Path="src/Template/V1/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.Android/_LingFanEngineTemplateTitle_.Android.csproj" />
+    <Project Path="src/Template/V1/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.Browser/_LingFanEngineTemplateTitle_.Browser.csproj" />
+    <Project Path="src/Template/V1/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.Desktop.Linux/_LingFanEngineTemplateTitle_.Desktop.Linux.csproj" />
+    <Project Path="src/Template/V1/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.Desktop.Mac/_LingFanEngineTemplateTitle_.Desktop.Mac.csproj" />
+    <Project Path="src/Template/V1/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.Desktop.Windows/_LingFanEngineTemplateTitle_.Desktop.Windows.csproj" />
+    <Project Path="src/Template/V1/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.Desktop/_LingFanEngineTemplateTitle_.Desktop.csproj" />
+    <Project Path="src/Template/V1/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.iOS/_LingFanEngineTemplateTitle_.iOS.csproj" />
+    <Project Path="src/Template/V1/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.csproj" />
   </Folder>
 </Solution>

@@ -1,0 +1,53 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<LangVersion>latest</LangVersion>
+		<!-- Native AOT 兼容声明（库项目，实际 AOT 编译在可执行项目上） -->
+		<IsAotCompatible>true</IsAotCompatible>
+		<JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+		<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<AvaloniaResource Include="Assets\**" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Avalonia" />
+		<PackageReference Include="Avalonia.Themes.Fluent" />
+		<PackageReference Include="Avalonia.Fonts.Inter" />
+		<PackageReference Include="Avalonia.AvaloniaEdit" />
+		<PackageReference Include="AvaloniaUI.DiagnosticsSupport">
+			<IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+			<PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+		</PackageReference>
+		<PackageReference Include="CommunityToolkit.Mvvm" />
+		<PackageReference Include="MFToolkit.Abstractions" />
+		<PackageReference Include="MFToolkit.AutoGenerator" />
+		<PackageReference Include="MFToolkit.Routing" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Folder Include="DependencyInjection\" />
+		<Folder Include="Models\" />
+		<Folder Include="Compilers\" />
+		<Folder Include="Cryptography\" />
+		<Folder Include="Resources\" />
+		<Folder Include="Services\Abstractions\" />
+		<Folder Include="Services\Implementations\" />
+		<Folder Include="Utils\" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\..\EngineCore\LingFanEngine.DslCore\LingFanEngine.DslCore.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Reference Include="Pidgin">
+			<HintPath>..\..\..\DLL\Pidgin.dll</HintPath>
+		</Reference>
+	</ItemGroup>
+</Project>

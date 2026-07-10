@@ -1,21 +1,15 @@
 using System.Diagnostics;
-using System.Threading.Channels;
 using Avalonia.Threading;
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.EngineOptions;
-using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Media;
-using LingFanEngine.Services.Media;
 // Router 已移除
 using LingFanEngine.Abstractions.Interfaces.Saves;
 using LingFanEngine.Abstractions.Interfaces.Scripting;
-using LingFanEngine.Abstractions.Models;
-using LingFanEngine.Abstractions.Models.Saves;
-using LingFanEngine.Services.Core.Handlers;
+using LingFanEngine.Services.Media;
 using LingFanEngine.Services.Saves;
 using LingFanEngine.Services.Scripting;
-using LingFanEngine.Services.Tweens;
 
 namespace LingFanEngine.Services.Core;
 
@@ -43,20 +37,29 @@ public class GameLoop : IGameLoop
     private Task? _loopTask;
     private int _targetFps = 60;
     private bool _firstFrame = true;
+
+    /// <summary>
+    /// UI 帧投递标志——防止 Dispatcher.Post 帧堆积导致抖动。
+    /// true = 已投递但 UI 线程尚未处理，跳过本次投递。
+    /// </summary>
+    private volatile bool _uiFramePending;
+
+    /// <summary>
+    /// 跳帧期间累积的 delta——当 UI 帧被跳过时，frameDelta 累积到此字段，
+    /// 下次投递时一并传递给 UI 线程，确保打字机/通知等基于 delta 的计时不受影响。
+    /// </summary>
+    private double _pendingDelta;
     /// <summary>
     /// 帧回调（由 GameLoop 每帧触发，SceneView.Update 通过此处注册）
     /// </summary>
     private Action<double>? _uiFrameAction;
 
-    /// <summary>场景视图引用（截图用）</summary>
-    private LingFanEngine.Views.SceneView? _sceneView;
+    /// <summary>场景渲染器引用（截图用）</summary>
+    private LingFanEngine.Views.ISceneRenderer? _sceneRenderer;
 
     /// <summary>场景名→SceneScriptEntry 映射（C# 剧情脚本，SceneType 决定存档/堆栈行为）</summary>
     private readonly Dictionary<string, Abstractions.Scripting.SceneScriptEntry> _scriptEntries = new(StringComparer.OrdinalIgnoreCase);
 
-
-    private readonly Channel<Func<Task>> _jobChannel = Channel.CreateUnbounded<Func<Task>>();
-    private readonly CancellationTokenSource _workerCts = new();
 
     /// <summary>命令分发器——按类型路由到注册的处理器</summary>
     private readonly ICommandDispatcher _dispatcher;
@@ -214,48 +217,15 @@ public class GameLoop : IGameLoop
 
         // 根据 EngineOptions 初始化性能 HUD 可见性
         _state.Set(StateKeys.Performance.ShowHud, _options.ShowPerformanceHud);
-
-        StartBackgroundWorker();
     }
 
-
-    private void StartBackgroundWorker()
-    {
-        var reader = _jobChannel.Reader;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await foreach (var job in reader.ReadAllAsync(_workerCts.Token))
-                {
-                    try
-                    {
-                        await job();
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[GameLoop] Background job failed: {ex}");
-                    }
-                }
-            }
-            catch (OperationCanceledException ex)
-            {
-                /* 正常取消 */
-                OnException?.Invoke(ex, nameof(StartBackgroundWorker));
-            }
-            catch (Exception ex)
-            {
-                OnException?.Invoke(ex, nameof(StartBackgroundWorker));
-            }
-        }, _workerCts.Token);
-    }
 
     /// <summary>
     /// 注册场景视图（UI 层引用，非 DI 管理——用于截图功能）
     /// </summary>
-    public void SetSceneView(LingFanEngine.Views.SceneView view)
+    public void SetSceneView(LingFanEngine.Views.ISceneRenderer view)
     {
-        _sceneView = view;
+        _sceneRenderer = view;
         // 连接截图回调到 SaveDataService
         if (_saveDataService is SaveDataService sds)
             sds.CaptureThumbnail = view == null ? null : () => view.CaptureThumbnail();
@@ -291,11 +261,17 @@ public class GameLoop : IGameLoop
 
     private async Task RunLoopAsync(CancellationToken ct)
     {
-        var targetFrameTicks = _targetFps > 0 ? Stopwatch.Frequency / (long)_targetFps : 0;
+        // 注意：targetFrameTicks 不在此处缓存——每帧从 _targetFps 动态计算，
+        // 这样运行时修改 TargetFps 能立即生效。
         var stopwatch = Stopwatch.StartNew();
         var accumulatedTime = 0.0;
         var lastFrameTime = 0.0;
         const double timeTickInterval = 1.0;
+
+        // Windows 系统定时器默认分辨率 ~15.6ms，Task.Delay 的最小睡眠也是一个滴答。
+        // 对 120 FPS（8.33ms/帧）使用 Task.Delay 会超睡到 15.6ms，把实际帧率拖回 ~60 FPS。
+        // 解决方案：仅当剩余时间 > 16ms 时才用 Task.Delay，否则用 Thread.Sleep(0) + 自旋。
+        var delayThresholdTicks = 16 * Stopwatch.Frequency / 1000; // 16ms
 
         try
         {
@@ -354,40 +330,68 @@ public class GameLoop : IGameLoop
                     vm.PollFinished();
 
                 // 触发帧回调（投递到 UI 线程执行 SceneView.Update）
-                if (_uiFrameAction != null)
+                // 帧跳过逻辑：如果上一帧的 UI 更新尚未完成，跳过本次投递。
+                // GameLoop 在后台线程以 120 FPS 更新状态，UI 线程按自身节奏读取最新状态。
+                // 这避免了 Dispatcher.Post 队列堆积导致的动画抖动。
+                if (_uiFrameAction != null && !_uiFramePending)
                 {
-                    var delta = frameDelta;
+                    // 合并跳帧期间累积的 delta，确保打字机/通知等计时准确
+                    var delta = frameDelta + _pendingDelta;
+                    _pendingDelta = 0;
                     var priority = _firstFrame ? DispatcherPriority.Normal : DispatcherPriority.Render;
                     _firstFrame = false;
+                    _uiFramePending = true;
                     Dispatcher.UIThread.Post(() =>
                     {
-                        _uiFrameAction(delta);
+                        try
+                        {
+                            _uiFrameAction(delta);
+                        }
+                        finally
+                        {
+                            _uiFramePending = false;
+                        }
                     }, priority);
+                }
+                else if (_uiFrameAction != null)
+                {
+                    // 帧被跳过：累积 delta 供下次投递使用
+                    _pendingDelta += frameDelta;
                 }
 
                 // 高精度帧率节流（_targetFps=0 时不限帧）
                 if (_targetFps > 0)
                 {
+                    // 每帧动态计算 targetFrameTicks，支持运行时修改 TargetFps
+                    var targetFrameTicks = Stopwatch.Frequency / (long)_targetFps;
                     var elapsedTicks = stopwatch.ElapsedTicks - frameStartTicks;
                     var remainingTicks = targetFrameTicks - elapsedTicks;
                     if (remainingTicks > 0)
                     {
                         var spinEnd = stopwatch.ElapsedTicks + remainingTicks;
 
-                        // > 2ms：用 Task.Delay + 自旋补偿
-                        if (remainingTicks > Stopwatch.Frequency * 2 / 1000)
+                        // 仅当剩余时间 > 16ms（Windows 系统定时器分辨率）时才用 Task.Delay。
+                        // 对高帧率（120/144 FPS，帧时间 6.9~8.3ms）使用 Task.Delay 会超睡到 15.6ms，
+                        // 把实际帧率拖回 ~60 FPS。
+                        if (remainingTicks > delayThresholdTicks)
                         {
-                            var delayMs = (remainingTicks * 1000L) / Stopwatch.Frequency - 1;
+                            var delayMs = (remainingTicks * 1000L) / Stopwatch.Frequency - 2;
                             if (delayMs > 1)
                             {
                                 await Task.Delay((int)delayMs, ct);
                             }
                         }
 
-                        // 剩余时间用自旋等待达到精确帧率
+                        // 剩余时间用 Thread.Sleep(0) + 自旋等待达到精确帧率。
+                        // Thread.Sleep(0) 让出 CPU 时间片给同优先级线程，但不进入 15.6ms 系统定时器睡眠。
+                        // Thread.SpinWait(1) 做亚毫秒级精确等待。
+                        var spinCount = 0;
                         while (stopwatch.ElapsedTicks < spinEnd && !ct.IsCancellationRequested)
                         {
-                            Thread.SpinWait(1);
+                            if (++spinCount % 16 == 0)
+                                Thread.Sleep(0); // 定期让出 CPU，避免 100% 占用
+                            else
+                                Thread.SpinWait(1);
                         }
                     }
                 } // if (_targetFps > 0)
@@ -442,7 +446,7 @@ public class GameLoop : IGameLoop
                 case ICommandHandler<NavToLabelCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<BuildSceneCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<ClearStackCommand> h: _dispatcher.Register(h); break;
-case ICommandHandler<ResetGameStateCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<ResetGameStateCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<MergeDefinesCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<ShakeCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<ToggleSkipCommand> h: _dispatcher.Register(h); break;
@@ -504,8 +508,8 @@ case ICommandHandler<ResetGameStateCommand> h: _dispatcher.Register(h); break;
         _state.Set(StateKeys.Dialog.SpeakerFont, (string?)null);
         _state.Set(StateKeys.Dialog.TextFont, (string?)null);
         _state.Set(StateKeys.Dialog.Clickable, false);
-_state.Set<object?>(StateKeys.Dialog.SideImage, null);
-// Phase 24: 不重置 WindowMode——window hide/show 是显式控制，场景切换不应自动重置
+        _state.Set<object?>(StateKeys.Dialog.SideImage, null);
+        // Phase 24: 不重置 WindowMode——window hide/show 是显式控制，场景切换不应自动重置
 
         // 菜单相关
         _state.Set(StateKeys.Menu.Prompt, "");
@@ -640,10 +644,10 @@ _state.Set<object?>(StateKeys.Dialog.SideImage, null);
         public IDslExecutor? DslExecutor => loop._dslExecutor;
         public ITransitionEngine? TransitionEngine => loop._transitionEngine;
         public IAudioManager? AudioManager => loop._audioManager;
-public IVideoManager? VideoManager => loop._videoManager;
+        public IVideoManager? VideoManager => loop._videoManager;
         public ISaveService? SaveService => loop._saveService;
         public LingFanEngineOptions Options => loop._options;
-        public Func<byte[]?>? CaptureThumbnail => loop._sceneView == null ? null : () => loop._sceneView.CaptureThumbnail();
+        public Func<byte[]?>? CaptureThumbnail => loop._sceneRenderer == null ? null : () => loop._sceneRenderer.CaptureThumbnail();
 
         public bool TryGetScriptEntry(string sceneName, out Abstractions.Scripting.SceneScriptEntry? entry)
         {
@@ -654,8 +658,8 @@ public IVideoManager? VideoManager => loop._videoManager;
 
         public void ResetInteractionState() => loop.ResetInteractionState();
         public void ClearLocalVariables() => loop.ClearLocalVariables();
-public Abstractions.Models.SaveData? BuildSaveData() => loop._saveDataService.BuildSaveData();
-public void ApplySaveData(Abstractions.Models.SaveData data) => loop._saveDataService.ApplySaveData(data);
+        public Abstractions.Models.SaveData? BuildSaveData() => loop._saveDataService.BuildSaveData();
+        public void ApplySaveData(Abstractions.Models.SaveData data) => loop._saveDataService.ApplySaveData(data);
         public void ReportException(Exception ex, string source) => loop.OnException?.Invoke(ex, source);
     }
 
@@ -671,11 +675,6 @@ public void ApplySaveData(Abstractions.Models.SaveData data) => loop._saveDataSe
         // 停止主循环
         try { _stopCts?.Cancel(); } catch { }
         try { if (_loopTask != null && !_loopTask.IsCompleted) _loopTask.Wait(2000); } catch { }
-
-        // 释放工作线程 CTS
-        try { _workerCts.Cancel(); } catch { }
-        try { _jobChannel.Writer.TryComplete(); } catch { }
-        _workerCts.Dispose();
 
         // 释放停止 CTS
         _stopCts?.Dispose();

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Models;
@@ -27,8 +26,7 @@ public class GameController : IGameController
     private readonly LingFanEngine.Abstractions.EngineOptions.LingFanEngineOptions _options;
     private readonly ICommandPipeline _pipeline;
     private readonly IStateContainer _state;
-    /// <summary>等待表——键名→TaskCompletionSource，供 SignalComplete 零延迟唤醒</summary>
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _waitTable = new();
+    private readonly IAsyncWaitService _waitService;
 
     /// <summary>
     /// C# 场景回放代次（AsyncLocal——随 async 调用链流动）
@@ -39,11 +37,13 @@ public class GameController : IGameController
     internal static readonly AsyncLocal<int> CSharpReplayGen = new();
 
 public GameController(ICommandPipeline pipeline, IStateContainer state,
-    LingFanEngine.Abstractions.EngineOptions.LingFanEngineOptions? options = null)
+    LingFanEngine.Abstractions.EngineOptions.LingFanEngineOptions? options = null,
+    IAsyncWaitService? waitService = null)
 {
 _pipeline = pipeline;
 _state = state;
 _options = options ?? new();
+_waitService = waitService!;
 }
 
     // ========== 导航 ==========
@@ -103,46 +103,34 @@ Clickable = clickable });
         return _state.Get<int>(StateKeys.Dsl.CSharpReplayGeneration) != replayGen;
     }
 
-    /// <summary>通知某个等待键已完成（由 UI 层点击时调用，零延迟唤醒）</summary>
-    public void SignalComplete(string key)
-    {
-        if (_waitTable.TryRemove(key, out var tcs))
-            tcs.TrySetResult(true);
-    }
-
-    /// <summary>轮询直到状态标记为 true（120 秒超时）</summary>
+    /// <summary>等待状态键变为 true（事件驱动，零延迟唤醒）</summary>
     private async Task PollUntilTrue(string key, CancellationToken ct)
     {
-        var tcs = new TaskCompletionSource<bool>();
-        _waitTable[key] = tcs;
+        // Fast path
+        if (_state.Get<bool>(key))
+        {
+            _state.Set(key, false);
+            return;
+        }
+
         try
         {
-using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.BlockingTimeoutSeconds));
-using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
-using var registration = linked.Token.Register(() => tcs.TrySetCanceled());
-
-            // 双保险：SignalComplete 零延迟唤醒 + 16ms 轮询回退
-            while (!tcs.Task.IsCompleted)
-            {
-                if (_state.Get<bool>(key))
-                {
-                    tcs.TrySetResult(true);
-                    break;
-                }
-                // C# 场景回放被取消时抛异常终止整个 Runner
-                if (IsCSharpReplayStale())
-                    throw new CSharpSceneReplayCancelledException();
-                try { await Task.Delay(16, linked.Token); }
-                catch (OperationCanceledException) { break; }
-            }
-
-            _state.Set(key, false);
+            await _waitService.WaitForAsync(
+                () => _state.Get<bool>(key),
+                TimeSpan.FromSeconds(_options.BlockingTimeoutSeconds),
+                ct);
         }
-        finally
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            // 确保 _waitTable 始终被清理（即使异常抛出）
-            _waitTable.TryRemove(key, out _);
+            System.Diagnostics.Debug.WriteLine($"[GameController] PollUntilTrue({key}) 超时({_options.BlockingTimeoutSeconds}s)，强制推进");
         }
+        catch (OperationCanceledException)
+        {
+            // ct 被取消（如 SkipableWaitAsync 中 Task.WhenAny 后 cts.Cancel）——正常返回，避免未观察任务异常
+            return;
+        }
+
+        _state.Set(key, false);
     }
 
     /// <summary>追加文本到当前对话（对标 Ren'Py extend）</summary>
@@ -204,19 +192,19 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
         await _pipeline.SendAsync(new TransitionCommand { Type = type, Duration = duration });
         _state.Set(StateKeys.Transition.Active, true);
 
-        // P0-#2: 超时保护——防止过渡引擎 bug 导致永久阻塞
-var deadline = Environment.TickCount64 / 1000.0 + _options.BlockingTimeoutSeconds;
-while (_state.Get<bool>(StateKeys.Transition.Active))
-{
-if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
-            if (Environment.TickCount64 / 1000.0 >= deadline)
-            {
-                System.Diagnostics.Debug.WriteLine($"[GameController] TransitionAsync 超时({_options.BlockingTimeoutSeconds}s)，强制清除 Active");
-                _state.Set(StateKeys.Transition.Active, false);
-                break;
-            }
-            await Task.Delay(16);
+        try
+        {
+            await _waitService.WaitForAsync(
+                () => !_state.Get<bool>(StateKeys.Transition.Active) || IsCSharpReplayStale(),
+                TimeSpan.FromSeconds(_options.BlockingTimeoutSeconds));
         }
+        catch (OperationCanceledException)
+        {
+            System.Diagnostics.Debug.WriteLine($"[GameController] TransitionAsync 超时({_options.BlockingTimeoutSeconds}s)，强制清除 Active");
+            _state.Set(StateKeys.Transition.Active, false);
+        }
+
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
     }
 
     // ========== 等待 ==========
@@ -332,27 +320,24 @@ if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
         _state.Set<object>(StateKeys.Menu.Options, options);
         _state.Set(StateKeys.Menu.Selected, -1);
 
-// 安全轮询：超时兜底（交互场景不应永久阻塞）
-using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.InteractionTimeoutSeconds));
-while (!timeoutCts.Token.IsCancellationRequested)
-{
-if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
-            var selected = _state.Get<int>(StateKeys.Menu.Selected);
-            if (selected >= 0 && selected < options.Length)
-            {
-                _state.Set(StateKeys.Menu.Prompt, "");
-                _state.Set(StateKeys.Menu.Options, Array.Empty<string>());
-                _state.Set(StateKeys.Menu.Selected, -1);
-                return selected;
-            }
-            try { await Task.Delay(33, timeoutCts.Token); }
-            catch (OperationCanceledException) { break; }
+        try
+        {
+            await _waitService.WaitForAsync(
+                () => _state.Get<int>(StateKeys.Menu.Selected) >= 0 || IsCSharpReplayStale(),
+                TimeSpan.FromSeconds(_options.InteractionTimeoutSeconds));
         }
-        // 超时返回 -1（无选择）
+        catch (OperationCanceledException)
+        {
+            // 超时
+        }
+
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+
+        var selected = _state.Get<int>(StateKeys.Menu.Selected);
         _state.Set(StateKeys.Menu.Prompt, "");
-        _state.Set(StateKeys.Menu.Options, Array.Empty<string>());
+        _state.Set<object>(StateKeys.Menu.Options, Array.Empty<string>());
         _state.Set(StateKeys.Menu.Selected, -1);
-        return -1;
+        return selected >= 0 && selected < options.Length ? selected : -1;
     }
 
     // ========== 用户输入 ==========
@@ -365,27 +350,24 @@ if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
         _state.Set<object>(StateKeys.Input.Options, options ?? Array.Empty<string>());
         _state.Set<object?>(StateKeys.Input.Result, null);
 
-// 安全轮询：超时兜底（交互场景不应永久阻塞）
-using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.InteractionTimeoutSeconds));
-while (!timeoutCts.Token.IsCancellationRequested)
-{
-if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
-            var result = _state.Get<string?>(StateKeys.Input.Result);
-            if (result != null)
-            {
-                _state.Set(StateKeys.Input.Prompt, "");
-                _state.Set(StateKeys.Input.Options, Array.Empty<string>());
-                _state.Set<object?>(StateKeys.Input.Result, null);
-                return result;
-            }
-            try { await Task.Delay(33, timeoutCts.Token); }
-            catch (OperationCanceledException) { break; }
+        try
+        {
+            await _waitService.WaitForAsync(
+                () => _state.Get<string?>(StateKeys.Input.Result) != null || IsCSharpReplayStale(),
+                TimeSpan.FromSeconds(_options.InteractionTimeoutSeconds));
         }
-        // 超时返回 null
+        catch (OperationCanceledException)
+        {
+            // 超时
+        }
+
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+
+        var result = _state.Get<string?>(StateKeys.Input.Result);
         _state.Set(StateKeys.Input.Prompt, "");
-        _state.Set(StateKeys.Input.Options, Array.Empty<string>());
+        _state.Set<object>(StateKeys.Input.Options, Array.Empty<string>());
         _state.Set<object?>(StateKeys.Input.Result, null);
-        return null;
+        return result;
     }
 
     // ========== 音效 ==========
@@ -745,34 +727,43 @@ if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
         });
 
         // 2. 阻塞等待：cutscene 结束（CutsceneActive=false）或用户跳过（CutsceneSkipped=true）
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.InteractionTimeoutSeconds));
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+        using var interactionCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.InteractionTimeoutSeconds));
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct, interactionCts.Token);
 
         try
         {
             // 2a. 等待命令被 GameLoop 处理（CutsceneActive 变为 true）
-            //     SendAsync 仅入队，命令在下一帧才被消费执行
-            var waitDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(_options.CutsceneActivationTimeoutSeconds);
-            while (!_state.Get<bool>(StateKeys.Video.CutsceneActive) && DateTime.UtcNow < waitDeadline)
+            try
             {
-                if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
-                if (linkedCts.IsCancellationRequested) break;
-                await Task.Delay(16, linkedCts.Token);
+                await _waitService.WaitForAsync(
+                    () => _state.Get<bool>(StateKeys.Video.CutsceneActive) || IsCSharpReplayStale(),
+                    TimeSpan.FromSeconds(_options.CutsceneActivationTimeoutSeconds),
+                    timeoutCts.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // 激活超时——跳过等待
             }
 
-            // 2b. 轮询等待 cutscene 结束或用户跳过
-            while (_state.Get<bool>(StateKeys.Video.CutsceneActive) && !linkedCts.IsCancellationRequested)
+            if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+
+            // 2b. 等待 cutscene 结束或用户跳过
+            if (_state.Get<bool>(StateKeys.Video.CutsceneActive))
             {
-                if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
-                if (_state.Get<bool>(StateKeys.Video.CutsceneSkipped))
-                    break;
-                await Task.Delay(50, linkedCts.Token);
+                await _waitService.WaitForAsync(
+                    () => !_state.Get<bool>(StateKeys.Video.CutsceneActive)
+                        || _state.Get<bool>(StateKeys.Video.CutsceneSkipped)
+                        || IsCSharpReplayStale(),
+                    TimeSpan.FromSeconds(_options.InteractionTimeoutSeconds),
+                    timeoutCts.Token);
             }
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
         {
             // 超时兜底
         }
+
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
 
         // 3. 清理：停止视频并重置过场状态
         var skipped = _state.Get<bool>(StateKeys.Video.CutsceneSkipped);
@@ -855,28 +846,26 @@ if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
         _state.Set<object?>(StateKeys.Screen.Result, null);
         _ = _pipeline.SendAsync(new NavigateCommand { Path = sceneName });
 
-        // 等待 ScreenResult
-        var deadline = Environment.TickCount64 / 1000.0 + _options.InteractionTimeoutSeconds;
-        while (!ct.IsCancellationRequested)
+        try
         {
-            if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
-            var result = _state.Get<string?>(StateKeys.Screen.Result);
-            if (result != null)
-            {
-                _state.Set<object?>(StateKeys.Screen.Params, null);
-                _state.Set<object?>(StateKeys.Screen.Result, null);
-                return result;
-            }
-            if (Environment.TickCount64 / 1000.0 >= deadline)
-            {
-                System.Diagnostics.Debug.WriteLine($"[GameController] CallScreenAsync 超时({_options.InteractionTimeoutSeconds}s)");
-                _state.Set<object?>(StateKeys.Screen.Params, null);
-                return null;
-            }
-            try { await Task.Delay(16, ct); }
-            catch (OperationCanceledException) { return null; }
+            await _waitService.WaitForAsync(
+                () => _state.Get<string?>(StateKeys.Screen.Result) != null || IsCSharpReplayStale(),
+                TimeSpan.FromSeconds(_options.InteractionTimeoutSeconds),
+                ct);
         }
-        return null;
+        catch (OperationCanceledException)
+        {
+            System.Diagnostics.Debug.WriteLine($"[GameController] CallScreenAsync 超时({_options.InteractionTimeoutSeconds}s)");
+            _state.Set<object?>(StateKeys.Screen.Params, null);
+            return null;
+        }
+
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+
+        var result = _state.Get<string?>(StateKeys.Screen.Result);
+        _state.Set<object?>(StateKeys.Screen.Params, null);
+        _state.Set<object?>(StateKeys.Screen.Result, null);
+        return result;
     }
 
     /// <inheritdoc/>

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<LangVersion>latest</LangVersion>
+		<!-- Native AOT 兼容声明（库项目，实际 AOT 编译在可执行项目上） -->
+		<IsAotCompatible>true</IsAotCompatible>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\LingFanEngine.Abstractions\LingFanEngine.Abstractions.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Reference Include="Pidgin">
+			<HintPath>..\..\..\DLL\Pidgin.dll</HintPath>
+		</Reference>
+	</ItemGroup>
+
+</Project>

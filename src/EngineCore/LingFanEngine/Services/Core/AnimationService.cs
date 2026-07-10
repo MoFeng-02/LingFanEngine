@@ -13,49 +13,65 @@ public class AnimationService : IAnimationService
     public void Update(double frameDelta, IStateContainer state)
     {
         // P1-#9: 遍历前快照 Keys，防止遍历过程中 Remove 键触发集合被修改异常
-        foreach (var key in state.Keys.ToList())
+        // 性能优化：使用前缀过滤，只收集 __anim_*_active 键，避免 ToList 拷贝全部键
+        string?[]? animKeys = null;
+        int animCount = 0;
+        foreach (var key in state.Keys)
         {
-            if (key is string sk && sk.EndsWith(StateKeys.Animation.ActiveSuffix) && state.Get<bool>(sk))
+            if (key is string sk && sk.StartsWith(StateKeys.Animation.Prefix) && sk.EndsWith(StateKeys.Animation.ActiveSuffix))
             {
-                var baseKey = sk[..^7]; // 去掉 StateKeys.Animation.ActiveSuffix
-                var elapsed = state.Get<double>(baseKey + StateKeys.Animation.ElapsedSuffix) + frameDelta;
-                var duration = state.Get<double>(baseKey + StateKeys.Animation.DurationSuffix);
-                var easingStr = state.Get<string>(baseKey + StateKeys.Animation.EasingSuffix) ?? "EaseOutQuad";
-                state.Set(baseKey + StateKeys.Animation.ElapsedSuffix, elapsed);
+                animKeys ??= new string?[8];
+                if (animCount == animKeys.Length)
+                    Array.Resize(ref animKeys, animCount * 2);
+                animKeys[animCount++] = sk;
+            }
+        }
 
-                if (elapsed >= duration)
+        if (animKeys == null) return;
+
+        for (int i = 0; i < animCount; i++)
+        {
+            var sk = animKeys[i]!;
+            if (!state.Get<bool>(sk)) continue;
+
+            var baseKey = sk[..^StateKeys.Animation.ActiveSuffix.Length];
+            var elapsed = state.Get<double>(baseKey + StateKeys.Animation.ElapsedSuffix) + frameDelta;
+            var duration = state.Get<double>(baseKey + StateKeys.Animation.DurationSuffix);
+            var easingStr = state.Get<string>(baseKey + StateKeys.Animation.EasingSuffix) ?? "EaseOutQuad";
+            state.Set(baseKey + StateKeys.Animation.ElapsedSuffix, elapsed);
+
+            if (elapsed >= duration)
+            {
+                // 检查是否有剩余循环次数
+                var remaining = state.Get<int>(baseKey + StateKeys.Animation.RepeatSuffix);
+                if (remaining != 0)
                 {
-                    // 检查是否有剩余循环次数
-                    var remaining = state.Get<int>(baseKey + StateKeys.Animation.RepeatSuffix);
-                    if (remaining != 0)
-                    {
-                        state.Set(baseKey + StateKeys.Animation.ElapsedSuffix, 0.0);
-                        state.Set(baseKey + StateKeys.Animation.FromSuffix, state.Get<double>(baseKey + StateKeys.Animation.TargetSuffix));
-                        state.Set(baseKey + StateKeys.Animation.CurrentSuffix, state.Get<double>(baseKey + StateKeys.Animation.TargetSuffix));
-                        if (remaining > 0) state.Set(baseKey + StateKeys.Animation.RepeatSuffix, remaining - 1);
-                    }
-                    else
-                    {
-                        // 动画结束：设为目标值后清理所有 __anim_* 键
-                        state.Set(baseKey + StateKeys.Animation.CurrentSuffix, state.Get<double>(baseKey + StateKeys.Animation.TargetSuffix));
-                        state.Set(sk, false);
-                        state.Remove(baseKey + StateKeys.Animation.FromSuffix);
-                        state.Remove(baseKey + StateKeys.Animation.TargetSuffix);
-                        state.Remove(baseKey + StateKeys.Animation.DurationSuffix);
-                        state.Remove(baseKey + StateKeys.Animation.EasingSuffix);
-                        state.Remove(baseKey + StateKeys.Animation.ElapsedSuffix);
-                        state.Remove(baseKey + StateKeys.Animation.CurrentSuffix);
-                        state.Remove(baseKey + StateKeys.Animation.RepeatSuffix);
-                    }
+                    state.Set(baseKey + StateKeys.Animation.ElapsedSuffix, 0.0);
+                    state.Set(baseKey + StateKeys.Animation.FromSuffix, state.Get<double>(baseKey + StateKeys.Animation.TargetSuffix));
+                    state.Set(baseKey + StateKeys.Animation.CurrentSuffix, state.Get<double>(baseKey + StateKeys.Animation.TargetSuffix));
+                    if (remaining > 0) state.Set(baseKey + StateKeys.Animation.RepeatSuffix, remaining - 1);
                 }
                 else
                 {
-                    var t = elapsed / duration;
-                    var from = state.Get<double>(baseKey + StateKeys.Animation.FromSuffix);
-                    var target = state.Get<double>(baseKey + StateKeys.Animation.TargetSuffix);
-                    var eased = ApplyEasing(t, easingStr);
-                    state.Set(baseKey + StateKeys.Animation.CurrentSuffix, from + (target - from) * eased);
+                    // 动画结束：设为目标值后清理所有 __anim_* 键
+                    state.Set(baseKey + StateKeys.Animation.CurrentSuffix, state.Get<double>(baseKey + StateKeys.Animation.TargetSuffix));
+                    state.Set(sk, false);
+                    state.Remove(baseKey + StateKeys.Animation.FromSuffix);
+                    state.Remove(baseKey + StateKeys.Animation.TargetSuffix);
+                    state.Remove(baseKey + StateKeys.Animation.DurationSuffix);
+                    state.Remove(baseKey + StateKeys.Animation.EasingSuffix);
+                    state.Remove(baseKey + StateKeys.Animation.ElapsedSuffix);
+                    state.Remove(baseKey + StateKeys.Animation.CurrentSuffix);
+                    state.Remove(baseKey + StateKeys.Animation.RepeatSuffix);
                 }
+            }
+            else
+            {
+                var t = elapsed / duration;
+                var from = state.Get<double>(baseKey + StateKeys.Animation.FromSuffix);
+                var target = state.Get<double>(baseKey + StateKeys.Animation.TargetSuffix);
+                var eased = ApplyEasing(t, easingStr);
+                state.Set(baseKey + StateKeys.Animation.CurrentSuffix, from + (target - from) * eased);
             }
         }
     }
