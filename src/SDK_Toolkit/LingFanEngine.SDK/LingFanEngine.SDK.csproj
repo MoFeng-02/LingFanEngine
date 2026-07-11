@@ -41,14 +41,19 @@
 		<Folder Include="Utils\" />
 	</ItemGroup>
 
+	<!-- 引擎 DLL 引用（DLL 目录包含 4 个 DLL，其他依赖一律走 NuGet） -->
+	<!-- SDK 代码只直接使用 DslCore + Abstractions（DslCore 传递依赖）+ Pidgin -->
+	<!-- LingFanEngine.dll 存在于 DLL/ 目录供模板分发使用，但 SDK 不直接引用 -->
 	<ItemGroup>
-		<ProjectReference Include="..\..\EngineCore\LingFanEngine.DslCore\LingFanEngine.DslCore.csproj" />
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Reference Include="Pidgin">
-	    <HintPath>..\..\..\DLL\Pidgin.dll</HintPath>
-	  </Reference>
+		<Reference Include="LingFanEngine.Abstractions">
+			<HintPath>DLL\LingFanEngine.Abstractions.dll</HintPath>
+		</Reference>
+		<Reference Include="LingFanEngine.DslCore">
+			<HintPath>DLL\LingFanEngine.DslCore.dll</HintPath>
+		</Reference>
+		<Reference Include="Pidgin">
+			<HintPath>DLL\Pidgin.dll</HintPath>
+		</Reference>
 	</ItemGroup>
 
 	<!-- P2-1: 模板 ZIP 嵌入资源 -->
