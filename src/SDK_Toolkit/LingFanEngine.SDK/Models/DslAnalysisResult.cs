@@ -31,8 +31,15 @@ public class DslAnalysisResult
     public string FilePath { get; set; } = "";
 }
 
+/// <summary>诊断严重级别</summary>
+public enum DiagnosticSeverity
+{
+    Error,
+    Warning
+}
+
 /// <summary>诊断信息（错误/警告）</summary>
-public record DslDiagnostic(int Line, int Column, string Message, string? SourceLine);
+public record DslDiagnostic(int Line, int Column, string Message, string? SourceLine, DiagnosticSeverity Severity = DiagnosticSeverity.Error);
 
 /// <summary>变量信息</summary>
 public record VariableInfo(string Name, string? Value, int DefinitionLine, List<int> ReferenceLines);

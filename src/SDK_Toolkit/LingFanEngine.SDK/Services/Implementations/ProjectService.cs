@@ -90,6 +90,15 @@ public partial class ProjectService : ObservableObject, IProjectService
     }
 
     /// <inheritdoc/>
+    public Task RemoveRecentAsync(string projectFilePath)
+    {
+        var recents = GetRecentProjects();
+        _recentProjectsCache = recents.Where(r => r.Path != projectFilePath).ToList();
+        SaveRecentProjects();
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc/>
     public IReadOnlyList<RecentProject> GetRecentProjects()
     {
         if (_recentProjectsCache != null)

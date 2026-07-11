@@ -13,6 +13,7 @@ public partial class AssetManagerViewModel : ViewModelBase
 {
     private readonly IAssetManager _assetManager;
     private readonly IProjectSession _session;
+    private List<AssetEntry> _allAssets = new();
 
     [ObservableProperty]
     private ObservableCollection<AssetEntry> _assets = new();
@@ -58,6 +59,7 @@ public partial class AssetManagerViewModel : ViewModelBase
     private void OnProjectClosed()
     {
         ProjectDirectory = "";
+        _allAssets.Clear();
         Assets.Clear();
         Preview = null;
         StatusMessage = "就绪";
@@ -77,9 +79,8 @@ public partial class AssetManagerViewModel : ViewModelBase
         {
             StatusMessage = "正在扫描资源...";
             var entries = await _assetManager.ScanAssetsAsync(ProjectDirectory);
-            Assets.Clear();
-            foreach (var entry in entries)
-                Assets.Add(entry);
+            _allAssets = entries.ToList();
+            ApplyCategoryFilter();
             StatusMessage = $"找到 {entries.Count} 个资源";
         }
         catch (Exception ex)
@@ -93,7 +94,25 @@ public partial class AssetManagerViewModel : ViewModelBase
     private void FilterCategory(int categoryIndex)
     {
         SelectedCategoryIndex = categoryIndex;
-        // TODO: 根据分类过滤 Assets 列表
+        ApplyCategoryFilter();
+    }
+
+    /// <summary>根据当前选中的分类索引过滤资源列表</summary>
+    private void ApplyCategoryFilter()
+    {
+        Assets.Clear();
+        var filtered = SelectedCategoryIndex switch
+        {
+            0 => _allAssets,
+            1 => _allAssets.Where(a => a.Type == AssetType.Story),
+            2 => _allAssets.Where(a => a.Type == AssetType.Image),
+            3 => _allAssets.Where(a => a.Type == AssetType.Audio),
+            4 => _allAssets.Where(a => a.Type == AssetType.Video),
+            5 => _allAssets.Where(a => a.Type is AssetType.Json or AssetType.Other),
+            _ => _allAssets
+        };
+        foreach (var entry in filtered)
+            Assets.Add(entry);
     }
 
     /// <summary>选中资源时获取预览</summary>

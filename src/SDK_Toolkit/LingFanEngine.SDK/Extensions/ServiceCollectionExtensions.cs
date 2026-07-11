@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿using System;
 using LingFanEngine.SDK.Navigation;
 using LingFanEngine.SDK.Services.Abstractions;
 using LingFanEngine.SDK.Services.Implementations;
@@ -21,7 +21,9 @@ public static class ServiceCollectionExtensions
     {
         // ===== 服务层（Singleton） =====
         services.AddSingleton<IProjectService, ProjectService>();
-        services.AddSingleton<IProjectSession, ProjectSession>();
+        services.AddSingleton<IProjectSession>(sp => new ProjectSession(
+            sp.GetRequiredService<IProjectService>(),
+            sp.GetRequiredService<ITemplateService>()));
         services.AddSingleton<ITemplateService, TemplateService>();
         services.AddSingleton<IDslAnalyzer, DslAnalyzer>();
         services.AddSingleton<IResourceEncryptor, ResourceEncryptor>();
@@ -42,7 +44,6 @@ public static class ServiceCollectionExtensions
         services.AddTransient<SettingsViewModel>();
 
         // ===== 页面（Transient） =====
-        services.AddTransient<ProjectPage>();
         services.AddTransient<StoryEditorPage>();
         services.AddTransient<AssetManagerPage>();
         services.AddTransient<BuildPage>();

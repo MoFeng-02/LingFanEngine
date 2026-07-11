@@ -47,6 +47,9 @@ public class OverlayManager : Grid
         // 快捷菜单项选择
         _quickMenuPanel.MenuItemSelected += OnMenuItemSelected;
 
+        // P1-7: 全屏设置事件转发
+        _settingsPanel.FullscreenChanged += fullscreen => FullscreenChanged?.Invoke(fullscreen);
+
         // 添加到覆盖层（后添加的在上层）
         Children.Add(_saveLoadPanel);
         Children.Add(_settingsPanel);
@@ -175,6 +178,9 @@ public class OverlayManager : Grid
     }
 
     // ========== 公开 API：供 C# 命令调用 ==========
+
+    /// <summary>全屏切换请求事件（P1-7: 转发给 MainView）</summary>
+    public event Action<bool>? FullscreenChanged;
 
     /// <summary>显示存档面板</summary>
     public void ShowSavePanel() { HideAll(); _saveLoadPanel.Show(saveMode: true); }

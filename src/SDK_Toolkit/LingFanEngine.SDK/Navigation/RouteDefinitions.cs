@@ -4,7 +4,11 @@ using MFToolkit.Routing.Entities;
 
 namespace LingFanEngine.SDK.Navigation;
 
-/// <summary>路由注册定义</summary>
+/// <summary>
+/// 路由注册定义
+/// <para>P2-2: WorkspaceWindow 使用 MFToolkit.Routing 导航。</para>
+/// <para>每个路由对应一个工作台页面，路由路径用于活动栏导航。</para>
+/// </summary>
 public static class RouteDefinitions
 {
     /// <summary>获取所有路由实体</summary>
@@ -12,9 +16,6 @@ public static class RouteDefinitions
     {
         return
         [
-            // 项目管理（顶级路由，KeepAlive 缓存）
-            new RouteEntity<ProjectPage>("/project") { IsTop = true, IsKeepalive = true },
-
             // 故事编辑器
             new RouteEntity<StoryEditorPage>("/editor"),
 

@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.EngineOptions;
 using LingFanEngine.Abstractions.Entities.UIs;
@@ -128,7 +129,12 @@ public partial class SceneView : UserControl, ISceneRenderer
             {
                 bmp.Render(this);
                 using var ms = new System.IO.MemoryStream();
-                bmp.Save(ms);
+                // Phase 36: JPEG 编码（质量 85），320×180 缩略图 ≈ 5-15KB（PNG 约 20-80KB）
+                var options = new JpegBitmapEncoderOptions
+                {
+                    Quality = 85
+                };
+                bmp.Save(ms, options);
                 return ms.ToArray();
             });
         }
@@ -161,12 +167,16 @@ public partial class SceneView : UserControl, ISceneRenderer
         {
             RebuildScene(sceneName);
             _lastSceneName = sceneName;
+            // 安全网：RebuildScene 后立即刷新绑定文本，确保 define 变量已注入时能被解析
+            _controlFactory.RefreshBoundTextBlocks();
         }
         else if (dirty)
         {
             _state.Set(StateKeys.Scene.Dirty, false);
             RebuildScene(sceneName);
             _lastSceneName = sceneName;
+            // 安全网：同上
+            _controlFactory.RefreshBoundTextBlocks();
         }
         else if (sceneName == _lastSceneName && !string.IsNullOrEmpty(sceneName))
         {
@@ -427,10 +437,13 @@ public partial class SceneView : UserControl, ISceneRenderer
         var shakeOffsetX = _state.Get<double>(StateKeys.Shake.OffsetX);
         var shakeOffsetY = _state.Get<double>(StateKeys.Shake.OffsetY);
         var transActive = _state.Get<bool>(StateKeys.Transition.Active);
-        if (_sceneRoot != null)
+        if (_sceneRoot == null) return;
+
+        if (shakeActive && (shakeOffsetX != 0 || shakeOffsetY != 0))
         {
-            if (shakeActive && (shakeOffsetX != 0 || shakeOffsetY != 0))
+            if (transActive)
             {
+                // 过渡+震动同时活跃：复制过渡的 Transform（offset/scale），叠加震动位移
                 var existingTransform = _sceneRoot.RenderTransform as TransformGroup;
                 var shakeTransform = new TransformGroup();
                 if (existingTransform != null)
@@ -441,10 +454,15 @@ public partial class SceneView : UserControl, ISceneRenderer
                 shakeTransform.Children.Add(new TranslateTransform(shakeOffsetX, shakeOffsetY));
                 _sceneRoot.RenderTransform = shakeTransform;
             }
-            else if (!shakeActive && !transActive)
+            else
             {
-                _sceneRoot.RenderTransform = null;
+                // 仅震动活跃：每帧创建全新的 Transform，避免累积 TranslateTransform
+                _sceneRoot.RenderTransform = new TranslateTransform(shakeOffsetX, shakeOffsetY);
             }
+        }
+        else if (!shakeActive && !transActive)
+        {
+            _sceneRoot.RenderTransform = null;
         }
     }
 

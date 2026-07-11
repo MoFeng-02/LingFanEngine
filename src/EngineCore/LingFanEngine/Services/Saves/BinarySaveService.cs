@@ -12,6 +12,7 @@ namespace LingFanEngine.Services.Saves;
 /// <summary>
 /// 二进制加密存档服务实现
 /// <para>使用 JSON 序列化（JsonAOT）+ AES 加密存储。</para>
+/// <para>Phase 36: 存档时同时写入 .meta 轻量索引文件（明文 JSON），枚举时只读 .meta，不解密完整存档。</para>
 /// </summary>
 public class BinarySaveService : ISaveService
 {
@@ -90,6 +91,10 @@ public class BinarySaveService : ISaveService
         var jsonBytes = Encoding.UTF8.GetBytes(json);
         var encryptedData = _encryption.Encrypt(jsonBytes);
         await File.WriteAllBytesAsync(GetFilePath(slotId), encryptedData);
+
+        // Phase 36: 写入 .meta 轻量索引文件（明文 JSON，仅含展示信息）
+        // 枚举存档列表时只读 .meta，无需解密+反序列化完整存档
+        await WriteMetaAsync(slotId, data);
     }
 
     /// <inheritdoc/>
@@ -98,6 +103,10 @@ public class BinarySaveService : ISaveService
         var filePath = GetFilePath(slotId);
         if (File.Exists(filePath))
             File.Delete(filePath);
+        // Phase 36: 同时删除 .meta 文件
+        var metaPath = GetMetaFilePath(slotId);
+        if (File.Exists(metaPath))
+            File.Delete(metaPath);
         return Task.CompletedTask;
     }
 
@@ -109,31 +118,64 @@ public class BinarySaveService : ISaveService
         if (!Directory.Exists(_saveDirectory))
             return slots;
 
-        foreach (var file in Directory.GetFiles(_saveDirectory, "*.sav"))
+        // Phase 36: 优先读取 .meta 轻量索引文件（明文 JSON，无需解密）
+        var metaFiles = Directory.GetFiles(_saveDirectory, "*.meta");
+        var savFiles = Directory.GetFiles(_saveDirectory, "*.sav");
+        var metaSlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // 快速路径：从 .meta 文件读取
+        foreach (var metaFile in metaFiles)
         {
             try
             {
-                var encryptedData = await File.ReadAllBytesAsync(file);
+                var metaJson = await File.ReadAllTextAsync(metaFile);
+                var info = JsonSerializer.Deserialize(metaJson, LfJsonContext.Default.SaveSlotInfo);
+                if (info != null)
+                {
+                    slots.Add(info);
+                    metaSlotIds.Add(Path.GetFileNameWithoutExtension(metaFile));
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SaveService] Skipping corrupted meta file '{metaFile}': {ex.Message}");
+            }
+        }
+
+        // 兼容路径：无 .meta 的旧存档 → 回退到解密+反序列化完整存档
+        foreach (var savFile in savFiles)
+        {
+            var slotId = Path.GetFileNameWithoutExtension(savFile);
+            if (metaSlotIds.Contains(slotId))
+                continue; // 已有 .meta，跳过
+
+            try
+            {
+                var encryptedData = await File.ReadAllBytesAsync(savFile);
                 var decryptedData = _encryption.Decrypt(encryptedData);
                 var json = Encoding.UTF8.GetString(decryptedData);
                 var data = JsonSerializer.Deserialize(json, LfJsonContext.Default.SaveData);
 
                 if (data != null)
                 {
-                    slots.Add(new SaveSlotInfo
+                    var info = new SaveSlotInfo
                     {
-                        SlotId = Path.GetFileNameWithoutExtension(file),
+                        SlotId = slotId,
                         Name = data.Name,
                         CreateTime = data.CreateTime,
                         UpdateTime = data.UpdateTime,
                         Thumbnail = data.Thumbnail,
                         GameVersion = data.GameVersion
-                    });
+                    };
+                    slots.Add(info);
+
+                    // 补写 .meta 文件，下次不再需要解密
+                    await WriteMetaAsync(slotId, data);
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[SaveService] Skipping corrupted save file '{file}': {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[SaveService] Skipping corrupted save file '{savFile}': {ex.Message}");
             }
         }
 
@@ -153,5 +195,40 @@ public class BinarySaveService : ISaveService
     {
         var safeSlotId = string.Join("_", slotId.Split(Path.GetInvalidFileNameChars()));
         return Path.Combine(_saveDirectory, $"{safeSlotId}.sav");
+    }
+
+    /// <summary>
+    /// 获取 .meta 索引文件路径
+    /// </summary>
+    private string GetMetaFilePath(string slotId)
+    {
+        var safeSlotId = string.Join("_", slotId.Split(Path.GetInvalidFileNameChars()));
+        return Path.Combine(_saveDirectory, $"{safeSlotId}.meta");
+    }
+
+    /// <summary>
+    /// 写入 .meta 轻量索引文件（明文 JSON，仅含展示信息）
+    /// </summary>
+    private async Task WriteMetaAsync(string slotId, SaveData data)
+    {
+        try
+        {
+            var info = new SaveSlotInfo
+            {
+                SlotId = slotId,
+                Name = data.Name,
+                CreateTime = data.CreateTime,
+                UpdateTime = data.UpdateTime,
+                Thumbnail = data.Thumbnail,
+                GameVersion = data.GameVersion
+            };
+            var metaJson = JsonSerializer.Serialize(info, LfJsonContext.Default.SaveSlotInfo);
+            await File.WriteAllTextAsync(GetMetaFilePath(slotId), metaJson);
+        }
+        catch (Exception ex)
+        {
+            // .meta 写入失败不影响存档主体
+            System.Diagnostics.Debug.WriteLine($"[SaveService] WriteMetaAsync failed for slot '{slotId}': {ex.Message}");
+        }
     }
 }

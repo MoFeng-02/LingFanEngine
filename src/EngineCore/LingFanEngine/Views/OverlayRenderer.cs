@@ -79,7 +79,7 @@ internal sealed class OverlayRenderer : IOverlayRenderer
     {
         UpdateMenuOverlay();
         UpdateInputOverlay();
-        UpdateNotifyToast();
+        UpdateNotifyToast(delta);
         UpdatePerformanceHud();
         UpdateDialogMask();
     }
@@ -101,6 +101,7 @@ internal sealed class OverlayRenderer : IOverlayRenderer
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Center
             };
+            _menuPanel.SetValue(Grid.ZIndexProperty, 150);
             var stack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
             stack.Children.Add(new TextBlock { Text = prompt ?? "", Foreground = Brushes.White, FontSize = 24, Margin = new Thickness(0, 0, 0, 20) });
             for (int i = 0; i < optsArr.Length; i++)
@@ -136,6 +137,7 @@ internal sealed class OverlayRenderer : IOverlayRenderer
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Center
             };
+            _inputPanel.SetValue(Grid.ZIndexProperty, 150);
             var stack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
             stack.Children.Add(new TextBlock { Text = prompt, Foreground = Brushes.White, FontSize = 20, Margin = new Thickness(0, 0, 0, 15) });
             _inputBox = new TextBox { Width = 400, Height = 40, FontSize = 18, Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(100, 50, 50, 50)) };
@@ -156,7 +158,7 @@ internal sealed class OverlayRenderer : IOverlayRenderer
 
     // ========== 通知 Toast ==========
 
-    private void UpdateNotifyToast()
+    private void UpdateNotifyToast(double delta)
     {
         var text = _state.Get<string>(StateKeys.Notify.Text);
 
@@ -209,11 +211,11 @@ internal sealed class OverlayRenderer : IOverlayRenderer
         }
         else if (_notifyRemainSeconds > 0)
         {
-            _notifyRemainSeconds -= 0.016;
+            _notifyRemainSeconds -= delta;
 
             if (_notifyFadeSeconds > 0)
             {
-                _notifyFadeSeconds -= 0.016;
+                _notifyFadeSeconds -= delta;
                 if (_currentNotify != null)
                 {
                     var progress = 1.0 - (_notifyFadeSeconds / NotifyFadeDuration);
@@ -229,7 +231,7 @@ internal sealed class OverlayRenderer : IOverlayRenderer
         }
         else if (_notifyFadeSeconds < 0)
         {
-            _notifyFadeSeconds += 0.016;
+            _notifyFadeSeconds += delta;
             if (_currentNotify != null)
             {
                 var progress = Math.Abs(_notifyFadeSeconds) / NotifyFadeDuration;

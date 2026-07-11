@@ -1,39 +1,43 @@
 using _LingFanEngineTemplateTitle_.Extensions;
-using _LingFanEngineTemplateTitle_.ViewModels;
 using _LingFanEngineTemplateTitle_.Views;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Themes.Fluent;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace _LingFanEngineTemplateTitle_;
 
 public class App : Application
 {
+    /// <summary>
+    /// 全局 DI 服务提供器
+    /// </summary>
+    public static ServiceProvider? Services { get; private set; }
+
     public override void Initialize()
     {
-
     }
 
     public override void OnFrameworkInitializationCompleted()
     {
-        IServiceCollection services = new ServiceCollection();
+        Styles.Add(new FluentTheme());
+
+        // 构建 DI 容器
+        var services = new ServiceCollection();
         services.AddGameService();
-
-        var provider = services.BuildServiceProvider();
-
-
+        Services = services.BuildServiceProvider();
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = provider.GetRequiredService<MainWindow>();
+            desktop.MainWindow = new MainWindow(new MainView(Services));
         }
-        else if (ApplicationLifetime is IActivityApplicationLifetime singleViewFactoryApplicationLifetime)
+        else if (ApplicationLifetime is ISingleViewApplicationLifetime singleView)
         {
-            singleViewFactoryApplicationLifetime.MainViewFactory = () => provider.GetRequiredService<MainView>();
+            singleView.MainView = new MainView(Services);
         }
-        else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform)
+        else if (ApplicationLifetime is IActivityApplicationLifetime activity)
         {
-            singleViewPlatform.MainView = provider.GetRequiredService<MainView>();
+            activity.MainViewFactory = () => new MainView(Services!);
         }
 
         base.OnFrameworkInitializationCompleted();

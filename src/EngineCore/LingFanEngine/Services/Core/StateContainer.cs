@@ -155,9 +155,9 @@ public class StateContainer : IStateContainer
     /// </summary>
 private object? Normalize(object? value)
 {
-if (value is System.Text.Json.JsonElement && _jsonConverter != null)
-return _jsonConverter.Convert(value);
-return value;
+    if (value is System.Text.Json.JsonElement && _jsonConverter != null)
+        return _jsonConverter.Convert(value);
+    return value;
 }
 
     /// <summary>

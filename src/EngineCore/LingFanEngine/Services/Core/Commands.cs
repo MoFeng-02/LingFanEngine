@@ -127,10 +127,13 @@ public readonly record struct ShowDialogCommand : ICommand
     /// </summary>
     public bool Clickable { get; init; }
 
-    /// <summary>侧脸图路径（Phase 24，对标 Ren'Py Character image=）</summary>
-    public string? SideImage { get; init; }
+/// <summary>侧脸图路径（Phase 24，对标 Ren'Py Character image=）</summary>
+public string? SideImage { get; init; }
 
-    public ShowDialogCommand() { }
+/// <summary>此对话不可跳过 (Phase 37，say noskip=true)，Skip 模式下仍需手动点击</summary>
+public bool Noskip { get; init; }
+
+public ShowDialogCommand() { }
 }
 
 /// <summary>

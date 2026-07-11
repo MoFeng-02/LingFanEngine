@@ -42,12 +42,28 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <ProjectReference Include="..\..\EngineCore\LingFanEngine.DslCore\LingFanEngine.DslCore.csproj" />
+		<ProjectReference Include="..\..\EngineCore\LingFanEngine.DslCore\LingFanEngine.DslCore.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
-		<Reference Include="Pidgin">
-			<HintPath>..\..\..\DLL\Pidgin.dll</HintPath>
-		</Reference>
+	  <Reference Include="Pidgin">
+	    <HintPath>..\..\..\DLL\Pidgin.dll</HintPath>
+	  </Reference>
 	</ItemGroup>
+
+	<!-- P2-1: 模板 ZIP 嵌入资源 -->
+	<!-- 构建时把 src/Template/V1 打包为 template.zip 并嵌入程序集 -->
+	<!-- 仅在 PackTemplate=true 时启用（分发构建时设置） -->
+	<Target Name="PackTemplateZip" BeforeTargets="PrepareForBuild" Condition="'$(PackTemplate)' == 'true'">
+		<PropertyGroup>
+			<TemplateSourceDir>$(MSBuildThisFileDirectory)..\..\Template\V1</TemplateSourceDir>
+			<TemplateZipPath>$(IntermediateOutputPath)template.zip</TemplateZipPath>
+			<PackTemplateScript>$(MSBuildThisFileDirectory)..\..\pack-template.ps1</PackTemplateScript>
+		</PropertyGroup>
+		<!-- 使用 PowerShell 脚本打包 ZIP（排除 bin/obj/.vs/.git） -->
+		<Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(PackTemplateScript)&quot; -SourceDir &quot;$(TemplateSourceDir)&quot; -OutputFile &quot;$(TemplateZipPath)&quot;" />
+		<ItemGroup>
+			<EmbeddedResource Include="$(TemplateZipPath)" />
+		</ItemGroup>
+	</Target>
 </Project>

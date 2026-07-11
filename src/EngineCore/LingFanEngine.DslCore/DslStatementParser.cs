@@ -53,7 +53,7 @@ public static class DslStatementParser
 
     // ====== 语句解析器 ======
 
-    /// <summary>say "text" [by "speaker" | speaker="speaker"] [clickable=true | okey]</summary>
+    /// <summary>say "text" [by "speaker" | speaker="speaker"] [clickable=true | okey] [noskip=true]</summary>
     private static readonly Parser<char, DslStatement> _say =
         from _1 in String("say").Before(_ws)
         from text in QuotedString.Before(_ws)
@@ -69,11 +69,16 @@ public static class DslStatementParser
             // okey 语法糖（等价于 clickable=true）
             .Or(Try(String("okey").Before(_ws)))
         ).Optional()
+        from noskip in (
+            // noskip=true 语法（Phase 37）
+            Try(String("noskip=true").Before(_ws))
+        ).Optional()
         select (DslStatement)new SayStmt
         {
             Text = text,
             Speaker = speaker.HasValue ? speaker.Value : null,
-            Clickable = clickable.HasValue
+            Clickable = clickable.HasValue,
+            Noskip = noskip.HasValue
         };
 
     /// <summary>navigate "path" [scene "name"]</summary>

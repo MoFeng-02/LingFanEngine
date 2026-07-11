@@ -16,6 +16,7 @@
 	<ItemGroup>
 		<Reference Include="Pidgin">
 			<HintPath>..\..\..\DLL\Pidgin.dll</HintPath>
+			<Private>true</Private>
 		</Reference>
 	</ItemGroup>
 

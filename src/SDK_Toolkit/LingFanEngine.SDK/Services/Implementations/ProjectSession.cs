@@ -13,6 +13,7 @@ namespace LingFanEngine.SDK.Services.Implementations;
 public partial class ProjectSession : ObservableObject, IProjectSession
 {
     private readonly IProjectService _projectService;
+    private readonly ITemplateService? _templateService;
 
     [ObservableProperty]
     private ProjectConfig? _currentProject;
@@ -30,9 +31,10 @@ public partial class ProjectSession : ObservableObject, IProjectSession
     /// <inheritdoc/>
     public event Action? ProjectClosed;
 
-    public ProjectSession(IProjectService projectService)
+    public ProjectSession(IProjectService projectService, ITemplateService? templateService = null)
     {
         _projectService = projectService;
+        _templateService = templateService;
     }
 
     /// <inheritdoc/>
@@ -52,6 +54,12 @@ public partial class ProjectSession : ObservableObject, IProjectSession
     /// <inheritdoc/>
     public async Task<bool> CreateAndOpenAsync(string name, string title, string author, string outputDir)
     {
+        // P2-1: 先从模板创建项目文件结构
+        if (_templateService != null)
+        {
+            await _templateService.CreateProjectFromTemplateAsync(outputDir, name, title);
+        }
+
         var project = await _projectService.CreateNewAsync(name, title, author, outputDir);
         if (project == null)
             return false;

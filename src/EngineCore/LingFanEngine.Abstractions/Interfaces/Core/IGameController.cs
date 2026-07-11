@@ -14,16 +14,16 @@ public interface IGameController
     Task NavigateAsync(string sceneName);
 
     // ========== 对话 ==========
-    void Say(string text, string? speaker = null,
-        string? speakerColor = null, string? textColor = null,
-        bool typewriter = true,
-        double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
-        bool clickable = false);
-    Task SayAsync(string text, string? speaker = null,
-        string? speakerColor = null, string? textColor = null,
-        bool typewriter = true,
-        double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
-        bool clickable = false);
+void Say(string text, string? speaker = null,
+string? speakerColor = null, string? textColor = null,
+bool typewriter = true,
+double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
+bool clickable = false, bool noskip = false);
+Task SayAsync(string text, string? speaker = null,
+string? speakerColor = null, string? textColor = null,
+bool typewriter = true,
+double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
+bool clickable = false, bool noskip = false);
 
     /// <summary>追加文本到当前对话（对标 Ren'Py extend）</summary>
     Task ExtendDialogAsync(string append);

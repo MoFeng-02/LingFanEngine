@@ -114,14 +114,15 @@ public class StoryEditorPage : UserControl
             }
             else if (e.PropertyName == nameof(StoryEditorViewModel.Diagnostics))
             {
-                // 更新波浪线
+                // P1-9: 根据 Severity 区分 errors 和 warnings
                 var errors = new System.Collections.Generic.List<DslDiagnostic>();
                 var warnings = new System.Collections.Generic.List<DslDiagnostic>();
                 foreach (var d in _viewModel.Diagnostics)
                 {
-                    // 简单区分：Message 包含 "错误" 或行号检查
-                    // 实际通过分析结果区分
-                    errors.Add(d);
+                    if (d.Severity == DiagnosticSeverity.Warning)
+                        warnings.Add(d);
+                    else
+                        errors.Add(d);
                 }
                 _editor.UpdateDiagnostics(errors, warnings);
             }

@@ -2,7 +2,6 @@ using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Entities.Enums;
 using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
-using LingFanEngine.Abstractions.Models.Saves;
 using LingFanEngine.Abstractions.Scripting;
 using LingFanEngine.Services.Scripting;
 
@@ -84,7 +83,15 @@ public class NavigateHandler : ICommandHandler<NavigateCommand>, IDefaultCommand
         {
             // 深合并场景级 Defines（补缺+修类型，等价于 C# StoryScript.InDefines）
             if (navEntity.Defines != null && navEntity.Defines.Count > 0)
+            {
                 MergeIntoState(navEntity.Defines, ctx.State);
+                foreach (var (dk, dv) in navEntity.Defines)
+                    System.Diagnostics.Debug.WriteLine($"[NavigateHandler] 场景 define 注入: {dk} = {dv} (type={dv?.GetType().Name})");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[NavigateHandler] 场景 [{navScName}] 无 Defines (Defines={navEntity.Defines?.Count ?? 0})");
+            }
 
             ctx.State.Set(StateKeys.Scene.CurrentName, navScName);
             ctx.State.Set(StateKeys.Screen.ActiveScreen, navScName);
@@ -163,9 +170,9 @@ public class NavigateHandler : ICommandHandler<NavigateCommand>, IDefaultCommand
         var sceneType = scriptEntry.SceneType;
         ApplyNavigationStateTransition(ctx, sceneType, navScName, curSc);
 
-ctx.State.Set(StateKeys.Scene.CurrentName, navScName);
-ctx.State.Set(StateKeys.Screen.ActiveScreen, navScName);
-System.Diagnostics.Debug.WriteLine($"[NavigateHandler] 启动 StoryScript [{navScName}] type={sceneType}");
+        ctx.State.Set(StateKeys.Scene.CurrentName, navScName);
+        ctx.State.Set(StateKeys.Screen.ActiveScreen, navScName);
+        System.Diagnostics.Debug.WriteLine($"[NavigateHandler] 启动 StoryScript [{navScName}] type={sceneType}");
 
         // 深合并场景变量定义（补缺+修类型）
         if (scriptEntry.Defines != null)
@@ -328,10 +335,10 @@ System.Diagnostics.Debug.WriteLine($"[NavigateHandler] 启动 StoryScript [{navS
 
         if (ctx.DslExecutor == null) return;
 
-ctx.State.Set(StateKeys.Scene.CurrentName, navScName);
-ctx.State.Set(StateKeys.Screen.ActiveScreen, navScName);
+        ctx.State.Set(StateKeys.Scene.CurrentName, navScName);
+        ctx.State.Set(StateKeys.Screen.ActiveScreen, navScName);
 
-// 先试当前已加载的 label
+        // 先试当前已加载的 label
         ctx.DslExecutor.StartFromLabel(navScName);
         System.Diagnostics.Debug.WriteLine($"[NavigateHandler] 尝试跳转 label: {navScName}");
 
@@ -367,93 +374,6 @@ ctx.State.Set(StateKeys.Screen.ActiveScreen, navScName);
 }
 
 /// <summary>
-/// 场景级后退命令处理器（DSL `back` 关键字）
-/// <para>纯场景导航——在 SceneStack 中后退到上一个场景。</para>
-/// <para>与 RollbackHandler 不同——本命令不回退对话，而是跳转场景。</para>
-/// <para>场景级导航清空 DSL 检查点（硬跳转语义）。</para>
-/// </summary>
-public class BackHandler : ICommandHandler<BackCommand>, IDefaultCommandHandler
-{
-    public void Handle(BackCommand bc, ICommandContext ctx)
-    {
-        if (ctx.SceneStack == null || ctx.SceneStack.Count == 0)
-            return;
-
-        ctx.ResetInteractionState();
-        ctx.ClearLocalVariables();
-        var backSnapshot = ctx.SceneStack.Back();
-        if (backSnapshot != null)
-        {
-            var sceneName = backSnapshot.SceneName;
-            ctx.State.Set(StateKeys.Scene.CurrentName, sceneName);
-            ctx.State.Set(StateKeys.Screen.ActiveScreen, sceneName);
-            ctx.State.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
-            ctx.State.Set(StateKeys.Scene.Elements, new List<UIElementEntity>());
-            ctx.State.Set(StateKeys.Scene.Dirty, true);
-            SceneStackDslRestarter.Restart(sceneName, ctx);
-        }
-    }
-}
-
-/// <summary>
-/// 场景级前进命令处理器（DSL `forward` 关键字）
-/// <para>纯场景导航——在 SceneStack 中前进到之前后退过的场景。</para>
-/// <para>与 RollforwardHandler 不同——本命令不前进对话，而是跳转场景。</para>
-/// <para>场景级导航清空 DSL 检查点（硬跳转语义）。</para>
-/// </summary>
-public class ForwardHandler : ICommandHandler<ForwardCommand>, IDefaultCommandHandler
-{
-    public void Handle(ForwardCommand fc, ICommandContext ctx)
-    {
-        if (ctx.SceneStack == null || ctx.SceneStack.ForwardCount == 0)
-            return;
-
-        ctx.ResetInteractionState();
-        ctx.ClearLocalVariables();
-        var fwdSnapshot = ctx.SceneStack.Forward();
-        if (fwdSnapshot != null)
-        {
-            var sceneName = fwdSnapshot.SceneName;
-            ctx.State.Set(StateKeys.Scene.CurrentName, sceneName);
-            ctx.State.Set(StateKeys.Screen.ActiveScreen, sceneName);
-            ctx.State.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
-            ctx.State.Set(StateKeys.Scene.Elements, new List<UIElementEntity>());
-            ctx.State.Set(StateKeys.Scene.Dirty, true);
-            SceneStackDslRestarter.Restart(sceneName, ctx);
-        }
-    }
-}
-
-/// <summary>
-/// 时间线回退命令处理器（鼠标滚轮上滚）
-/// <para>在 DSL 检查点列表中向后移动一步，显示上一个交互点的完整状态。</para>
-/// <para>跨场景：检查点包含全量状态快照，恢复时自动还原场景命令和元素。</para>
-/// <para>检查点耗尽时直接返回——不回退到 SceneStack。</para>
-/// </summary>
-public class RollbackHandler : ICommandHandler<RollbackCommand>, IDefaultCommandHandler
-{
-    public void Handle(RollbackCommand rc, ICommandContext ctx)
-    {
-        if (ctx.DslExecutor != null && ctx.DslExecutor.CanRollback())
-            ctx.DslExecutor.Rollback();
-    }
-}
-
-/// <summary>
-/// 时间线前进命令处理器（鼠标滚轮下滚）
-/// <para>在 DSL 检查点列表中向前移动一步，恢复下一个交互点的完整状态。</para>
-/// <para>只有回退过后才能前进——到达时间线前沿后此命令无效。</para>
-/// </summary>
-public class RollforwardHandler : ICommandHandler<RollforwardCommand>, IDefaultCommandHandler
-{
-    public void Handle(RollforwardCommand rc, ICommandContext ctx)
-    {
-        if (ctx.DslExecutor != null && ctx.DslExecutor.CanRollforward())
-            ctx.DslExecutor.Rollforward();
-    }
-}
-
-/// <summary>
 /// 场景级回退/前进后重新加载 DSL 场景
 /// <para>从 StoryRegistry 加载场景命令列表，从场景同名 label 启动 DSL。</para>
 /// <para>DslExecutor 会按序执行 ShowElementCommand 重建场景元素。</para>
@@ -478,182 +398,5 @@ internal static class SceneStackDslRestarter
             ctx.DslExecutor.LoadCommands(cmds, lbls, preserveCheckpoints: false);
             ctx.DslExecutor.StartFromLabel(sceneName);
         }
-    }
-}
-
-/// <summary>场景命令处理器 — 清栈 + 切场景</summary>
-public class SceneHandler : ICommandHandler<SceneCommand>, IDefaultCommandHandler
-{
-    public void Handle(SceneCommand sc, ICommandContext ctx)
-    {
-        var sceneEntity = ctx.SceneRegistry?.FindScene(sc.SceneName);
-        var sceneType = sceneEntity?.SceneType ?? SceneType.Game;
-
-        if (sceneType == SceneType.Game)
-        {
-            ctx.ClearLocalVariables();
-            ctx.DslExecutor?.ClearCheckpoints();  // Scene 命令是硬重置，清检查点
-            ctx.ResetInteractionState();
-            ctx.SceneStack?.Clear();
-        }
-        else
-        {
-            ctx.ResetInteractionState();
-        }
-
-        ctx.State.Set(StateKeys.Scene.CurrentType, (int)sceneType);
-        System.Diagnostics.Debug.WriteLine($"[SceneHandler] SceneName={sc.SceneName} type={sceneType}");
-
-        if (sceneEntity != null)
-        {
-            // 深合并场景级 Defines
-            if (sceneEntity.Defines != null && sceneEntity.Defines.Count > 0)
-                GameLoop.MergeIntoState(sceneEntity.Defines, ctx.State);
-
-ctx.State.Set(StateKeys.Scene.CurrentName, sc.SceneName);
-ctx.State.Set(StateKeys.Screen.ActiveScreen, sc.SceneName);
-// 元素列表初始化为空——UI 元素现在由 DslExecutor 通过 ShowElementCommand 按序追加
-// 不设 Dirty——场景名变更已触发 SceneView.RebuildScene
-ctx.State.Set(StateKeys.Scene.Elements, new List<UIElementEntity>());
-}
-else
-{
-ctx.State.Set(StateKeys.Scene.CurrentName, sc.SceneName);
-ctx.State.Set(StateKeys.Screen.ActiveScreen, sc.SceneName);
-            ctx.State.Set(StateKeys.Scene.Elements, new List<UIElementEntity>());
-        }
-
-        // 启动 DSL 执行器（尝试场景同名 label，与 NavigateHandler 一致）
-        if (ctx.DslExecutor != null && ctx.StoryRegistry != null && sceneEntity != null)
-        {
-            var (cmds, lbls) = ctx.StoryRegistry.GetCompiledResult(sc.SceneName);
-            if (cmds != null && lbls != null && lbls.ContainsKey(sc.SceneName))
-            {
-                ctx.DslExecutor.LoadCommands(cmds, lbls);
-                ctx.DslExecutor.StartFromLabel(sc.SceneName);
-                System.Diagnostics.Debug.WriteLine($"[SceneHandler] 启动场景同名 label: {sc.SceneName}");
-            }
-        }
-    }
-}
-
-/// <summary>导航到 DSL label 命令处理器</summary>
-public class NavToLabelHandler : ICommandHandler<NavToLabelCommand>, IDefaultCommandHandler
-{
-    public void Handle(NavToLabelCommand ntl, ICommandContext ctx)
-    {
-        System.Diagnostics.Debug.WriteLine($"[NavToLabelHandler] TargetLabel={ntl.TargetLabel}");
-        ctx.DslExecutor?.StartFromLabel(ntl.TargetLabel);
-    }
-}
-
-/// <summary>清空场景堆栈命令处理器</summary>
-public class ClearStackHandler : ICommandHandler<ClearStackCommand>, IDefaultCommandHandler
-{
-    public void Handle(ClearStackCommand command, ICommandContext ctx)
-        => ctx.SceneStack?.Clear();
-}
-
-/// <summary>
-/// 重置全部游戏状态命令处理器（返回主菜单时手动调用）
-/// <para>清除所有非系统变量、局部变量、场景堆栈、回溯检查点、菜单标记、Skip/Auto。</para>
-/// <para>保留系统偏好（音量、文字速度、已读记录、CG 解锁等）。</para>
-/// </summary>
-public class ResetGameStateHandler : ICommandHandler<ResetGameStateCommand>, IDefaultCommandHandler
-{
-    public void Handle(ResetGameStateCommand _, ICommandContext ctx)
-    {
-        // 1. 停止 DSL 执行器
-        ctx.DslExecutor?.Stop();
-
-        // 2. 清除所有非系统、非局部变量
-        foreach (var (k, _) in ctx.State.GetSnapshot())
-        {
-            if (!string.IsNullOrEmpty(k)
-                && !k.StartsWith(StateKeys.SystemPrefix)
-                && !k.StartsWith("_local_"))
-                ctx.State.Remove(k);
-        }
-
-        // 3. 清除局部变量
-        foreach (var (k, _) in ctx.State.GetSnapshot())
-        {
-            if (!string.IsNullOrEmpty(k) && k.StartsWith("_local_"))
-                ctx.State.Remove(k);
-        }
-
-        // 4. 清除场景堆栈（back + forward）
-        ctx.SceneStack?.Clear();
-
-        // 5. 清除回溯检查点
-        ctx.DslExecutor?.ClearCheckpoints();
-
-        // 6. 清除菜单标记
-        ctx.State.Set(StateKeys.Scene.MenuReturnTo, (string?)null);
-        ctx.State.Set(StateKeys.Scene.GameDslIndex, 0);
-        ctx.State.Set(StateKeys.Scene.GameDslWaitingType, "");
-        ctx.State.Set(StateKeys.Scene.GameSceneElements, (List<UIElementEntity>?)null);
-        ctx.State.Set(StateKeys.Scene.GameRuntimeElements, (List<UIElementEntity>?)null);
-        ctx.State.Set(StateKeys.Scene.GameCurrentBackground, (string?)null);
-
-        // 7. 重置 Skip/Auto 模式
-        ctx.State.Set(StateKeys.Playback.SkipActive, false);
-        ctx.State.Set(StateKeys.Playback.AutoActive, false);
-        ctx.State.Set(StateKeys.Playback.AutoTimer, 0.0);
-
-        // 8. 重置交互状态
-        ctx.ResetInteractionState();
-
-        System.Diagnostics.Debug.WriteLine("[ResetGameStateHandler] 游戏状态已完全重置");
-    }
-}
-
-/// <summary>
-/// 回溯到指定检查点命令处理器（从历史面板跳转）
-/// </summary>
-public class RollbackToHandler : ICommandHandler<RollbackToCommand>, IDefaultCommandHandler
-{
-    public void Handle(RollbackToCommand rtc, ICommandContext ctx)
-    {
-        if (ctx.DslExecutor == null) return;
-
-        var targetPos = rtc.TargetCheckpointIndex;
-        if (targetPos < 0)
-        {
-            // 等价于 Back
-            ctx.DslExecutor.Rollback();
-            return;
-        }
-
-        ctx.DslExecutor.RollbackTo(targetPos);
-    }
-}
-
-/// <summary>深合并变量定义命令处理器</summary>
-public class MergeDefinesHandler : ICommandHandler<MergeDefinesCommand>, IDefaultCommandHandler
-{
-    public void Handle(MergeDefinesCommand md, ICommandContext ctx)
-        => MergeIntoState(md.Defines, ctx.State);
-
-    private static void MergeIntoState(Dictionary<string, object?> dict, IStateContainer state, string prefix = "")
-        => GameLoop.MergeIntoState(dict, state, prefix);
-}
-
-/// <summary>构建场景命令处理器</summary>
-public class BuildSceneHandler : ICommandHandler<BuildSceneCommand>, IDefaultCommandHandler
-{
-    public void Handle(BuildSceneCommand bsc, ICommandContext ctx)
-    {
-        var elements = new List<UIElementEntity>();
-        foreach (var raw in bsc.RawElements)
-        {
-            if (raw is UIElementEntity ui)
-                elements.Add(ui);
-        }
-        if (!string.IsNullOrEmpty(bsc.SceneName))
-            ctx.State.Set(StateKeys.Scene.CurrentName, bsc.SceneName);
-ctx.State.Set(StateKeys.Screen.ActiveScreen, bsc.SceneName);
-        ctx.State.Set(StateKeys.Scene.Elements, elements);
-        ctx.State.Set(StateKeys.Scene.Dirty, true);
     }
 }

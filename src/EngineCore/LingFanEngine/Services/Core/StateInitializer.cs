@@ -21,12 +21,10 @@ public class StateInitializer : IStateInitializer
         if (!state.ContainsKey(StateKeys.History.Visible))
             state.Set(StateKeys.History.Visible, false);
 
-        // 跳过/自动模式
-        if (!state.ContainsKey(StateKeys.Playback.SkipActive))
-            state.Set(StateKeys.Playback.SkipActive, false);
-        if (!state.ContainsKey(StateKeys.Playback.SkipOnlySeen))
-            state.Set(StateKeys.Playback.SkipOnlySeen, false);
-        if (!state.ContainsKey(StateKeys.Playback.AutoActive))
+// 跳过/自动模式
+if (!state.ContainsKey(StateKeys.Playback.SkipActive))
+state.Set(StateKeys.Playback.SkipActive, false);
+if (!state.ContainsKey(StateKeys.Playback.AutoActive))
             state.Set(StateKeys.Playback.AutoActive, false);
         if (!state.ContainsKey(StateKeys.Playback.AutoDelay))
             state.Set(StateKeys.Playback.AutoDelay, 3.0);
@@ -132,6 +130,9 @@ public class StateInitializer : IStateInitializer
             state.Set(StateKeys.Dialog.Complete, false);
         if (!state.ContainsKey(StateKeys.Dialog.Clickable))
             state.Set(StateKeys.Dialog.Clickable, false);
+        // Phase 37: noskip 标记
+        if (!state.ContainsKey(StateKeys.Dialog.Noskip))
+            state.Set(StateKeys.Dialog.Noskip, false);
         if (!state.ContainsKey(StateKeys.Dialog.TypewriterEnabled))
             state.Set(StateKeys.Dialog.TypewriterEnabled, true);
 

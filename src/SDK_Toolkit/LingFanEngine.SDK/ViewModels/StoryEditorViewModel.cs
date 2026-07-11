@@ -222,9 +222,9 @@ public partial class StoryEditorViewModel : ViewModelBase
 
             Diagnostics.Clear();
             foreach (var err in result.Errors)
-                Diagnostics.Add(err);
+                Diagnostics.Add(err with { Severity = DiagnosticSeverity.Error });
             foreach (var warn in result.Warnings)
-                Diagnostics.Add(warn);
+                Diagnostics.Add(warn with { Severity = DiagnosticSeverity.Warning });
 
             Variables.Clear();
             foreach (var v in result.Variables)

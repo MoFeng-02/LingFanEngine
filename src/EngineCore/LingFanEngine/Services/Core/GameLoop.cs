@@ -508,6 +508,7 @@ public class GameLoop : IGameLoop
         _state.Set(StateKeys.Dialog.SpeakerFont, (string?)null);
         _state.Set(StateKeys.Dialog.TextFont, (string?)null);
         _state.Set(StateKeys.Dialog.Clickable, false);
+        _state.Set(StateKeys.Dialog.Noskip, false);
         _state.Set<object?>(StateKeys.Dialog.SideImage, null);
         // Phase 24: 不重置 WindowMode——window hide/show 是显式控制，场景切换不应自动重置
 

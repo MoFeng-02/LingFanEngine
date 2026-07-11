@@ -17,7 +17,7 @@ public sealed class Setup
     // Avalonia configuration, don't remove; also used by visual designer.
     public static AppBuilder BuildAvaloniaApp()
     {
-        var app = AppBuilder.Configure<App>()
+        AppBuilder = AppBuilder.Configure<App>()
                 .UsePlatformDetect()
 #if DEBUG
                 .WithDeveloperTools()
@@ -25,6 +25,6 @@ public sealed class Setup
                 .WithInterFont()
                 .LogToTrace();
 
-        return app;
+        return AppBuilder;
     }
 }

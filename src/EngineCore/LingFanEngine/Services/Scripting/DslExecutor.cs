@@ -40,7 +40,12 @@ public class DslExecutor : IDslExecutor
         StateKeys.Rollback.IsReplay,
         StateKeys.Rollback.BlockedUntil,
         StateKeys.Playback.SeenSayIndices,
-        StateKeys.Dsl.CSharpReplayGeneration
+        StateKeys.Dsl.CSharpReplayGeneration,
+        // Phase 41: Skip/Auto 是播放模式状态，不是游戏内容——回溯不应恢复它们
+        // 回溯 = 浏览历史，Skip/Auto 应保持回溯前的值（通常已关闭）
+        StateKeys.Playback.SkipActive,
+        StateKeys.Playback.AutoActive,
+        StateKeys.Playback.AutoTimer,
     };
 
     /// <summary>C# 场景回溯回调（由 GameLoop 设置，回溯到 C# 场景时调用）</summary>
@@ -218,6 +223,8 @@ public class DslExecutor : IDslExecutor
                         _state.Set(StateKeys.Dsl.WaitingType, "");
                         // 重置 Clickable——防止 say clickable=true 的状态泄漏到后续非 say 命令
                         _state.Set(StateKeys.Dialog.Clickable, false);
+                        // Phase 37: 重置 Noskip——防止 say noskip=true 的状态泄漏
+                        _state.Set(StateKeys.Dialog.Noskip, false);
 
                         var isRollback = _state.Get<bool>(StateKeys.Rollback.IsActive);
                         if (isRollback && CanRollforward())
@@ -855,6 +862,13 @@ public class DslExecutor : IDslExecutor
         Interlocked.Exchange(ref _runTask, null);
 
         RestoreCheckpointState(cp);
+
+        // Phase 41: 回溯时关闭 Skip/Auto 模式——这些键已从快照中排除（s_rollbackKeys），
+        // 不被 RestoreCheckpointState 恢复也不被删除，需在此显式关闭。
+        // 回溯 = 浏览历史，不应继续自动跳过/推进。
+        _state.Set(StateKeys.Playback.SkipActive, false);
+        _state.Set(StateKeys.Playback.AutoActive, false);
+        _state.Set(StateKeys.Playback.AutoTimer, 0.0);
 
         // 解除可能正在阻塞的 C# 场景 Runner 中的 PollUntilTrue / TransitionAsync 轮询
         // RestoreCheckpointState 恢复了快照中的值，这里覆盖为完成态以快速唤醒过期 Runner

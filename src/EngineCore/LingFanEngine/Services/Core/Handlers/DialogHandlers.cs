@@ -118,6 +118,9 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>, IDefaultCom
         // 设置模态遮罩开关（say clickable=true / say okey 时按钮可点击）
         ctx.State.Set(StateKeys.Dialog.Clickable, sd.Clickable);
 
+        // Phase 37: 设置 noskip 标记（say noskip=true 时 Skip 模式下仍需手动点击）
+        ctx.State.Set(StateKeys.Dialog.Noskip, sd.Noskip);
+
         // 记录对话历史（对标 Ren'Py _history_list）
         RecordHistory(sd, dialogText, speakerName, ctx);
     }

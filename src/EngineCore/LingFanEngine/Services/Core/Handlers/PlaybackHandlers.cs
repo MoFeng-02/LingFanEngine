@@ -40,6 +40,9 @@ public class ToggleSkipHandler : ICommandHandler<ToggleSkipCommand>, IDefaultCom
         {
             ctx.State.Set(StateKeys.Playback.AutoActive, false);
             ctx.State.Set(StateKeys.Playback.AutoTimer, 0.0);
+            // Phase 41: 退出回溯浏览模式——开启 Skip 意味着用户要继续前进
+            ctx.State.Set(StateKeys.Rollback.IsActive, false);
+            ctx.State.Set(StateKeys.Rollback.IsReplay, false);
         }
     }
 }
@@ -62,6 +65,9 @@ public class ToggleAutoHandler : ICommandHandler<ToggleAutoCommand>, IDefaultCom
         if (newState)
         {
             ctx.State.Set(StateKeys.Playback.SkipActive, false);
+            // Phase 41: 退出回溯浏览模式——开启 Auto 意味着用户要继续前进
+            ctx.State.Set(StateKeys.Rollback.IsActive, false);
+            ctx.State.Set(StateKeys.Rollback.IsReplay, false);
         }
     }
 }

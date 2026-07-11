@@ -17,8 +17,11 @@ public interface IProjectService : INotifyPropertyChanged
     /// <summary>保存项目</summary>
     Task SaveAsync(ProjectConfig project);
 
-    /// <summary>删除项目</summary>
+    /// <summary>删除项目（含项目文件）</summary>
     Task DeleteAsync(string projectFilePath);
+
+    /// <summary>仅从最近列表移除记录（不删除项目文件）</summary>
+    Task RemoveRecentAsync(string projectFilePath);
 
     /// <summary>获取最近项目列表</summary>
     IReadOnlyList<RecentProject> GetRecentProjects();

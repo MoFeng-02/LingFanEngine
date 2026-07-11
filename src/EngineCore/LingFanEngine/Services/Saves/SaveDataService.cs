@@ -9,6 +9,7 @@ using LingFanEngine.Abstractions.Interfaces.Scripting;
 using LingFanEngine.Abstractions.Models;
 using LingFanEngine.Abstractions.Models.Saves;
 using LingFanEngine.Abstractions.Scripting;
+using LingFanEngine.Services.Core;
 using LingFanEngine.Services.Scripting;
 
 namespace LingFanEngine.Services.Saves;
@@ -110,7 +111,7 @@ public class SaveDataService : ISaveDataService
         // 1. 收集全量用户状态（排除 __ 系统变量和场景元素）
         //    场景元素不存档——读档时从 DSL 命令列表回放 ShowElementCommand 重建
         //    这避免了引用共享导致存档中混入错误场景元素的问题
-        var stateDict = new Dictionary<string, object?>();
+        //    Phase 36: 只写 TypedState（V2 类型安全），State 留空（V1 兼容回退用）
         var typedState = new Dictionary<string, SaveEntry>();
         var allState = new Dictionary<string, object?>(_state.GetSnapshot());
 
@@ -131,7 +132,6 @@ public class SaveDataService : ISaveDataService
                 && !(_options.EnableTimeSystem && k.StartsWith(StateKeys.GameTime.Prefix)))
                 continue;
 
-            stateDict[k] = v;
             typedState[k] = ToSaveEntry(v);
         }
 
@@ -147,7 +147,8 @@ public class SaveDataService : ISaveDataService
             GameVersion = _options.GameVersion,
             Name = _options.SaveNameFormatter?.Invoke(saveSceneName) ?? $"存档 - {saveSceneName}",
             SceneName = saveSceneName,
-            State = stateDict,
+            // Phase 36: 只写 TypedState，State 保持默认空字典（减少约 40% JSON 体积）
+            // 加载时优先 TypedState，为空则回退 State + ConvertJsonValue（V1 兼容）
             TypedState = typedState,
             SceneStackSnapshot = stackSnapshot,
             Thumbnail = thumb,
@@ -291,8 +292,14 @@ public class SaveDataService : ISaveDataService
             // 合并场景定义（仅补缺，状态已从存档恢复）
             if (scriptEntry.Defines != null)
                 MergeIntoState(scriptEntry.Defines, _state);
-            // 重新执行场景脚本（状态已恢复，脚本会根据当前状态走正确分支）
-            _ = scriptEntry.Runner();
+
+            // 创建场景级检查点——读档清除了所有检查点，需要为 C# 场景重新创建
+            // 这样回溯到此处 = 重新执行整个 StoryScript.Run()
+            _dslExecutor?.CreateSceneCheckpoint(sceneName);
+
+            // 使用代次追踪模式启动 Runner——与 NavigateHandler.RunScriptEntryWithGeneration 一致
+            // 确保回溯/前进时旧 Runner 能被 CSharpSceneReplayCancelledException 正确终止
+            _ = RunScriptEntryWithGeneration(scriptEntry, _state);
             Debug.WriteLine($"[SaveDataService] ApplySaveData: 重新执行 StoryScript [{sceneName}]");
         }
         // 5b. 尝试 DSL 场景（从存档位置恢复执行）
@@ -373,14 +380,12 @@ public class SaveDataService : ISaveDataService
         try
         {
             if (_saveService == null) return;
-            var state = new Dictionary<string, object?>();
             var typedState = new Dictionary<string, SaveEntry>();
             foreach (var (k, v) in _state.GetSnapshot())
             {
                 if (!k.StartsWith(StateKeys.SystemPrefix)) continue;
                 if (k.StartsWith(StateKeys.GameTime.Prefix)) continue;
                 if (IsTransientSystemKey(k)) continue;
-                state[k] = v;
                 typedState[k] = ToSaveEntry(v);
             }
             var data = new SaveData
@@ -388,7 +393,6 @@ public class SaveDataService : ISaveDataService
                 Name = StateKeys.SystemSaveSlot,
                 GameVersion = _options.GameVersion,
                 SceneName = "",
-                State = state,
                 TypedState = typedState
             };
             _saveService.SaveAsync(StateKeys.SystemSaveSlot, data);
@@ -458,6 +462,8 @@ public class SaveDataService : ISaveDataService
         or StateKeys.Playback.AutoTimer
         or StateKeys.History.Visible
         or StateKeys.Dialog.TypewriterDone
+        or StateKeys.Dialog.Clickable
+        or StateKeys.Dialog.Noskip
         or StateKeys.Gallery.Visible
         or StateKeys.Debug.Visible
         or StateKeys.Nvl.Active or StateKeys.Nvl.Text
@@ -578,6 +584,30 @@ public class SaveDataService : ISaveDataService
                 if (existing == null || existing.GetType() != v?.GetType())
                     state.Set(key, v);
             }
+        }
+    }
+
+    /// <summary>
+    /// 启动 C# StoryScript Runner，设置 AsyncLocal 回放代次以支持回溯取消
+    /// <para>与 NavigateHandler.RunScriptEntryWithGeneration 逻辑一致——确保读档恢复的
+    /// C# 场景在回溯/前进时能通过 CSharpSceneReplayCancelledException 正确终止旧 Runner。</para>
+    /// </summary>
+    private static async Task RunScriptEntryWithGeneration(SceneScriptEntry scriptEntry, IStateContainer state)
+    {
+        var gen = state.Get<int>(StateKeys.Dsl.CSharpReplayGeneration);
+        GameController.CSharpReplayGen.Value = gen;
+        try
+        {
+            await scriptEntry.Runner();
+        }
+        catch (CSharpSceneReplayCancelledException)
+        {
+            // 回溯/前进取消了此场景——Runner 已被异常终止
+            Debug.WriteLine($"[SaveDataService] C# 场景 [{scriptEntry.SceneName}] 被回溯/前进取消");
+        }
+        finally
+        {
+            GameController.CSharpReplayGen.Value = 0;
         }
     }
 }

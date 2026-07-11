@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Layout;
 using Avalonia.Media;
 using LingFanEngine.Abstractions;
@@ -17,6 +18,10 @@ public class QuickMenuPanel : UserControl
 {
     private readonly IStateContainer _state;
     private readonly IGameController? _controller;
+
+    // 直接持有需要动态更新的按钮引用（P2-4: 替代控件树遍历）
+    private Button? _skipButton;
+    private Button? _autoButton;
 
     /// <summary>菜单项点击事件</summary>
     public event Action<string>? MenuItemSelected;
@@ -56,8 +61,8 @@ public class QuickMenuPanel : UserControl
         AddMenuItem(menuPanel, "🖼 CG鉴赏", "gallery");
         AddMenuItem(menuPanel, "⚙ 设置", "settings");
         AddMenuSeparator(menuPanel);
-        AddMenuItem(menuPanel, "⏭ 跳过模式", "skip");
-        AddMenuItem(menuPanel, "▶ 自动模式", "auto");
+        _skipButton = AddMenuItem(menuPanel, "⏭ 跳过模式", "skip", closeOnClick: false);
+        _autoButton = AddMenuItem(menuPanel, "▶ 自动模式", "auto", closeOnClick: false);
         AddMenuSeparator(menuPanel);
         AddMenuItem(menuPanel, "🏠 返回标题", "title");
         AddMenuItem(menuPanel, "🔧 调试控制台", "debug");
@@ -82,36 +87,21 @@ public class QuickMenuPanel : UserControl
         IsVisible = false;
     }
 
-    /// <summary>更新跳过/自动模式标签</summary>
+    /// <summary>更新跳过/自动模式标签（P2-4: 直接用字段引用，不再遍历控件树）</summary>
     private void UpdateSkipAutoLabels()
     {
         var skipActive = _state.Get<bool>(StateKeys.Playback.SkipActive);
         var autoActive = _state.Get<bool>(StateKeys.Playback.AutoActive);
 
-        // 找到菜单面板并更新标签
-        if (Content is Panel panel && panel.Children.Count > 0 && panel.Children[0] is Border border
-            && border.Child is StackPanel menuPanel)
-        {
-            int idx = 0;
-            foreach (var child in menuPanel.Children)
-            {
-                if (child is Button btn)
-                {
-                    if (btn.Tag is string tag)
-                    {
-                        if (tag == "skip")
-                            btn.Content = skipActive ? "⏭ 跳过模式 [开]" : "⏭ 跳过模式 [关]";
-                        else if (tag == "auto")
-                            btn.Content = autoActive ? "▶ 自动模式 [开]" : "▶ 自动模式 [关]";
-                    }
-                    idx++;
-                }
-            }
-        }
+        if (_skipButton != null)
+            _skipButton.Content = skipActive ? "⏭ 跳过模式 [开]" : "⏭ 跳过模式 [关]";
+        if (_autoButton != null)
+            _autoButton.Content = autoActive ? "▶ 自动模式 [开]" : "▶ 自动模式 [关]";
     }
 
     /// <summary>添加菜单项</summary>
-    private void AddMenuItem(StackPanel parent, string label, string tag)
+    /// <param name="closeOnClick">点击后是否关闭菜单（skip/auto 为 false，不关闭）</param>
+    private Button AddMenuItem(StackPanel parent, string label, string tag, bool closeOnClick = true)
     {
         var btn = new Button
         {
@@ -129,11 +119,21 @@ public class QuickMenuPanel : UserControl
         btn.Click += (_, _) =>
         {
             HandleMenuAction(tag);
-            Hide();
-            Closed?.Invoke();
+
+            if (closeOnClick)
+            {
+                Hide();
+                Closed?.Invoke();
+            }
+            else
+            {
+                // toggle 类操作（skip/auto）不关闭菜单，仅刷新标签
+                UpdateSkipAutoLabels();
+            }
         };
 
         parent.Children.Add(btn);
+        return btn;
     }
 
     /// <summary>添加分隔线</summary>
@@ -150,6 +150,7 @@ public class QuickMenuPanel : UserControl
     /// <summary>处理菜单动作</summary>
     private void HandleMenuAction(string action)
     {
+        // P1-4: 统一在此处触发事件，不在 case 内重复触发
         MenuItemSelected?.Invoke(action);
 
         switch (action)
@@ -164,14 +165,25 @@ public class QuickMenuPanel : UserControl
                 // 使用 BackTitleAlias 别名，由 NavigateHandler 自动重定向到 TitleSceneName
                 _controller?.Navigate("back_title");
                 break;
-            case "debug":
-                // debug 由外层 OverlayManager 处理
-                MenuItemSelected?.Invoke("debug");
-                break;
             case "exit":
-                Environment.Exit(0);
+                // P1-5: 优雅退出，不再使用 Environment.Exit(0)
+                DoExit();
                 break;
-            // save, load, history, settings 由外层 OverlayManager 处理
+            // save, load, history, settings, debug 由外层 OverlayManager 处理
+        }
+    }
+
+    /// <summary>优雅退出应用（P1-5）</summary>
+    private static void DoExit()
+    {
+        if (Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.Shutdown();
+        }
+        else
+        {
+            // 移动端/Browser 等非桌面平台的退出
+            Environment.Exit(0);
         }
     }
 }

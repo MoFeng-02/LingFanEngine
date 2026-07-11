@@ -147,13 +147,16 @@ public class StoryLoader : IStoryLoader
                 story.Directory = relativeDir;
         }
 
-        // 注册 JSON 格式的 define（仅 JSON 格式，DSL define 已由 ExtractSceneBlocks 收集为场景级）
+        // 注册 JSON 格式的 define（仅 JSON 格式，DSL define 已由 ExtractSceneBlocks 收集为场景级/全局）
         RegisterDefinesFromJson(story, content ?? "");
 
         // 从脚本中提取并注册 scene 块，剩余的脚本再编译为流程命令
         System.Diagnostics.Debug.WriteLine($"[StoryLoader] story.Script 前 200 字: {story.Script[..Math.Min(200, story.Script.Length)]}");
-        var (sceneBlocks, flowScript) = ExtractSceneBlocks(story.Script);
-        System.Diagnostics.Debug.WriteLine($"[StoryLoader] ExtractSceneBlocks 返回 {sceneBlocks.Count} 个场景");
+        var (sceneBlocks, flowScript, globalDefines) = ExtractSceneBlocks(story.Script);
+        System.Diagnostics.Debug.WriteLine($"[StoryLoader] ExtractSceneBlocks 返回 {sceneBlocks.Count} 个场景, 全局 defines: {globalDefines?.Count ?? 0}");
+
+        // 注入全局 defines（顶格 define，加载时即生效，不编译为命令）
+        InjectGlobalDefines(globalDefines);
         foreach (var (sceneName, elements, entryScript, defines, layoutMode, sceneType) in sceneBlocks)
         {
             System.Diagnostics.Debug.WriteLine($"[StoryLoader]   >>> 场景 '{sceneName}' 元素数: {elements.Count}");
@@ -587,7 +590,25 @@ public class StoryLoader : IStoryLoader
             }
         }
 
-        // DSL 格式的 define 已由 ExtractSceneBlocks 收集为场景级 Defines，此处不再扫描文件级 define 行
+        // DSL 格式的 define 已由 ExtractSceneBlocks 收集为场景级/全局 Defines，此处不再扫描文件级 define 行
+    }
+
+    /// <summary>
+    /// 注入全局 defines（顶格 define，加载时即生效）
+    /// <para>遵循 define...once 语义：仅当键不存在时设置（与 SetVariableHandler.IsDefine 行为一致）。</para>
+    /// <para>由 LoadFromFileAsync 和 StoryRegistry.LoadScene 调用。</para>
+    /// </summary>
+    public void InjectGlobalDefines(Dictionary<string, object?>? globalDefines)
+    {
+        if (globalDefines == null) return;
+        foreach (var (key, val) in globalDefines)
+        {
+            if (!_state.ContainsKey(key))
+            {
+                _state.Set(key, val);
+                System.Diagnostics.Debug.WriteLine($"[StoryLoader] global define 注入: {key} = {val}");
+            }
+        }
     }
 
     /// <summary>
@@ -667,11 +688,12 @@ public class StoryLoader : IStoryLoader
     /// <para>支持 scene 行属性：scene "xxx" layout=canvas columns="*,2*"</para>
     /// <para>支持缩进嵌套：容器类型元素的缩进行作为子元素。</para>
     /// </summary>
-public (List<(string SceneName, List<UIElementEntity> Elements, string EntryScript, Dictionary<string, object?>? Defines, string LayoutMode, SceneType SceneType)> Scenes, string FlowScript)
+public (List<(string SceneName, List<UIElementEntity> Elements, string EntryScript, Dictionary<string, object?>? Defines, string LayoutMode, SceneType SceneType)> Scenes, string FlowScript, Dictionary<string, object?>? GlobalDefines)
 ExtractSceneBlocks(string script)
     {
         var scenes = new List<(string, List<UIElementEntity>, string, Dictionary<string, object?>?, string, SceneType)>();
         var flowLines = new List<string>();
+        Dictionary<string, object?>? globalDefines = null;
         var lines = script.Split('\n');
         bool inSceneBlock = false;
         string? currentSceneName = null;
@@ -755,6 +777,22 @@ ExtractSceneBlocks(string script)
                     currentEntryScript = new List<string>();
                     currentDefines = null;
                     currentSceneType = SceneType.Game;
+
+                    // 退出 scene 块的顶格行如果是 define，收集为全局 defines（不进入 flowScript）
+                    var exitTrimmed = line.Trim();
+                    if (exitTrimmed.StartsWith("define ") || exitTrimmed.StartsWith("define\t"))
+                    {
+                        var exitDefineEntry = DslParser.ParseDefineLine(exitTrimmed);
+                        if (exitDefineEntry != null)
+                        {
+                            var parsed = ParseDefineValue(exitDefineEntry.RawValue);
+                            globalDefines ??= new Dictionary<string, object?>();
+                            globalDefines[exitDefineEntry.Key] = parsed;
+                            System.Diagnostics.Debug.WriteLine($"[ExtractSceneBlocks] global define (scene exit): {exitDefineEntry.Key} = {parsed}");
+                            continue;
+                        }
+                    }
+
                     flowLines.Add(line);
                     continue;
                 }
@@ -782,6 +820,21 @@ ExtractSceneBlocks(string script)
             }
             else
             {
+                // 顶格 define 行 → 收集为全局 defines（加载时直接注入状态容器，不编译为命令）
+                var trimmedFlow = line.Trim();
+                if (trimmedFlow.StartsWith("define ") || trimmedFlow.StartsWith("define\t"))
+                {
+                    var defineEntry = DslParser.ParseDefineLine(trimmedFlow);
+                    if (defineEntry != null)
+                    {
+                        var parsed = ParseDefineValue(defineEntry.RawValue);
+                        globalDefines ??= new Dictionary<string, object?>();
+                        globalDefines[defineEntry.Key] = parsed;
+                        System.Diagnostics.Debug.WriteLine($"[ExtractSceneBlocks] global define: {defineEntry.Key} = {parsed}");
+                        continue;
+                    }
+                }
+
                 flowLines.Add(line);
             }
         }
@@ -793,7 +846,7 @@ ExtractSceneBlocks(string script)
             scenes.Add((currentSceneName, currentElements, entryScript, currentDefines, currentLayoutMode, currentSceneType));
         }
 
-        return (scenes, string.Join("\n", flowLines));
+        return (scenes, string.Join("\n", flowLines), globalDefines);
     }
 
     /// <summary>

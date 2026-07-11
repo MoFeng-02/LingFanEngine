@@ -185,11 +185,11 @@ public partial class LauncherViewModel : ViewModelBase
         }
     }
 
-    /// <summary>从最近列表移除</summary>
+    /// <summary>从最近列表移除（P1-10: 不删除项目文件，仅移除记录）</summary>
     [RelayCommand]
     private void RemoveRecent(string path)
     {
-        _projectService.DeleteAsync(path).FireAndForget();
+        _projectService.RemoveRecentAsync(path).FireAndForget();
         LoadRecentProjects();
         StatusMessage = "已移除记录";
     }

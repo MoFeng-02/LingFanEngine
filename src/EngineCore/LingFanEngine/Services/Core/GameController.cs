@@ -60,30 +60,30 @@ public void Say(string text, string? speaker = null,
 string? speakerColor = null, string? textColor = null,
 bool typewriter = true,
 double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
-bool clickable = false) =>
+bool clickable = false, bool noskip = false) =>
 _pipeline.SendAsync(new ShowDialogCommand { Text = text, Speaker = speaker,
 SpeakerColor = speakerColor, TextColor = textColor,
 TypewriterEnabled = typewriter,
 DialogPercentW = wPct, DialogPercentH = hPct,
 DialogMarginL = marginL, DialogMarginB = marginB,
-Clickable = clickable });
+Clickable = clickable, Noskip = noskip });
 
     /// <summary>投递对话，等待用户点击后返回</summary>
-    public async Task SayAsync(string text, string? speaker = null,
-    string? speakerColor = null, string? textColor = null,
-    bool typewriter = true,
-    double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
-    bool clickable = false)
-    {
-        // C# 场景回放被回溯/前进取消时，抛异常终止整个 Runner（不只是跳过此调用）
-        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+public async Task SayAsync(string text, string? speaker = null,
+string? speakerColor = null, string? textColor = null,
+bool typewriter = true,
+double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
+bool clickable = false, bool noskip = false)
+{
+// C# 场景回放被回溯/前进取消时，抛异常终止整个 Runner（不只是跳过此调用）
+if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
 
-        await _pipeline.SendAsync(new ShowDialogCommand { Text = text, Speaker = speaker,
-        SpeakerColor = speakerColor, TextColor = textColor,
-        TypewriterEnabled = typewriter,
-        DialogPercentW = wPct, DialogPercentH = hPct,
-        DialogMarginL = marginL, DialogMarginB = marginB,
-        Clickable = clickable });
+await _pipeline.SendAsync(new ShowDialogCommand { Text = text, Speaker = speaker,
+SpeakerColor = speakerColor, TextColor = textColor,
+TypewriterEnabled = typewriter,
+DialogPercentW = wPct, DialogPercentH = hPct,
+DialogMarginL = marginL, DialogMarginB = marginB,
+Clickable = clickable, Noskip = noskip });
         _state.Set(StateKeys.Dialog.WaitingSayComplete, false);
         await PollUntilTrue(StateKeys.Dialog.WaitingSayComplete, CancellationToken.None);
 

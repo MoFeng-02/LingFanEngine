@@ -23,44 +23,44 @@
 
 	<ItemGroup>
 		<!-- 防止裁剪器删除 JsonAOT 序列化器 -->
-		<TrimmerRootAssembly Include="LingFanEngine.Abstractions" />
-		<TrimmerRootDescriptor Include="$(MSBuildProjectDirectory)\ILLink.Descriptors.xml" Condition="Exists('$(MSBuildProjectDirectory)\ILLink.Descriptors.xml')" />
+		<!--<TrimmerRootAssembly Include="LingFanEngine.Abstractions" />-->
+		<!--<TrimmerRootDescriptor Include="$(MSBuildProjectDirectory)\ILLink.Descriptors.xml" Condition="Exists('$(MSBuildProjectDirectory)\ILLink.Descriptors.xml')" />-->
 
 		<!-- 保留 System.IO.Compression（DLC ZIP 操作在 AOT 下所需） -->
-		<TrimmerRootAssembly Include="System.IO.Compression" />
+		<!--<TrimmerRootAssembly Include="System.IO.Compression" />-->
 		<!-- 保留 NativeLibrary/Marshal 互操作路径 -->
-		<DirectPInvoke Include="*" />
+		<!--<DirectPInvoke Include="*" />-->
 		<!-- 保留 Regex 源生成器（[GeneratedRegex] 编译期生成） -->
 	</ItemGroup>
 
 	<ItemGroup>
-	  <DirectPInvoke Remove="nupkgs\**" />
+		<DirectPInvoke Remove="nupkgs\**" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <None Remove="publish-pack.bat" />
-	  <None Remove="publish.bat" />
+		<None Remove="publish-pack.bat" />
+		<None Remove="publish.bat" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<PackageReference Include="Avalonia" />
-		<PackageReference Include="LibVLCSharp" />
 		<PackageReference Include="MediaPlayer.Controls" />
 		<PackageReference Include="ThisAssembly">
-		  <PrivateAssets>all</PrivateAssets>
-		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\LingFanEngine.Abstractions\LingFanEngine.Abstractions.csproj" />
+		<ProjectReference Include="..\LingFanEngine.DslCore\LingFanEngine.DslCore.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<Reference Include="Pidgin">
 			<HintPath>..\..\..\DLL\Pidgin.dll</HintPath>
+			<Private>true</Private>
+			<!-- 确保复制到输出目录 -->
 		</Reference>
 	</ItemGroup>
-
-	<ItemGroup>
-		<ProjectReference Include="..\LingFanEngine.DslCore\LingFanEngine.DslCore.csproj" />
-		<ProjectReference Include="..\LingFanEngine.Abstractions\LingFanEngine.Abstractions.csproj" />
-	</ItemGroup>
-
 </Project>

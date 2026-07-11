@@ -720,7 +720,8 @@ SayStmt s => new ShowDialogCommand
 {
 Text = s.Text,
 Speaker = s.Speaker,
-Clickable = s.Clickable
+Clickable = s.Clickable,
+Noskip = s.Noskip
 },
 
             NavigateStmt n => new NavigateCommand { Path = n.Path, SceneName = n.SceneName },

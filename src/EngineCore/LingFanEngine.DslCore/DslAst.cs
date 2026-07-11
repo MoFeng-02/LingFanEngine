@@ -40,6 +40,8 @@ public sealed partial class SayStmt : DslStatement
     public string? Speaker { get; init; }
     /// <summary>对话期间场景按钮是否可点击（say clickable=true / say okey）</summary>
     public bool Clickable { get; init; }
+    /// <summary>此对话不可跳过（say noskip=true）</summary>
+    public bool Noskip { get; init; }
 }
 
 public sealed partial class NavigateStmt : DslStatement

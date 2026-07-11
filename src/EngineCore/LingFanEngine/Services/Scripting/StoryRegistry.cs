@@ -126,61 +126,10 @@ public class StoryRegistry : IStoryRegistry
         try
         {
             var content = File.ReadAllText(filePath);
-
-            // 注册 define（StoryLoader 的 RegisterDefinesFromJson 直接写状态容器）
-            _storyLoader.RegisterDefinesFromJson(new StoryFile
+            if (!LoadSceneInternal(filePath, content))
             {
-                Id = Path.GetFileNameWithoutExtension(filePath),
-                Title = Path.GetFileNameWithoutExtension(filePath),
-                Script = content,
-                DefinesNode = null
-            }, content);
-
-            // 提取 scene 块并注册到 SceneRegistry
-            var (sceneBlocks, flowScript) = ExtractSceneBlocksWithFlow(content);
-            var flowBuilder = new System.Text.StringBuilder(flowScript);
-            foreach (var (name, elements, entryScript, defines, layoutMode, sceneType) in sceneBlocks)
-            {
-                if (_loadedScenes.Contains(name)) continue;
-
-                // 将 entryScript 追加到 flowScript 中作为 label <sceneName>:
-                // 这样 NavigateHandler 可以通过场景同名 label 启动 DslExecutor
-                // （与 StoryLoader.LoadFromFileAsync 的行为一致）
-                if (!string.IsNullOrWhiteSpace(entryScript))
-                {
-                    flowBuilder.Append($"\nlabel {name}:\n");
-                    flowBuilder.Append(entryScript);
-                    flowBuilder.Append('\n');
-                }
-
-                _sceneRegistry.RegisterScene(name, new SceneEntity
-                {
-                    SceneName = name,
-                    Elements = elements,
-                    IsTransient = false,
-                    Defines = defines,
-                    LayoutMode = layoutMode,
-                    SceneType = sceneType
-                });
-                _loadedScenes.Add(name);
-                System.Diagnostics.Debug.WriteLine($"[StoryRegistry] 注册场景: {name}, 元素数={elements.Count}, entry={(string.IsNullOrWhiteSpace(entryScript) ? 0 : entryScript.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length)} 行, defines={defines?.Count ?? 0}");
-            }
-
-            // 编译剩余流程脚本（含场景 entryScript 转为的 label）
-            var result = _dslEngine.Compile(flowBuilder.ToString());
-            if (!result.Success)
-            {
-                System.Diagnostics.Debug.WriteLine($"[StoryRegistry] 编译失败: {filePath} -> {result.Error}");
+                System.Diagnostics.Debug.WriteLine($"[StoryRegistry] 编译失败: {filePath}");
                 return false;
-            }
-
-            // 保存编译结果（供 DslExecutor 使用）
-            if (result.Commands != null && result.Commands.Count > 0)
-            {
-                // 使用文件路径作为 key（同一个文件可能有多个 scene，共享相同的流程命令）
-                _compiledCommands[filePath] = result.Commands;
-                if (result.Labels != null)
-                    _compiledLabels[filePath] = result.Labels;
             }
 
             // 已加载的场景标记
@@ -244,51 +193,83 @@ public class StoryRegistry : IStoryRegistry
         try
         {
             var content = File.ReadAllText(filePath);
-            _storyLoader.RegisterDefinesFromJson(new StoryFile
-            {
-                Id = Path.GetFileNameWithoutExtension(filePath),
-                Title = Path.GetFileNameWithoutExtension(filePath),
-                Script = content,
-                DefinesNode = null
-            }, content);
-
-            var (sceneBlocks, flowScript) = ExtractSceneBlocksWithFlow(content);
-            var flowBuilder = new System.Text.StringBuilder(flowScript);
-            foreach (var (name, elements, entryScript, defines, layoutMode, sceneType) in sceneBlocks)
-            {
-                if (_loadedScenes.Contains(name)) continue;
-
-                // 将 entryScript 追加到 flowScript 中作为 label <sceneName>:
-                if (!string.IsNullOrWhiteSpace(entryScript))
-                {
-                    flowBuilder.Append($"\nlabel {name}:\n");
-                    flowBuilder.Append(entryScript);
-                    flowBuilder.Append('\n');
-                }
-
-                _sceneRegistry.RegisterScene(name, new SceneEntity
-                {
-                    SceneName = name,
-                    Elements = elements,
-                    IsTransient = false,
-                    Defines = defines,
-                    LayoutMode = layoutMode,
-                    SceneType = sceneType
-                });
-                _loadedScenes.Add(name);
-            }
-
-            var result = _dslEngine.Compile(flowBuilder.ToString());
-            if (!result.Success) return false;
-            if (result.Commands != null && result.Commands.Count > 0)
-            {
-                _compiledCommands[filePath] = result.Commands;
-                if (result.Labels != null)
-                    _compiledLabels[filePath] = result.Labels;
-            }
-            return true;
+            return LoadSceneInternal(filePath, content);
         }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[StoryRegistry] ReloadFile failed: {filePath} — {ex.Message}"); return false; }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[StoryRegistry] LoadSceneFromFile failed: {filePath} — {ex.Message}"); return false; }
+    }
+
+    /// <summary>
+    /// 内部加载逻辑——读文件、提取场景块、注入 defines、编译流程脚本、注册场景。
+    /// <para>LoadScene 和 LoadSceneFromFile 的公共实现，消除代码重复。</para>
+    /// <para>步骤：RegisterDefinesFromJson → ExtractSceneBlocks → InjectGlobalDefines →
+    /// 注册场景+追加 entryScript 为 label → 编译 flowScript → 保存编译结果。</para>
+    /// </summary>
+    /// <param name="filePath">文件路径（作为编译结果的 key）</param>
+    /// <param name="content">文件内容</param>
+    /// <returns>true 表示编译成功</returns>
+    private bool LoadSceneInternal(string filePath, string content)
+    {
+        // JSON 格式 defines（defines 字段）
+        _storyLoader.RegisterDefinesFromJson(new StoryFile
+        {
+            Id = Path.GetFileNameWithoutExtension(filePath),
+            Title = Path.GetFileNameWithoutExtension(filePath),
+            Script = content,
+            DefinesNode = null
+        }, content);
+
+        // 提取 scene 块 + 全局 defines
+        var (sceneBlocks, flowScript, globalDefines) = ExtractSceneBlocksWithFlow(content);
+
+        // 注入全局 defines（顶格 define，加载时即生效）
+        _storyLoader.InjectGlobalDefines(globalDefines);
+
+        // 注册场景 + 将 entryScript 追加为 label
+        var flowBuilder = new System.Text.StringBuilder(flowScript);
+        foreach (var (name, elements, entryScript, defines, layoutMode, sceneType) in sceneBlocks)
+        {
+            if (_loadedScenes.Contains(name)) continue;
+
+            // 将 entryScript 追加到 flowScript 中作为 label <sceneName>:
+            // 这样 NavigateHandler 可以通过场景同名 label 启动 DslExecutor
+            // （与 StoryLoader.LoadFromFileAsync 的行为一致）
+            if (!string.IsNullOrWhiteSpace(entryScript))
+            {
+                flowBuilder.Append($"\nlabel {name}:\n");
+                flowBuilder.Append(entryScript);
+                flowBuilder.Append('\n');
+            }
+
+            _sceneRegistry.RegisterScene(name, new SceneEntity
+            {
+                SceneName = name,
+                Elements = elements,
+                IsTransient = false,
+                Defines = defines,
+                LayoutMode = layoutMode,
+                SceneType = sceneType
+            });
+            _loadedScenes.Add(name);
+            System.Diagnostics.Debug.WriteLine($"[StoryRegistry] 注册场景: {name}, 元素数={elements.Count}, entry={(string.IsNullOrWhiteSpace(entryScript) ? 0 : entryScript.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length)} 行, defines={defines?.Count ?? 0}");
+        }
+
+        // 编译剩余流程脚本（含场景 entryScript 转为的 label）
+        var result = _dslEngine.Compile(flowBuilder.ToString());
+        if (!result.Success)
+        {
+            System.Diagnostics.Debug.WriteLine($"[StoryRegistry] 编译失败: {filePath} -> {result.Error}");
+            return false;
+        }
+
+        // 保存编译结果（使用文件路径作为 key——同一个文件可能有多个 scene，共享相同的流程命令）
+        if (result.Commands != null && result.Commands.Count > 0)
+        {
+            _compiledCommands[filePath] = result.Commands;
+            if (result.Labels != null)
+                _compiledLabels[filePath] = result.Labels;
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -313,8 +294,10 @@ public class StoryRegistry : IStoryRegistry
     }
 
     /// <summary>
-    /// 扫描完成后，注册所有已知文件的 JSON define 到状态容器
-    /// <para>DSL 格式的 define 已由 ExtractSceneBlocks 收集为场景级，在导航时深合并注入。</para>
+    /// 扫描完成后，注册所有已知文件的 define 到状态容器
+    /// <para>支持两种格式：JSON 格式（defines 字段）和 DSL 格式（顶格 define 语句）。</para>
+    /// <para>JSON defines 通过 RegisterDefinesFromJson 注入；DSL 全局 defines 通过 ExtractSceneBlocks + InjectGlobalDefines 注入。</para>
+    /// <para>场景级 defines 不在此处注入——它们在导航到对应场景时通过 MergeIntoState 深合并注入。</para>
     /// </summary>
     public void RegisterAllDefines()
     {
@@ -325,6 +308,8 @@ public class StoryRegistry : IStoryRegistry
             try
             {
                 var content = File.ReadAllText(filePath);
+
+                // JSON 格式 defines（defines 字段）
                 _storyLoader.RegisterDefinesFromJson(new StoryFile
                 {
                     Id = Path.GetFileNameWithoutExtension(filePath),
@@ -332,6 +317,10 @@ public class StoryRegistry : IStoryRegistry
                     Script = content,
                     DefinesNode = null
                 }, content);
+
+                // DSL 格式全局 defines（顶格 define 语句，Phase 39 修复）
+                var (_, _, globalDefines) = ExtractSceneBlocksWithFlow(content);
+                _storyLoader.InjectGlobalDefines(globalDefines);
             }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[StoryRegistry] Parse error: {ex.Message}"); }
         }
@@ -444,7 +433,7 @@ public class StoryRegistry : IStoryRegistry
     /// <summary>
     /// 从 DSL 脚本中提取 scene 块并返回剩余流程脚本
     /// </summary>
-    private (List<(string SceneName, List<UIElementEntity> Elements, string EntryScript, Dictionary<string, object?>? Defines, string LayoutMode, Abstractions.Entities.Enums.SceneType SceneType)> Scenes, string FlowScript)
+    private (List<(string SceneName, List<UIElementEntity> Elements, string EntryScript, Dictionary<string, object?>? Defines, string LayoutMode, Abstractions.Entities.Enums.SceneType SceneType)> Scenes, string FlowScript, Dictionary<string, object?>? GlobalDefines)
         ExtractSceneBlocksWithFlow(string content)
     {
         return _storyLoader.ExtractSceneBlocks(content);

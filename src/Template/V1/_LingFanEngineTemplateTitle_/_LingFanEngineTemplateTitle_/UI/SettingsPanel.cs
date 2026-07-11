@@ -20,6 +20,9 @@ public class SettingsPanel : UserControl
     /// <summary>面板关闭事件</summary>
     public event Action? Closed;
 
+    /// <summary>全屏切换请求事件（P1-7: 全屏设置生效）</summary>
+    public event Action<bool>? FullscreenChanged;
+
     public SettingsPanel(IStateContainer state)
     {
         _state = state;
@@ -219,7 +222,12 @@ public class SettingsPanel : UserControl
 
         checkbox.Click += (_, _) =>
         {
-            _state.Set(stateKey, checkbox.IsChecked ?? false);
+            var val = checkbox.IsChecked ?? false;
+            _state.Set(stateKey, val);
+
+            // P1-7: 全屏设置触发事件
+            if (stateKey == StateKeys.Preferences.Fullscreen)
+                FullscreenChanged?.Invoke(val);
         };
 
         border.Child = panel;

@@ -154,9 +154,12 @@ public static class StateKeys
         /// <para>true = say clickable=true / say okey，遮罩隐藏，按钮可交互</para>
         /// <para>false = 默认模态，透明遮罩拦截点击，仅推进对话</para>
         /// </summary>
-        public const string Clickable = "__dialog_clickable";
+public const string Clickable = "__dialog_clickable";
 
-        /// <summary>对话侧脸图路径 (string?)，由角色定义的 side 属性或 SayAsync 参数设置</summary>
+/// <summary>此对话不可跳过 (bool)，Skip 模式下玩家仍需手动点击推进</summary>
+public const string Noskip = "__dialog_noskip";
+
+/// <summary>对话侧脸图路径 (string?)，由角色定义的 side 属性或 SayAsync 参数设置</summary>
         public const string SideImage = "__dialog_side_image";
 
         /// <summary>
@@ -535,9 +538,6 @@ public const string Pause = "pause";
     {
         /// <summary>跳过模式是否激活 (bool)</summary>
         public const string SkipActive = "__skip_active";
-
-        /// <summary>跳过模式是否仅跳过已读文本 (bool)，false=跳过所有</summary>
-        public const string SkipOnlySeen = "__skip_only_seen";
 
         /// <summary>自动模式是否激活 (bool)</summary>
         public const string AutoActive = "__auto_active";

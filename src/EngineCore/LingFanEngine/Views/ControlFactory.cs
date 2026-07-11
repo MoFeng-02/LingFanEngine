@@ -30,17 +30,6 @@ internal sealed class ControlFactory : IControlFactory
     /// <summary>LRU 图片缓存——限制上限并自动 Dispose 旧 Bitmap，防止长时间运行 OOM</summary>
     private static readonly LruImageCache s_imageCache = new(128);
 
-    /// <summary>设置图片缓存上限（由 SceneView 从 Options 传入）</summary>
-    internal static void ConfigureImageCache(int maxCapacity)
-    {
-        if (maxCapacity <= 0) return;
-        if (s_imageCache.Count == 0 || maxCapacity == s_imageCache.Count)
-        {
-            s_imageCache.Dispose();
-            // s_imageCache = new LruImageCache(maxCapacity); // readonly field, can't reassign
-        }
-    }
-
     public ControlFactory(II18nService i18n, IStateContainer state)
     {
         _i18n = i18n;

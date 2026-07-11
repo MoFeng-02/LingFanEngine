@@ -1,5 +1,6 @@
 using FluentAssertions;
 using LingFanEngine.Abstractions.Interfaces.Core;
+using LingFanEngine.DslCore;
 using LingFanEngine.Services.Core;
 using LingFanEngine.Services.Scripting;
 using Xunit;
@@ -121,5 +122,103 @@ public class ExpressionEvaluatorTests
 
         // 清理
         DslExpressionEvaluator.UnregisterFunction("add10");
+    }
+
+    // ====== Phase 39: define + dotted key 测试 ======
+
+    [Fact]
+    public void ReplaceText_DottedKey_FlatStorage()
+    {
+        // Simulate MergeIntoState: Set("player.name", "玩家") stores as flat key
+        _state.Set("player.name", "玩家");
+        _state.Set("player.gold", 100);
+        _state.Set("player.hp", 50);
+        _state.Set("player.maxHp", 100);
+
+        var result = DslExpressionEvaluator.ReplaceText(
+            "{player.name} · 金币: {player.gold} · HP: {player.hp}/{player.maxHp}", _state);
+        result.Should().Be("玩家 · 金币: 100 · HP: 50/100");
+    }
+
+    [Fact]
+    public void Evaluate_DottedKey_FlatStorage()
+    {
+        _state.Set("player.name", "玩家");
+        var result = DslExpressionEvaluator.Evaluate("player.name", _state);
+        result.Should().Be("玩家");
+    }
+
+    [Fact]
+    public void ParseDefineLine_DottedKey()
+    {
+        var entry = DslParser.ParseDefineLine("define \"player.name\" \"玩家\" once");
+        entry.Should().NotBeNull();
+        entry!.Key.Should().Be("player.name");
+        entry.RawValue.Should().Be("\"玩家\"");
+    }
+
+    [Fact]
+    public void ParseDefineLine_DottedKey_Number()
+    {
+        var entry = DslParser.ParseDefineLine("define \"player.hp\" 50 once");
+        entry.Should().NotBeNull();
+        entry!.Key.Should().Be("player.hp");
+        entry.RawValue.Should().Be("50");
+    }
+
+    [Fact]
+    public void StateContainer_DottedKey_SetAndGet()
+    {
+        // Simulate what MergeIntoState does: state.Set("player.name", "玩家")
+        _state.Set("player.name", "玩家");
+
+        // Get<object> should find it as flat key
+        var result = _state.Get<object>("player.name");
+        result.Should().Be("玩家");
+
+        // ContainsKey should return true
+        _state.ContainsKey("player.name").Should().BeTrue();
+    }
+
+    [Fact]
+    public void StateContainer_DottedKey_MultipleKeys()
+    {
+        _state.Set("player.name", "玩家");
+        _state.Set("player.hp", 50);
+        _state.Set("player.maxHp", 100);
+        _state.Set("player.gold", 100);
+
+        _state.Get<object>("player.name").Should().Be("玩家");
+        _state.Get<object>("player.hp").Should().Be(50);
+        _state.Get<object>("player.maxHp").Should().Be(100);
+        _state.Get<object>("player.gold").Should().Be(100);
+    }
+
+    /// <summary>
+    /// 这是 ControlFactory.ConvertToControl 实际使用的替换方法
+    /// </summary>
+    [Fact]
+    public void ExpressionParser_Replace_DottedKey_FlatStorage()
+    {
+        _state.Set("player.name", "玩家");
+        _state.Set("player.gold", 100);
+        _state.Set("player.hp", 50);
+        _state.Set("player.maxHp", 100);
+
+        var result = ExpressionParser.Replace(
+            "{player.name} · 金币: {player.gold} · HP: {player.hp}/{player.maxHp}", _state);
+        result.Should().Be("玩家 · 金币: 100 · HP: 50/100");
+    }
+
+    /// <summary>
+    /// ExpressionParser.Replace 在值为 null 时返回原始表达式文本（与 DslExpressionEvaluator.ReplaceText 不同）
+    /// </summary>
+    [Fact]
+    public void ExpressionParser_Replace_NullValue_ReturnsRawExpr()
+    {
+        // 不设置 player.name，模拟值未注入的情况
+        var result = ExpressionParser.Replace("{player.name}", _state);
+        // ExpressionParser.Replace 在值为 null 时返回原始表达式
+        result.Should().Be("player.name");
     }
 }

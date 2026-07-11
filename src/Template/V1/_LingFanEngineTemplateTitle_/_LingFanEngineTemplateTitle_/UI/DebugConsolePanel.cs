@@ -21,6 +21,7 @@ public class DebugConsolePanel : UserControl
     private StackPanel? _logPanel;
     private ScrollViewer? _scrollViewer;
     private TextBlock? _statusText;
+    private Button? _toggleDebugBtn; // P2-4: 字段引用替代控件树遍历
 
     /// <summary>面板关闭事件</summary>
     public event Action? Closed;
@@ -134,9 +135,9 @@ public class DebugConsolePanel : UserControl
             Padding = new Thickness(10, 3),
             Margin = new Thickness(5, 0),
             Background = new SolidColorBrush(Color.FromArgb(40, 80, 80, 100)),
-            BorderThickness = new Thickness(0),
-            Tag = "toggle_debug"
+            BorderThickness = new Thickness(0)
         };
+        _toggleDebugBtn = toggleDebugBtn;
         toggleDebugBtn.Click += (_, _) =>
         {
             var enabled = _state.Get<bool>(StateKeys.Debug.Enabled);
@@ -193,29 +194,9 @@ public class DebugConsolePanel : UserControl
         var logs = _state.Get<List<DebugLogEntry>>(StateKeys.Debug.Logs) ?? [];
         _statusText.Text = $"调试模式: {(enabled ? "开" : "关")} | 日志: {logs.Count} 条";
 
-        // 更新切换按钮文本
-        if (Content is Panel panel)
-        {
-            foreach (var child in panel.Children)
-            {
-                if (child is Border border && border.Child is Grid grid)
-                {
-                    foreach (var row in grid.Children)
-                    {
-                        if (row is StackPanel toolbar)
-                        {
-                            foreach (var item in toolbar.Children)
-                            {
-                                if (item is Button btn && btn.Tag is string tag && tag == "toggle_debug")
-                                {
-                                    btn.Content = enabled ? "调试模式 [开]" : "调试模式 [关]";
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        // P2-4: 直接用字段引用更新按钮文本，不再遍历控件树
+        if (_toggleDebugBtn != null)
+            _toggleDebugBtn.Content = enabled ? "调试模式 [开]" : "调试模式 [关]";
     }
 
     /// <summary>刷新日志列表</summary>

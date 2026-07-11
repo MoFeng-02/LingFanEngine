@@ -40,12 +40,16 @@ public class DialogBox : UserControl, IDialogBox
         set
         {
             _bgPath = value;
-            if (value != null)
-                _ = Task.Run(() =>
+            if (value == null) return;
+            _ = Task.Run(() =>
+            {
+                try
                 {
-                    try { Avalonia.Threading.Dispatcher.UIThread.Invoke(() => _bgImage.Source = new Avalonia.Media.Imaging.Bitmap(value)); }
-                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[DialogBox] BackgroundImage load failed: {value} — {ex.Message}"); }
-                });
+                    var bmp = new Avalonia.Media.Imaging.Bitmap(value);
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() => _bgImage.Source = bmp);
+                }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[DialogBox] BackgroundImage load failed: {value} — {ex.Message}"); }
+            });
         }
     }
 
