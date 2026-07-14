@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
 using AvaloniaEdit.Rendering;
@@ -9,12 +11,15 @@ namespace LingFanEngine.SDK.Editor;
 /// <summary>
 /// DSL 语法高亮转换器——将 Highlighter 的 HighlightToken 映射到 AvaloniaEdit 颜色。
 /// <para>实现 IVisualLineTransformer，在 AvaloniaEdit 渲染每行时着色。</para>
+/// <para>使用防抖机制：源码变化后延迟 150ms 再重新分词，避免每次按键都全量解析。</para>
 /// </summary>
 public class DslHighlightingTransformer : IVisualLineTransformer
 {
     private string _source = "";
     private List<HighlightToken> _tokens = [];
     private bool _dirty = true;
+    private long _lastSetTime;  // Stopwatch.GetTimestamp() of last SetSource call
+    private const int DebounceMs = 150;
 
     // 颜色缓存（VS Code Dark+ 风格）
     private static readonly IBrush s_keywordBrush = new SolidColorBrush(Color.Parse("#569CD6"));
@@ -26,10 +31,24 @@ public class DslHighlightingTransformer : IVisualLineTransformer
     private static readonly IBrush s_labelBrush = new SolidColorBrush(Color.Parse("#DCDCAA"));
     private static readonly IBrush s_plainBrush = new SolidColorBrush(Color.Parse("#D4D4D4"));
 
-    /// <summary>设置源码并重新生成高亮 token</summary>
+    // P0-1 精细分类颜色
+    private static readonly IBrush s_styleNameBrush = new SolidColorBrush(Color.Parse("#DCDCAA"));     // 黄褐
+    private static readonly IBrush s_characterNameBrush = new SolidColorBrush(Color.Parse("#4EC9B0")); // 青绿
+    private static readonly IBrush s_propertyNameBrush = new SolidColorBrush(Color.Parse("#9CDCFE"));  // 浅蓝
+    private static readonly IBrush s_propertyValueBrush = new SolidColorBrush(Color.Parse("#CE9178")); // 橙褐
+    private static readonly IBrush s_colorValueBrush = new SolidColorBrush(Color.Parse("#CE9178"));    // 橙褐
+    private static readonly IBrush s_pathValueBrush = new SolidColorBrush(Color.Parse("#CE9178"));     // 橙褐
+    private static readonly IBrush s_sceneNameBrush = new SolidColorBrush(Color.Parse("#DCDCAA"));     // 黄褐
+    private static readonly IBrush s_inlineTagBrush = new SolidColorBrush(Color.Parse("#569CD6"));     // 蓝色
+    private static readonly IBrush s_functionBrush = new SolidColorBrush(Color.Parse("#DCDCAA"));      // 黄褐
+    private static readonly IBrush s_operatorBrush = new SolidColorBrush(Color.Parse("#D4D4D4"));      // 浅灰
+    private static readonly IBrush s_infoBrush = new SolidColorBrush(Color.Parse("#75BEFF"));          // 蓝色
+
+    /// <summary>设置源码并标记需要重新分词</summary>
     public void SetSource(string source)
     {
         _source = source;
+        _lastSetTime = Stopwatch.GetTimestamp();
         _dirty = true;
     }
 
@@ -41,13 +60,15 @@ public class DslHighlightingTransformer : IVisualLineTransformer
 
     private void EnsureTokens()
     {
-        if (_dirty)
-        {
-            _tokens = string.IsNullOrEmpty(_source)
-                ? []
-                : Highlighter.GetHighlights(_source);
-            _dirty = false;
-        }
+        if (!_dirty) return;
+        // 防抖：距离上次 SetSource 不足 150ms 则跳过（用旧 token 渲染）
+        var elapsed = Stopwatch.GetElapsedTime(_lastSetTime, Stopwatch.GetTimestamp());
+        if (elapsed.TotalMilliseconds < DebounceMs) return;
+
+        _tokens = string.IsNullOrEmpty(_source)
+            ? []
+            : Highlighter.GetHighlights(_source);
+        _dirty = false;
     }
 
     public void Transform(ITextRunConstructionContext context, IList<VisualLineElement> elements)
@@ -59,8 +80,8 @@ public class DslHighlightingTransformer : IVisualLineTransformer
         var lineStartOffset = visualLine.FirstDocumentLine.Offset;
         var lineEndOffset = visualLine.LastDocumentLine.Offset + visualLine.LastDocumentLine.Length;
 
-        // 为当前行构建 offset → color 的映射
-        var colorMap = new Dictionary<int, IBrush>(); // key = offset relative to line start
+        // 为当前行构建 offset → color 的段映射
+        var segments = new List<(int Start, int End, IBrush Brush)>();
 
         foreach (var token in _tokens)
         {
@@ -78,14 +99,10 @@ public class DslHighlightingTransformer : IVisualLineTransformer
             var brush = GetBrush(token.Category);
             if (brush == null) continue;
 
-            // 标记范围内的每个偏移
-            for (var i = clampedStart; i < clampedEnd; i++)
-            {
-                colorMap[i] = brush;
-            }
+            segments.Add((clampedStart, clampedEnd, brush));
         }
 
-        if (colorMap.Count == 0) return;
+        if (segments.Count == 0) return;
 
         // 对每个元素应用颜色
         foreach (var element in elements)
@@ -95,20 +112,19 @@ public class DslHighlightingTransformer : IVisualLineTransformer
             var elementStart = textElement.RelativeTextOffset;
             var elementEnd = elementStart + textElement.DocumentLength;
 
-            // 查找此元素范围内的颜色
+            // 查找此元素范围内的颜色——优先使用第一个匹配的段
             IBrush? brush = null;
-            for (var i = elementStart; i < elementEnd; i++)
+            foreach (var (segStart, segEnd, segBrush) in segments)
             {
-                if (colorMap.TryGetValue(i, out var b))
+                if (segEnd > elementStart && segStart < elementEnd)
                 {
-                    brush = b;
+                    brush = segBrush;
                     break;
                 }
             }
 
             if (brush != null)
             {
-                // 通过 TextRunProperties 设置颜色
                 textElement.TextRunProperties.SetForegroundBrush(brush);
             }
         }
@@ -125,6 +141,17 @@ public class DslHighlightingTransformer : IVisualLineTransformer
             HighlightCategory.Number => s_numberBrush,
             HighlightCategory.Symbol => s_symbolBrush,
             HighlightCategory.Label => s_labelBrush,
+            HighlightCategory.StyleName => s_styleNameBrush,
+            HighlightCategory.CharacterName => s_characterNameBrush,
+            HighlightCategory.PropertyName => s_propertyNameBrush,
+            HighlightCategory.PropertyValue => s_propertyValueBrush,
+            HighlightCategory.ColorValue => s_colorValueBrush,
+            HighlightCategory.PathValue => s_pathValueBrush,
+            HighlightCategory.SceneName => s_sceneNameBrush,
+            HighlightCategory.InlineTag => s_inlineTagBrush,
+            HighlightCategory.Function => s_functionBrush,
+            HighlightCategory.Operator => s_operatorBrush,
+            HighlightCategory.Info => s_infoBrush,
             _ => s_plainBrush,
         };
     }

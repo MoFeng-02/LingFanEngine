@@ -1,4 +1,5 @@
 using LingFanEngine.Abstractions.EngineOptions;
+using LingFanEngine.Abstractions.Interfaces.Events;
 using LingFanEngine.Abstractions.Interfaces.Media;
 using LingFanEngine.Abstractions.Interfaces.Saves;
 using LingFanEngine.Abstractions.Interfaces.Scripting;
@@ -42,6 +43,9 @@ public interface ICommandContext
 
     /// <summary>视频管理器</summary>
     IVideoManager? VideoManager { get; }
+
+    /// <summary>事件调度器（时间事件）</summary>
+    IEventScheduler? EventScheduler { get; }
 
     /// <summary>存档服务</summary>
     ISaveService? SaveService { get; }

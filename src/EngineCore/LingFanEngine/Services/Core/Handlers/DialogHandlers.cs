@@ -121,6 +121,9 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>, IDefaultCom
         // Phase 37: 设置 noskip 标记（say noskip=true 时 Skip 模式下仍需手动点击）
         ctx.State.Set(StateKeys.Dialog.Noskip, sd.Noskip);
 
+        // Phase 44: 设置 instant 标记（say instant=true 时跳过打字机效果）
+        ctx.State.Set(StateKeys.Dialog.Instant, sd.Instant);
+
         // 记录对话历史（对标 Ren'Py _history_list）
         RecordHistory(sd, dialogText, speakerName, ctx);
     }

@@ -19,6 +19,7 @@ public class StoryRegistry : IStoryRegistry
     private readonly IScriptEngine _dslEngine;
     private readonly StoryLoader _storyLoader;
     private readonly string _storyRoot;
+    private readonly IEncryptedFileReader? _fileReader;
     private readonly Dictionary<string, string> _sceneToFile = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _labelToFile = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _loadedScenes = new(StringComparer.OrdinalIgnoreCase);
@@ -38,12 +39,31 @@ public class StoryRegistry : IStoryRegistry
     public int LoadedCount => _loadedScenes.Count;
 
     public StoryRegistry(ISceneRegistry sceneRegistry, IScriptEngine dslEngine,
-        StoryLoader storyLoader, string storyRoot = "Stories")
+        StoryLoader storyLoader, string storyRoot = "Stories",
+        IEncryptedFileReader? fileReader = null)
     {
         _sceneRegistry = sceneRegistry;
         _dslEngine = dslEngine;
         _storyLoader = storyLoader;
         _storyRoot = storyRoot;
+        _fileReader = fileReader;
+    }
+
+    /// <summary>
+    /// 读取文件全部文本（自动检测并解密 LFEN 格式）。
+    /// <para>Phase 56 修复：StoryRegistry 必须通过 IEncryptedFileReader 读取，
+    /// 否则加密后的 .story 文件读到乱码，无法解析场景定义。</para>
+    /// </summary>
+    private string? ReadAllText(string filePath)
+    {
+        if (_fileReader != null)
+        {
+            using var stream = _fileReader.OpenRead(filePath);
+            if (stream == null) return null;
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        }
+        return File.ReadAllText(filePath);
     }
 
     /// <summary>
@@ -61,9 +81,12 @@ public class StoryRegistry : IStoryRegistry
         foreach (var filePath in storyFiles)
         {
             // 扫描 scene "xxx" 定义（轻量，只提取场景名）
-            using var reader = new StreamReader(filePath);
+            // Phase 56：通过 IEncryptedFileReader 读取（加密文件自动解密）
+            var content = ReadAllText(filePath);
+            if (content == null) continue;
+            using var stringReader = new StringReader(content);
             string? line;
-            while ((line = reader.ReadLine()) != null)
+            while ((line = stringReader.ReadLine()) != null)
             {
                 var trimmed = line.Trim();
                 if (trimmed.StartsWith("//") || trimmed.StartsWith('#')) continue;
@@ -125,7 +148,8 @@ public class StoryRegistry : IStoryRegistry
 
         try
         {
-            var content = File.ReadAllText(filePath);
+            var content = ReadAllText(filePath);
+            if (content == null) return false;
             if (!LoadSceneInternal(filePath, content))
             {
                 System.Diagnostics.Debug.WriteLine($"[StoryRegistry] 编译失败: {filePath}");
@@ -192,7 +216,8 @@ public class StoryRegistry : IStoryRegistry
         if (!File.Exists(filePath)) return false;
         try
         {
-            var content = File.ReadAllText(filePath);
+            var content = ReadAllText(filePath);
+            if (content == null) return false;
             return LoadSceneInternal(filePath, content);
         }
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[StoryRegistry] LoadSceneFromFile failed: {filePath} — {ex.Message}"); return false; }
@@ -307,7 +332,8 @@ public class StoryRegistry : IStoryRegistry
             if (!visited.Add(filePath)) continue; // 每个文件只处理一次
             try
             {
-                var content = File.ReadAllText(filePath);
+                var content = ReadAllText(filePath);
+                if (content == null) continue;
 
                 // JSON 格式 defines（defines 字段）
                 _storyLoader.RegisterDefinesFromJson(new StoryFile
@@ -393,9 +419,11 @@ public class StoryRegistry : IStoryRegistry
         // 重新扫描
         try
         {
-            using var reader = new StreamReader(filePath);
+            var content = ReadAllText(filePath);
+            if (content == null) return;
+            using var stringReader = new StringReader(content);
             string? line;
-            while ((line = reader.ReadLine()) != null)
+            while ((line = stringReader.ReadLine()) != null)
             {
                 var trimmed = line.Trim();
                 if (trimmed.StartsWith("//") || trimmed.StartsWith('#')) continue;

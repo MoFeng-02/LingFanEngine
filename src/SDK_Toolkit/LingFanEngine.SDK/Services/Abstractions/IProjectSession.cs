@@ -36,8 +36,19 @@ public interface IProjectSession : INotifyPropertyChanged
     Task<bool> OpenAsync(string projectFilePath);
 
     /// <summary>创建并打开新项目</summary>
-    Task<bool> CreateAndOpenAsync(string name, string title, string author, string outputDir);
+    /// <param name="name">项目名称（C# 标识符）</param>
+    /// <param name="title">游戏名称</param>
+    /// <param name="author">作者</param>
+    /// <param name="outputDir">输出目录</param>
+    /// <param name="version">版本号（默认 "1.0.0"）</param>
+    /// <param name="description">项目描述（可选，默认使用 title）</param>
+    Task<bool> CreateAndOpenAsync(
+        string name, string title, string author, string outputDir,
+        string version = "1.0.0", string description = "");
 
     /// <summary>关闭当前项目</summary>
     void Close();
+
+    /// <summary>保存当前项目配置到 .lfproj 文件</summary>
+    Task SaveCurrentProjectAsync();
 }

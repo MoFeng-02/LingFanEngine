@@ -30,7 +30,7 @@ public static class FileHelper
         {
             var fileName = Path.GetFileName(file);
             var destPath = Path.Combine(destDir, fileName);
-            await Task.Run(() => File.Copy(file, destPath, overwrite: true));
+            await CopyFileAsync(file, destPath);
         }
 
         foreach (var subDir in Directory.GetDirectories(srcDir))
@@ -39,6 +39,15 @@ public static class FileHelper
             var destSubDir = Path.Combine(destDir, subDirName);
             await CopyDirectoryAsync(subDir, destSubDir);
         }
+    }
+
+    /// <summary>异步复制单个文件（File.Copy 无异步 API，使用 FileStream + CopyToAsync）</summary>
+    public static async Task CopyFileAsync(string sourceFile, string destPath, bool overwrite = true)
+    {
+        const int bufferSize = 81920;
+        using var source = new FileStream(sourceFile, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, useAsync: true);
+        using var target = new FileStream(destPath, overwrite ? FileMode.Create : FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize, useAsync: true);
+        await source.CopyToAsync(target);
     }
 
     /// <summary>递归删除目录（安全）</summary>
@@ -59,6 +68,8 @@ public static class FileHelper
     public static bool IsTextFile(string path)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
-        return ext is ".story" or ".cs" or ".csproj" or ".json" or ".xml" or ".md" or ".txt" or ".axaml" or ".xaml";
+        return ext is ".story" or ".cs" or ".csproj" or ".json" or ".xml" or ".md" or ".txt"
+            or ".axaml" or ".xaml" or ".slnx" or ".props" or ".plist" or ".manifest"
+            or ".xib" or ".temp" or ".json.template";
     }
 }

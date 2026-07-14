@@ -101,7 +101,7 @@ public partial class MainWindow : Window
             Content = rootGrid;
 
             // 注册场景视图引用（用于截图）
-            if (gameLoop is GameLoop gl) gl.SetSceneView((LingFanEngine.Views.ISceneRenderer)_sceneView);
+            if (gameLoop is GameLoop gl) gl.SetSceneView((LingFanEngine.Abstractions.Interfaces.Views.ISceneRenderer)_sceneView);
 
             gameLoop.OnFrame += dt =>
             {

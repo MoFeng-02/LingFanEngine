@@ -23,7 +23,7 @@ scene "title_main" type=menu
   define "npc.innkeeper.name" "老张" once
   define "npc.innkeeper.trust" 0 once
   define "sandbox.battle_count" 0 once
-  image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.5
+  image "Images/lingfan.png" x=0 y=0 width=100% height=100% opacity=0.5
   text "迷雾小镇" x=50% y=12% size=56 color="#FFD700" halign=center font="Microsoft YaHei"
   text "灵泛引擎 DSL 演示" x=50% y=19% size=18 color="#AAAAAA" halign=center font="Microsoft YaHei"
   text "{player.name} · 金币: {player.gold} · HP: {player.hp}/{player.maxHp}" x=50% y=25% size=14 color="#666666" halign=center font="Consolas"

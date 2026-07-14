@@ -6,11 +6,14 @@ namespace LingFanEngine.SDK.Models;
 /// <summary>灵泛项目配置</summary>
 public class ProjectConfig
 {
-    /// <summary>项目名（英文，用于命名空间和目录名）</summary>
+    /// <summary>项目名称（C# 标识符，用于命名空间和目录名）</summary>
     public string Name { get; set; } = "";
 
-    /// <summary>中文标题</summary>
+    /// <summary>游戏名称（面向玩家的显示标题）</summary>
     public string Title { get; set; } = "";
+
+    /// <summary>项目描述（用于 MSBuild Description 属性）</summary>
+    public string Description { get; set; } = "";
 
     /// <summary>作者</summary>
     public string Author { get; set; } = "";

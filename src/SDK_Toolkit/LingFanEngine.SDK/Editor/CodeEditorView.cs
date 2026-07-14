@@ -1,16 +1,13 @@
-using System;
-using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using AvaloniaEdit;
 using AvaloniaEdit.CodeCompletion;
-using AvaloniaEdit.Editing;
-using AvaloniaEdit.Rendering;
+using AvaloniaEdit.Folding;
 using AvaloniaEdit.Search;
-using LingFanEngine.SDK.Dsl.Highlight;
 using LingFanEngine.SDK.Models;
 using DslDiagnostic = LingFanEngine.SDK.Models.DslDiagnostic;
 
@@ -18,7 +15,13 @@ namespace LingFanEngine.SDK.Editor;
 
 /// <summary>
 /// 基于 AvaloniaEdit 的 DSL 代码编辑器控件封装。
-/// <para>提供语法高亮、行号、光标追踪、文本变更通知等能力。</para>
+/// <para>P0-3: Ctrl+Click Go to Definition。</para>
+/// <para>P0-4: Shift+F12 Find All References。</para>
+/// <para>P1-2: Hover 提示。</para>
+/// <para>P1-3: 括号/引号匹配高亮。</para>
+/// <para>P1-4: 自动缩进。</para>
+/// <para>P2-1: 代码折叠。</para>
+/// <para>P2-2: Ctrl+Shift+F 格式化。</para>
 /// </summary>
 public class CodeEditorView : UserControl
 {
@@ -26,16 +29,30 @@ public class CodeEditorView : UserControl
     private readonly DslHighlightingTransformer _highlighter;
     private DslTextMarkerService? _markerService;
     private CompletionWindow? _completionWindow;
-    private DslCompletionProvider? _completionProvider;
+    private DslCompletionProvider _completionProvider = new();
+    private FoldingManager? _foldingManager;
+    private readonly DslFoldingStrategy _foldingStrategy = new();
     private string _filePath = "";
     private bool _isDirty;
     private string _lastSavedText = "";
+
+    // 标记模板是否已应用（TextArea.TextView 在模板应用后才可用）
+    private bool _isTemplateApplied;
+
+    /// <summary>模板是否已应用（TextView 可用，外部可据此做守卫判断）</summary>
+    public bool IsTemplateApplied => _isTemplateApplied;
 
     // 补全数据源（由 ViewModel 设置）
     private List<VariableInfo> _variables = new();
     private List<string> _scenes = new();
     private List<string> _labels = new();
     private List<string> _characters = new();
+
+    // P0-4: Enter 键标记，供 OnTextEntered 检测
+    private bool _isEnterKey;
+
+    // P1-3: 括号匹配状态
+    private bool _bracketHighlightActive;
 
     /// <summary>文本变更时触发（用于 debounce 触发分析）</summary>
     public event Action<string>? SourceChanged;
@@ -45,6 +62,12 @@ public class CodeEditorView : UserControl
 
     /// <summary>保存快捷键 Ctrl+S 时触发</summary>
     public event Action? SaveRequested;
+
+    /// <summary>Go to Definition 请求</summary>
+    public event Action? GoToDefinitionRequested;
+
+    /// <summary>Find All References 请求（P0-4）</summary>
+    public event Action? FindReferencesRequested;
 
     /// <summary>当前文件路径</summary>
     public string FilePath
@@ -67,9 +90,13 @@ public class CodeEditorView : UserControl
             if (_isDirty != value)
             {
                 _isDirty = value;
+                DirtyChanged?.Invoke(_isDirty);
             }
         }
     }
+
+    /// <summary>IsDirty 变化通知（P1-7）</summary>
+    public event Action<bool>? DirtyChanged;
 
     /// <summary>编辑器文本内容</summary>
     public string Source
@@ -90,6 +117,10 @@ public class CodeEditorView : UserControl
 
     public CodeEditorView()
     {
+        Padding = new Thickness(0);
+        HorizontalAlignment = HorizontalAlignment.Stretch;
+        VerticalAlignment = VerticalAlignment.Stretch;
+
         // 创建 TextEditor
         _textEditor = new TextEditor
         {
@@ -103,15 +134,9 @@ public class CodeEditorView : UserControl
             Foreground = new SolidColorBrush(Color.Parse("#D4D4D4")),
         };
 
-        // 安装高亮转换器
         _highlighter = new DslHighlightingTransformer();
-        _textEditor.TextArea.TextView.LineTransformers.Add(_highlighter);
 
-        // 安装文本标记服务（波浪线）
-        _markerService = new DslTextMarkerService(_textEditor.TextArea.TextView);
-        _textEditor.TextArea.TextView.BackgroundRenderers.Add(_markerService);
-
-        // 文本变更 → 通知 + 标记脏
+        // Document 级别事件——Document 在构造函数中创建，模板应用前即可安全访问
         _textEditor.Document.TextChanged += (_, _) =>
         {
             IsDirty = _textEditor.Document.Text != _lastSavedText;
@@ -119,49 +144,320 @@ public class CodeEditorView : UserControl
             SourceChanged?.Invoke(_textEditor.Document.Text);
         };
 
-        // 光标移动 → 通知
+        // TextArea 级别事件——TextArea 在构造函数中创建，但 TextView 是模板部件
+        // 延迟到模板应用后再安装所有依赖 TextView 的组件
+        _textEditor.TemplateApplied += OnTextEditorTemplateApplied;
+
+        Content = _textEditor;
+    }
+
+    /// <summary>
+    /// TextEditor 模板应用后初始化所有依赖 TextArea.TextView 的组件。
+    /// TextView 是模板部件（TemplatePart），在控件加入可视化树并应用模板后才可用。
+    /// </summary>
+    private void OnTextEditorTemplateApplied(object? sender, TemplateAppliedEventArgs e)
+    {
+        // 防止重复初始化
+        _textEditor.TemplateApplied -= OnTextEditorTemplateApplied;
+        _isTemplateApplied = true;
+
+        var textView = _textEditor.TextArea.TextView;
+
+        // 安装高亮转换器
+        textView.LineTransformers.Add(_highlighter);
+
+        // 安装文本标记服务（波浪线 + 括号高亮）
+        _markerService = new DslTextMarkerService(textView);
+        textView.BackgroundRenderers.Add(_markerService);
+
+        // 光标移动 → 通知 + 括号匹配
         _textEditor.TextArea.Caret.PositionChanged += (_, _) =>
         {
             CaretMoved?.Invoke((_textEditor.TextArea.Caret.Line, _textEditor.TextArea.Caret.Column));
+            UpdateBracketMatch();
         };
 
-        // Ctrl+S → 保存
-        _textEditor.TextArea.KeyDown += (_, e) =>
-        {
-            if (e.Key == Key.S && e.KeyModifiers.HasFlag(KeyModifiers.Control))
-            {
-                e.Handled = true;
-                SaveRequested?.Invoke();
-            }
-        };
+        // Hover 提示（P1-2）
+        textView.PointerHover += OnPointerHover;
 
-        // 创建补全窗口
-        _completionWindow = new CompletionWindow(_textEditor.TextArea)
-        {
-            MinWidth = 200,
-            MaxHeight = 300,
-        };
-        _completionWindow.Closed += (_, _) => { };
+        // Ctrl+Click Go to Definition（P0-3）
+        _textEditor.TextArea.PointerPressed += OnPointerPressed;
+
+        // 快捷键——用 handledEventsToo 确保不被 AvaloniaEdit 内部拦截
+        _textEditor.TextArea.AddHandler(InputElement.KeyDownEvent, OnKeyDown, Avalonia.Interactivity.RoutingStrategies.Bubble, handledEventsToo: true);
 
         // 文本输入 → 触发补全
         _textEditor.TextArea.TextEntered += OnTextEntered;
         _textEditor.TextArea.TextEntering += OnTextEntering;
 
-        // F12 → Go to Definition
-        _textEditor.TextArea.KeyDown += (_, e) =>
-        {
-            if (e.Key == Key.F12)
-            {
-                e.Handled = true;
-                GoToDefinitionRequested?.Invoke();
-            }
-        };
-
         // 安装搜索面板（Ctrl+F）
         SearchPanel.Install(_textEditor);
 
-        Content = _textEditor;
+        // 安装折叠管理器（P2-1）
+        _foldingManager = FoldingManager.Install(_textEditor.TextArea);
+
+        // 如果在模板应用前已有内容加载，触发一次高亮和折叠更新
+        if (!string.IsNullOrEmpty(_textEditor.Document.Text))
+        {
+            _highlighter.SetSource(_textEditor.Document.Text);
+            _highlighter.Invalidate();
+            textView.Redraw();
+            UpdateFoldings();
+        }
     }
+
+    private void OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        // Ctrl+S → 保存
+        if (e.Key == Key.S && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            e.Handled = true;
+            SaveRequested?.Invoke();
+            return;
+        }
+
+        // F12 → Go to Definition
+        if (e.Key == Key.F12 && e.KeyModifiers == KeyModifiers.None)
+        {
+            e.Handled = true;
+            GoToDefinitionRequested?.Invoke();
+            return;
+        }
+
+        // Shift+F12 → Find All References（P0-4）
+        if (e.Key == Key.F12 && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            e.Handled = true;
+            FindReferencesRequested?.Invoke();
+            return;
+        }
+
+        // Alt+Shift+F → 格式化文档（智能缩进 + key=value 间距修正）
+        if (e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Alt) && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            e.Handled = true;
+            var formatted = Dsl.DslFormatter.Format(_textEditor.Document.Text);
+            FormatDocument(formatted);
+            // 同步到 ViewModel
+            if (_textEditor.Document.Text != formatted)
+            {
+                _textEditor.Document.Text = formatted;
+            }
+            return;
+        }
+
+        // Tab → 补全选择（如果补全窗口可见）
+        if (e.Key == Key.Tab && _completionWindow?.IsVisible == true)
+        {
+            // 让 CompletionWindow 自己处理 Tab 补全
+            // AvaloniaEdit 的 CompletionList 会自动拦截 Tab
+        }
+
+        // Enter → 自动缩进（P1-4）
+        if (e.Key == Key.Enter && !e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            // 如果补全窗口可见，让补全优先处理 Enter
+            if (_completionWindow?.IsVisible == true) return;
+            _isEnterKey = true;
+        }
+    }
+
+    /// <summary>P1-4: 自动缩进——在 TextEntered 后插入缩进</summary>
+    private void HandleAutoIndent()
+    {
+        var editor = _textEditor;
+        var document = editor.Document;
+        var caretOffset = editor.CaretOffset;
+
+        var currentLine = document.GetLineByOffset(caretOffset);
+        var lineText = document.GetText(currentLine);
+
+        if (!string.IsNullOrEmpty(lineText.Trim()))
+            return;
+
+        if (currentLine.LineNumber <= 1) return;
+        var prevLine = document.GetLineByNumber(currentLine.LineNumber - 1);
+        var prevText = document.GetText(prevLine);
+        var prevTrimmed = prevText.Trim();
+
+        var indent = "";
+        foreach (var c in prevText)
+        {
+            if (c == ' ' || c == '\t')
+                indent += c;
+            else
+                break;
+        }
+
+        var firstWord = GetFirstWord(prevTrimmed);
+        var blockStarters = new HashSet<string>
+        {
+            "scene", "if", "while", "for", "func", "switch", "foreach",
+        };
+
+        if (blockStarters.Contains(firstWord))
+        {
+            indent += "    ";
+        }
+
+        if (!string.IsNullOrEmpty(indent))
+        {
+            document.Insert(caretOffset, indent);
+        }
+    }
+
+    /// <summary>P1-3: 更新括号/引号匹配高亮</summary>
+    private void UpdateBracketMatch()
+    {
+        if (_markerService == null || !_isTemplateApplied) return;
+
+        var document = _textEditor.Document;
+        var caretOffset = _textEditor.CaretOffset;
+
+        var checkOffset = caretOffset > 0 ? caretOffset - 1 : caretOffset;
+        if (checkOffset < 0 || checkOffset >= document.TextLength)
+        {
+            if (_bracketHighlightActive)
+            {
+                _markerService.ClearBracketHighlight();
+                _textEditor.TextArea.TextView.Redraw();
+                _bracketHighlightActive = false;
+            }
+            return;
+        }
+
+        var ch = document.GetCharAt(checkOffset);
+        char? matchChar = ch switch
+        {
+            '{' => '}',
+            '}' => '{',
+            '(' => ')',
+            ')' => '(',
+            '[' => ']',
+            ']' => '[',
+            '"' => '"',
+            _ => null,
+        };
+
+        if (matchChar == null)
+        {
+            if (caretOffset < document.TextLength)
+            {
+                ch = document.GetCharAt(caretOffset);
+                matchChar = ch switch
+                {
+                    '{' => '}',
+                    '}' => '{',
+                    '(' => ')',
+                    ')' => '(',
+                    '[' => ']',
+                    ']' => '[',
+                    '"' => '"',
+                    _ => null,
+                };
+                if (matchChar != null)
+                    checkOffset = caretOffset;
+            }
+        }
+
+        if (matchChar == null)
+        {
+            if (_bracketHighlightActive)
+            {
+                _markerService.ClearBracketHighlight();
+                _textEditor.TextArea.TextView.Redraw();
+                _bracketHighlightActive = false;
+            }
+            return;
+        }
+
+        var matchOffset = FindMatchingBracket(document, checkOffset, ch, matchChar.Value);
+        if (matchOffset < 0)
+        {
+            if (_bracketHighlightActive)
+            {
+                _markerService.ClearBracketHighlight();
+                _textEditor.TextArea.TextView.Redraw();
+                _bracketHighlightActive = false;
+            }
+            return;
+        }
+
+        var line1 = document.GetLineByOffset(checkOffset);
+        var line2 = document.GetLineByOffset(matchOffset);
+        var col1 = checkOffset - line1.Offset + 1;
+        var col2 = matchOffset - line2.Offset + 1;
+
+        _markerService.SetBracketHighlight(
+            line1.LineNumber, col1, 1,
+            line2.LineNumber, col2, 1);
+        _textEditor.TextArea.TextView.Redraw();
+        _bracketHighlightActive = true;
+    }
+
+    /// <summary>搜索匹配的括号/引号（考虑嵌套）</summary>
+    private static int FindMatchingBracket(AvaloniaEdit.Document.TextDocument document, int startOffset, char openChar, char closeChar)
+    {
+        if (openChar == closeChar)
+        {
+            for (var i = startOffset + 1; i < document.TextLength; i++)
+            {
+                if (document.GetCharAt(i) == closeChar)
+                    return i;
+            }
+            return -1;
+        }
+
+        var isForward = openChar is '{' or '(' or '[';
+        if (isForward)
+        {
+            var depth = 1;
+            for (var i = startOffset + 1; i < document.TextLength; i++)
+            {
+                var c = document.GetCharAt(i);
+                if (c == openChar) depth++;
+                else if (c == closeChar)
+                {
+                    depth--;
+                    if (depth == 0) return i;
+                }
+            }
+        }
+        else
+        {
+            var depth = 1;
+            for (var i = startOffset - 1; i >= 0; i--)
+            {
+                var c = document.GetCharAt(i);
+                if (c == openChar) depth++;
+                else if (c == closeChar)
+                {
+                    depth--;
+                    if (depth == 0) return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>P0-3: Ctrl+Click Go to Definition</summary>
+    private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            e.Handled = true;
+            GoToDefinitionRequested?.Invoke();
+        }
+    }
+
+    /// <summary>P1-2: Hover 提示</summary>
+    private void OnPointerHover(object? sender, PointerEventArgs e)
+    {
+        HoverRequested?.Invoke();
+    }
+
+    /// <summary>Hover 请求事件（P1-2，由 ViewModel 处理查找和显示）</summary>
+    public event Action? HoverRequested;
 
     /// <summary>加载文件内容到编辑器</summary>
     public void LoadFile(string path, string content)
@@ -171,27 +467,43 @@ public class CodeEditorView : UserControl
         _lastSavedText = content;
         _isDirty = false;
         _highlighter.SetSource(content);
-        _highlighter.Invalidate();
+        if (_isTemplateApplied)
+        {
+            _highlighter.Invalidate();
+            _textEditor.TextArea.TextView.Redraw();
+        }
+        UpdateFoldings();
     }
 
     /// <summary>标记为已保存</summary>
     public void MarkSaved()
     {
         _lastSavedText = _textEditor.Document.Text;
-        _isDirty = false;
+        IsDirty = false;
     }
 
     /// <summary>更新高亮 token（由 ViewModel 调用）</summary>
     public void UpdateHighlights(string source)
     {
         _highlighter.SetSource(source);
-        _textEditor.TextArea.TextView.Redraw();
+        if (_isTemplateApplied)
+            _textEditor.TextArea.TextView.Redraw();
+        UpdateFoldings();
     }
 
     /// <summary>更新诊断标记（波浪线）</summary>
     public void UpdateDiagnostics(List<DslDiagnostic> errors, List<DslDiagnostic> warnings)
     {
+        if (!_isTemplateApplied) return;
         _markerService?.UpdateMarkers(errors, warnings, _textEditor.Document);
+        _textEditor.TextArea.TextView.Redraw();
+    }
+
+    /// <summary>更新诊断标记（含 Info 级别，P1-1）</summary>
+    public void UpdateDiagnosticsWithInfo(List<DslDiagnostic> errors, List<DslDiagnostic> warnings, List<DslDiagnostic> infos)
+    {
+        if (!_isTemplateApplied) return;
+        _markerService?.UpdateMarkersWithInfo(errors, warnings, infos, _textEditor.Document);
         _textEditor.TextArea.TextView.Redraw();
     }
 
@@ -201,9 +513,6 @@ public class CodeEditorView : UserControl
         _textEditor.ScrollToLine(line);
         _textEditor.TextArea.Caret.Line = line;
     }
-
-    /// <summary>Go to Definition 请求</summary>
-    public event Action? GoToDefinitionRequested;
 
     /// <summary>更新补全数据源</summary>
     public void UpdateCompletionData(
@@ -216,12 +525,53 @@ public class CodeEditorView : UserControl
         _scenes = scenes;
         _labels = labels;
         _characters = characters;
-        _completionProvider ??= new DslCompletionProvider();
+    }
+
+    /// <summary>获取光标下的单词（P0-3/P0-4 共用）</summary>
+    public string GetWordAtCaret()
+    {
+        var editor = _textEditor;
+        var offset = editor.CaretOffset;
+        if (offset < 0 || offset > editor.Document.TextLength) return "";
+
+        var start = offset;
+        while (start > 0 && IsWordChar(editor.Document.GetCharAt(start - 1)))
+            start--;
+
+        var end = offset;
+        while (end < editor.Document.TextLength && IsWordChar(editor.Document.GetCharAt(end)))
+            end++;
+
+        return editor.Document.GetText(start, end - start);
+    }
+
+    /// <summary>P2-1: 更新折叠区段</summary>
+    private void UpdateFoldings()
+    {
+        if (_foldingManager == null) return;
+        var foldings = _foldingStrategy.CreateNewFoldings(_textEditor.Document, out var firstError);
+        _foldingManager.UpdateFoldings(foldings, firstError);
+    }
+
+    /// <summary>P2-2: 格式化当前文档</summary>
+    public void FormatDocument(string formattedText)
+    {
+        var caretLine = _textEditor.TextArea.Caret.Line;
+        var caretColumn = _textEditor.TextArea.Caret.Column;
+        _textEditor.Document.Text = formattedText;
+        _highlighter.SetSource(formattedText);
+        _highlighter.Invalidate();
+        try
+        {
+            _textEditor.TextArea.Caret.Line = caretLine;
+            _textEditor.TextArea.Caret.Column = caretColumn;
+        }
+        catch { }
+        UpdateFoldings();
     }
 
     private void OnTextEntering(object? sender, TextInputEventArgs e)
     {
-        // 补全窗口选择项时按空格/回车确认
         if (e.Text is { Length: 1 } && (e.Text[0] == ' ' || e.Text[0] == '\n' || e.Text[0] == '\t'))
         {
             if (_completionWindow?.IsVisible == true)
@@ -233,28 +583,121 @@ public class CodeEditorView : UserControl
 
     private void OnTextEntered(object? sender, TextInputEventArgs e)
     {
-        if (_completionProvider == null) return;
+        if (_isEnterKey)
+        {
+            _isEnterKey = false;
+            HandleAutoIndent();
+        }
 
+        // 检查是否输入了空格（触发 snippet 展开）
+        if (e.Text == " " && TryExpandSnippet())
+            return;
+
+        // 补全
+        ShowCompletions();
+    }
+
+    /// <summary>快捷模板——输入关键字+空格自动展开</summary>
+    private bool TryExpandSnippet()
+    {
+        var doc = _textEditor.Document;
         var offset = _textEditor.CaretOffset;
-        var completions = _completionProvider.GetCompletions(
-            _textEditor.Document, offset, _variables, _scenes, _labels, _characters);
+        // 获取当前行
+        var line = doc.GetLineByOffset(offset);
+        var lineText = doc.GetText(line.Offset, offset - line.Offset - 1); // -1 去掉刚输入的空格
+        var trimmed = lineText.TrimStart();
+        var indent = lineText[..^trimmed.Length]; // 保留缩进
 
-        var list = new List<ICompletionData>(completions);
-        if (list.Count == 0) return;
+        var snippet = trimmed switch
+        {
+            "say" => "\"\" speaker=\"\"",
+            "scene" => "\"\" type=game\n" + indent + "    ",
+            "label" => " ",
+            "if" => "{true}\n" + indent + "    ",
+            "while" => "{true}\n" + indent + "    ",
+            "for" => "\"i\" in {0..10}\n" + indent + "    ",
+            "menu" => "\"选择\" {\n" + indent + "    \"选项1\" -> label1,\n" + indent + "    \"选项2\" -> label2,\n" + indent + "}",
+            "character" => "\"key\" name=\"名字\" color=\"#FFFFFF\"",
+            "style" => "\"name\" color=#FFFFFF size=18",
+            "navigate" => "\"scene_name\"",
+            "background" => "\"path/to/bg.png\"",
+            "bgm" => "\"path/to/music.ogg\" volume=0.8",
+            "transition" => "\"fade\" duration=1.0",
+            "show" => "\"target\"",
+            "hide" => "\"target\"",
+            "animate" => "\"target\" property=\"x\" target=100 duration=1.0",
+            "sprite" => "\"id\" src=\"path.png\"",
+            _ => null,
+        };
+        if (snippet == null) return false;
 
-        // 计算当前正在输入的单词范围
-        var wordStart = offset;
-        while (wordStart > 0 && IsWordChar(_textEditor.Document.GetCharAt(wordStart - 1)))
-            wordStart--;
+        // 删除已输入的关键字+空格，插入完整模板
+        var wordStart = offset - trimmed.Length - 1; // -1 for space
+        doc.Replace(wordStart, offset - wordStart, trimmed + snippet);
 
-        _completionWindow ??= new CompletionWindow(_textEditor.TextArea);
-        _completionWindow.Show();
-        _completionWindow.CompletionList.CompletionData.Clear();
-        foreach (var item in list)
-            _completionWindow.CompletionList.CompletionData.Add(item);
-        _completionWindow.CompletionList.SelectItem(_textEditor.Document.GetText(wordStart, offset - wordStart));
+        // 定位光标：对于 say "" speaker=""，光标移到第一个引号内
+        if (trimmed == "say")
+            _textEditor.CaretOffset = wordStart + trimmed.Length + 1; // 在第一个 " 后
+        else
+            _textEditor.CaretOffset = wordStart + trimmed.Length + snippet.Length;
+
+        return true;
+    }
+
+    private void ShowCompletions()
+    {
+        try
+        {
+            var offset = _textEditor.CaretOffset;
+            var completions = _completionProvider.GetCompletions(
+                _textEditor.Document, offset, _variables, _scenes, _labels, _characters);
+
+            var list = new List<ICompletionData>(completions);
+            if (list.Count == 0)
+            {
+                if (_completionWindow?.IsVisible == true)
+                    _completionWindow.Close();
+                return;
+            }
+
+            var wordStart = offset;
+            while (wordStart > 0 && IsWordChar(_textEditor.Document.GetCharAt(wordStart - 1)))
+                wordStart--;
+
+            // 每次创建新窗口——复用旧窗口在 Avalonia 12.x 中会出 NRE
+            // 因为 CompletionWindow.Close() 后内部状态不一致
+            _completionWindow?.Close();
+            _completionWindow = new CompletionWindow(_textEditor.TextArea)
+            {
+                MinWidth = 200,
+                MaxHeight = 300,
+            };
+
+            // 填充数据后再 Show
+            if (_completionWindow.CompletionList == null) return;
+
+            _completionWindow.CompletionList.CompletionData.Clear();
+            foreach (var item in list)
+                _completionWindow.CompletionList.CompletionData.Add(item);
+
+            // 设置初始过滤词
+            var filterWord = _textEditor.Document.GetText(wordStart, offset - wordStart);
+            _completionWindow.CompletionList.SelectItem(filterWord);
+
+            // 最后 Show
+            _completionWindow.Show();
+        }
+        catch { }
     }
 
     private static bool IsWordChar(char c) =>
         char.IsLetterOrDigit(c) || c == '_' || c == '-';
+
+    private static string GetFirstWord(string trimmedLine)
+    {
+        var spaceIdx = trimmedLine.IndexOf(' ');
+        if (spaceIdx < 0)
+            return trimmedLine;
+        return trimmedLine[..spaceIdx];
+    }
 }

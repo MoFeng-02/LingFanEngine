@@ -127,9 +127,12 @@ public class SaveDataService : ISaveDataService
                 || k == StateKeys.Scene.GameCurrentBackground || k == StateKeys.Scene.GameDslIndex
                 || k == StateKeys.Scene.GameDslWaitingType)
                 continue;
-            // 排除其他 __ 系统变量（保留游戏时间）
+            // 排除其他 __ 系统变量（保留游戏时间、成就、章节、CG鉴赏等玩家进度）
             if (k.StartsWith(StateKeys.SystemPrefix)
-                && !(_options.EnableTimeSystem && k.StartsWith(StateKeys.GameTime.Prefix)))
+                && !(_options.EnableTimeSystem && k.StartsWith(StateKeys.GameTime.Prefix))
+                && k != StateKeys.Achievements.Unlocked
+                && k != StateKeys.Chapters.Unlocked
+                && k != StateKeys.Gallery.Unlocked)
                 continue;
 
             typedState[k] = ToSaveEntry(v);
@@ -314,23 +317,10 @@ public class SaveDataService : ISaveDataService
                     _dslExecutor.LoadCommands(cmds, lbls);
                     var savedIndex = data.DslCurrentIndex >= 0 ? data.DslCurrentIndex : 0;
 
-                    // 回放场景构建命令重建场景状态
-                    // 从索引 0 到 savedIndex-1 之间的 ShowElementCommand 和 background 命令被重新执行
-                    // 这样读档后场景立即显示正确的 UI 元素和背景，无需存档存储元素列表
-                    var replayElements = new List<UIElementEntity>();
-                    string? replayBg = null;
-                    for (int i = 0; i < savedIndex && i < cmds.Count; i++)
-                    {
-                        if (cmds[i] is ShowElementCommand se)
-                            replayElements.Add(se.Element);
-                        else if (cmds[i] is ShowHideCommand sh && sh.IsBackground && sh.IsShow)
-                            replayBg = sh.Target;
-                    }
-                    _state.Set(StateKeys.Scene.Elements, replayElements);
-                    if (replayBg != null)
-                        _state.Set(StateKeys.Scene.CurrentBackground, replayBg);
-                    _state.Set(StateKeys.Scene.Dirty, true);
-                    Debug.WriteLine($"[SaveDataService] 回放场景: {replayElements.Count} 个元素, 背景={replayBg ?? "(无)"}");
+                    // 回放场景构建命令重建场景状态（场景元素 + 运行时元素 + 背景）
+                    // 统一使用 SceneReplayHelper 处理 ShowElementCommand/ShowHideCommand/BgSwitchCommand/SpriteCommand
+                    var replayCount = SceneReplayHelper.ReplaySceneState(cmds, savedIndex, _state);
+                    Debug.WriteLine($"[SaveDataService] 回放场景: {replayCount} 个场景元素");
 
                     _state.Set(StateKeys.Dsl.CurrentIndex, savedIndex);
                     _dslExecutor.Start();

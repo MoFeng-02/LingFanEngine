@@ -60,7 +60,11 @@ public class AssetManager : IAssetManager
         var fileName = Path.GetFileName(sourceFile);
         var targetPath = Path.Combine(targetDir, fileName);
 
-        await Task.Run(() => File.Copy(sourceFile, targetPath, overwrite: true));
+        // 使用 FileStream + CopyToAsync 实现真正的异步文件复制（File.Copy 无异步 API）
+        const int bufferSize = 81920;
+        using var source = new FileStream(sourceFile, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, useAsync: true);
+        using var target = new FileStream(targetPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize, useAsync: true);
+        await source.CopyToAsync(target);
     }
 
     /// <inheritdoc/>

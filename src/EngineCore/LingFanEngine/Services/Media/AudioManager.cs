@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿using LingFanEngine.Abstractions;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Media;
 
@@ -14,6 +14,7 @@ public class AudioManager : IAudioManager
     private readonly ICommandPipeline _pipeline;
     private readonly IStateContainer _state;
     private readonly Func<IAudioPlayer> _playerFactory;
+    private readonly IEncryptedFileReader? _fileReader;
     private readonly object _audioLock = new();
     /// <summary>全局 BGM 循环取消源（StopBgmAsync 时触发，让所有 BGM 循环退出）</summary>
     private CancellationTokenSource _loopCts = new();
@@ -23,6 +24,9 @@ public class AudioManager : IAudioManager
     private readonly List<IAudioPlayer> _sePlayers = [];
     // 语音通道
     private IAudioPlayer? _voicePlayer;
+    // 环境音通道（单循环播放器）
+    private IAudioPlayer? _ambientPlayer;
+    private CancellationTokenSource _ambientCts = new();
 
     /// <summary>
     /// 主控音量（Master Volume，所有通道的全局乘数，0~1）
@@ -48,13 +52,16 @@ public class AudioManager : IAudioManager
     {
         var effective = MasterMuted ? 0 : _masterVolume;
         IAudioPlayer? voice;
+        IAudioPlayer? ambient;
         lock (_audioLock)
         {
             foreach (var p in _bgmPlayers) _ = p.SetVolumeAsync(effective * BgmVolume);
             foreach (var p in _sePlayers) _ = p.SetVolumeAsync(effective * SeVolume);
             voice = _voicePlayer;
+            ambient = _ambientPlayer;
         }
         if (voice != null) _ = voice.SetVolumeAsync(effective * VoiceVolume);
+        if (ambient != null) _ = ambient.SetVolumeAsync(effective * BgmVolume);
     }
 
     /// <summary>
@@ -76,12 +83,24 @@ public class AudioManager : IAudioManager
     /// 构造函数
     /// </summary>
     /// <param name="playerFactory">可选：自定义播放器工厂。不提供时使用 NullAsyncAudioPlayer（空操作）。</param>
+    /// <param name="fileReader">可选：加密文件读取器。Phase 50 即解即用——加密音频自动解密到临时文件。</param>
     public AudioManager(ICommandPipeline pipeline, IStateContainer state,
-        Func<IAudioPlayer>? playerFactory = null)
+        Func<IAudioPlayer>? playerFactory = null, IEncryptedFileReader? fileReader = null)
     {
         _pipeline = pipeline;
         _state = state;
         _playerFactory = playerFactory ?? (() => new NullAsyncAudioPlayer());
+        _fileReader = fileReader;
+    }
+
+    /// <summary>
+    /// 解析音频文件路径：加密文件解密到临时文件，未加密直接返回原始路径。
+    /// </summary>
+    /// <returns>(播放路径, 是否为临时文件)</returns>
+    private (string path, bool isTemp) ResolveAudioPath(string filePath)
+    {
+        if (_fileReader == null) return (filePath, false);
+        return _fileReader.TryDecryptToFile(filePath);
     }
 
     private float EffectiveVolume(float groupVol) => MasterMuted ? 0 : groupVol * MasterVolume;
@@ -103,9 +122,10 @@ public class AudioManager : IAudioManager
 
     private async Task LoadAndPlayBgmAsync(IAudioPlayer player, string filePath, float volume, bool loop)
     {
+        var (playPath, isTemp) = ResolveAudioPath(filePath);
         try
         {
-            await player.LoadAsync(filePath);
+            await player.LoadAsync(playPath);
             await player.SetVolumeAsync(volume);
             lock (_audioLock) _bgmPlayers.Add(player);
             _state.Set(StateKeys.Audio.BgmPath, filePath);
@@ -127,6 +147,7 @@ public class AudioManager : IAudioManager
         finally
         {
             try { await player.DisposeAsync(); } catch { }
+            _fileReader?.ReleaseTempFile(playPath, isTemp);
         }
     }
 
@@ -183,9 +204,10 @@ public class AudioManager : IAudioManager
 
     private async Task LoadAndPlaySeAsync(IAudioPlayer player, string filePath, float volume)
     {
+        var (playPath, isTemp) = ResolveAudioPath(filePath);
         try
         {
-            await player.LoadAsync(filePath);
+            await player.LoadAsync(playPath);
             await player.SetVolumeAsync(volume);
             lock (_audioLock) _sePlayers.Add(player);
             await player.PlayAsync();
@@ -198,7 +220,71 @@ public class AudioManager : IAudioManager
         finally
         {
             try { await player.DisposeAsync(); } catch { }
+            _fileReader?.ReleaseTempFile(playPath, isTemp);
         }
+    }
+
+    /// <summary>
+    /// 播放环境音（独立通道，循环播放）
+    /// </summary>
+    public void PlayAmbient(string filePath, float volume = 0.8f, bool loop = true)
+    {
+        // 停止旧的环境音
+        _ = StopAmbientAsync();
+        var player = CreatePlayer();
+        _ = LoadAndPlayAmbientAsync(player, filePath, EffectiveVolume(volume), loop);
+    }
+
+    private async Task LoadAndPlayAmbientAsync(IAudioPlayer player, string filePath, float volume, bool loop)
+    {
+        var (playPath, isTemp) = ResolveAudioPath(filePath);
+        try
+        {
+            await player.LoadAsync(playPath);
+            await player.SetVolumeAsync(volume);
+            lock (_audioLock) _ambientPlayer = player;
+            _state.Set(StateKeys.Audio.AmbientPath, filePath);
+
+            _ambientCts.Cancel();
+            _ambientCts.Dispose();
+            _ambientCts = new CancellationTokenSource();
+            var cts = _ambientCts;
+
+            do
+            {
+                await player.PlayAsync(cts.Token);
+            }
+            while (loop && !cts.IsCancellationRequested);
+
+            lock (_audioLock) { if (_ambientPlayer == player) _ambientPlayer = null; }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Audio] Ambient error: {ex.Message}");
+        }
+        finally
+        {
+            try { await player.DisposeAsync(); } catch { }
+            _fileReader?.ReleaseTempFile(playPath, isTemp);
+        }
+    }
+
+    /// <summary>
+    /// 停止环境音
+    /// </summary>
+    public async Task StopAmbientAsync()
+    {
+        IAudioPlayer? player;
+        lock (_audioLock) { player = _ambientPlayer; _ambientPlayer = null; }
+        _ambientCts.Cancel();
+        _ambientCts.Dispose();
+        _ambientCts = new CancellationTokenSource();
+        if (player != null)
+        {
+            try { await player.StopAsync(); } catch { }
+            await player.DisposeAsync();
+        }
+        _state.Set(StateKeys.Audio.AmbientPath, "");
     }
 
     /// <summary>
@@ -221,9 +307,10 @@ public class AudioManager : IAudioManager
 
     private async Task LoadAndPlayVoiceAsync(IAudioPlayer player, string filePath, float volume)
     {
+        var (playPath, isTemp) = ResolveAudioPath(filePath);
         try
         {
-            await player.LoadAsync(filePath);
+            await player.LoadAsync(playPath);
             await player.SetVolumeAsync(volume);
             await player.PlayAsync();
         }
@@ -234,6 +321,7 @@ public class AudioManager : IAudioManager
         finally
         {
             try { await player.DisposeAsync(); } catch { }
+            _fileReader?.ReleaseTempFile(playPath, isTemp);
         }
     }
 
@@ -295,6 +383,7 @@ public class AudioManager : IAudioManager
     public async Task StopAllAsync()
     {
         await StopBgmAsync();
+        await StopAmbientAsync();
         StopVoice();
         List<IAudioPlayer> sePlayers;
         lock (_audioLock)

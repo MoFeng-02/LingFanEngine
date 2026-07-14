@@ -11,22 +11,30 @@ using LingFanEngine.SDK.Views.Pages;
 using Microsoft.Extensions.DependencyInjection;
 using MFToolkit.Routing;
 using MFToolkit.Routing.Core.Interfaces;
+using RouteNavigationEventArgs = MFToolkit.Routing.NavigationEventArgs;
 
 namespace LingFanEngine.SDK.Views;
 
 /// <summary>
 /// 工作台窗口——VS Code 风格三栏布局（活动栏 + 侧面板 + 编辑区 + 状态栏）。
-/// <para>P2-2: 使用 MFToolkit.Routing 进行页面导航，替代手动 SelectActivity。</para>
+/// <para>通过 IRouter.NavigateAsync 导航，订阅 Navigated 事件切换 UI。</para>
+/// <para>Router 自动创建 Page 和 ViewModel 实例，并触发 INavigationAware 生命周期。</para>
 /// </summary>
 public class WorkspaceWindow : Window
 {
     private readonly IServiceProvider _services;
-    private readonly IProjectSession _session;
     private readonly IRouter _router;
+    private readonly IProjectSession _session;
     private readonly ContentControl _sidePanel;
     private readonly ContentControl _editorArea;
     private readonly TextBlock _statusBarText;
     private readonly TextBlock _projectNameText;
+
+    // 侧面板实例缓存
+    private Components.FileTreeView? _fileTree;
+    private Control? _fileTreePanel;
+    private Control? _assetCategoryPanel;
+    private Control? _buildConfigPanel;
 
     // 当前活动路由路径（用于活动栏高亮）
     private string _currentRoute = "";
@@ -48,13 +56,14 @@ public class WorkspaceWindow : Window
         new("\uE734", "故事编辑", "/editor"),
         new("\uE8B7", "资源管理", "/assets"),
         new("\uE7B8", "构建发布", "/build"),
+        new("\uE713", "设置", "/settings"),
     ];
 
     public WorkspaceWindow(IServiceProvider services)
     {
         _services = services;
-        _session = services.GetRequiredService<IProjectSession>();
         _router = services.GetRequiredService<IRouter>();
+        _session = services.GetRequiredService<IProjectSession>();
 
         Title = "灵泛引擎 SDK — 工作台";
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -65,8 +74,17 @@ public class WorkspaceWindow : Window
         Background = s_editorBg;
 
         // 组件
-        _sidePanel = new ContentControl();
-        _editorArea = new ContentControl { Background = s_editorBg };
+        _sidePanel = new ContentControl
+        {
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Stretch,
+        };
+        _editorArea = new ContentControl
+        {
+            Background = s_editorBg,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Stretch,
+        };
         _statusBarText = new TextBlock
         {
             FontSize = 12,
@@ -88,12 +106,12 @@ public class WorkspaceWindow : Window
         _session.ProjectOpened += OnProjectOpened;
         _session.ProjectClosed += OnProjectClosed;
 
-        // P2-2: 订阅路由导航事件
-        _router.Navigated += OnRouterNavigated;
-
         InitializeComponent();
 
-        // 默认导航到故事编辑器
+        // 订阅 Router 导航事件——Router 创建页面和 VM 实例后触发
+        _router.Navigated += OnRouterNavigated;
+
+        // 初始导航到编辑器页面
         _ = _router.NavigateAsync("/editor");
 
         // 更新项目名显示
@@ -102,27 +120,36 @@ public class WorkspaceWindow : Window
         Closed += OnWindowClosed;
     }
 
-    /// <summary>P2-2: 路由导航完成回调——切换编辑区内容和侧面板</summary>
-    private void OnRouterNavigated(object? sender, MFToolkit.Routing.NavigationEventArgs args)
+    // ===== Router 导航事件处理 =====
+
+    /// <summary>Router 导航完成后的 UI 切换</summary>
+    private void OnRouterNavigated(object? sender, RouteNavigationEventArgs args)
     {
-        var routePath = args.To?.Entity.RoutePath ?? "";
+        if (args.To?.PageInstance is not Control page) return;
+
+        var routePath = args.To.Entity.RoutePath ?? "";
+
+        // 确保 ViewModel 绑定
+        if (args.To.ViewModelInstance != null)
+        {
+            page.DataContext = args.To.ViewModelInstance;
+        }
+
+        // 切换编辑区内容
+        _editorArea.Content = page;
+
+        // 更新当前路由
         _currentRoute = routePath;
 
         // 更新活动栏高亮
         UpdateActivityBarHighlight();
 
-        // 切换编辑区内容
-        if (args.To?.PageInstance is Control page)
-        {
-            _editorArea.Content = page;
-        }
-
-        // 根据路由路径创建侧面板
+        // 切换侧面板（使用缓存的实例）
         _sidePanel.Content = routePath switch
         {
-            "/editor" => CreateFileTreePanel(),
-            "/assets" => CreateAssetCategoryPanel(),
-            "/build" => CreateBuildConfigPanel(),
+            "/editor" => _fileTreePanel ??= CreateFileTreePanel(),
+            "/assets" => _assetCategoryPanel ??= CreateAssetCategoryPanel(),
+            "/build" => _buildConfigPanel ??= CreateBuildConfigPanel(),
             _ => null
         };
 
@@ -144,6 +171,7 @@ public class WorkspaceWindow : Window
         {
             if (mainGrid.Children[0] is StackPanel bar)
             {
+                // 遍历所有活动栏按钮（s_activities 对应的前 N 个）
                 for (int i = 0; i < s_activities.Length && i < bar.Children.Count; i++)
                 {
                     if (bar.Children[i] is Button btn)
@@ -222,21 +250,15 @@ public class WorkspaceWindow : Window
             Orientation = Orientation.Vertical,
         };
 
-        // 主导航按钮
-        for (int i = 0; i < s_activities.Length; i++)
+        // 主导航按钮（含设置）
+        foreach (var item in s_activities)
         {
-            var item = s_activities[i];
             var btn = CreateActivityButton(item);
             bar.Children.Add(btn);
         }
 
         // 弹性间隔
         bar.Children.Add(new Border { Height = 8 });
-
-        // 设置按钮
-        var settingsBtn = CreateIconButton("\uE713", "设置", false);
-        settingsBtn.Click += async (_, _) => await _router.NavigateAsync("/settings");
-        bar.Children.Add(settingsBtn);
 
         // 关闭项目按钮
         var closeBtn = CreateIconButton("\uE72C", "关闭项目", false);
@@ -260,6 +282,7 @@ public class WorkspaceWindow : Window
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Top,
             Tag = item.RoutePath,
+            Classes = { "transparent" },
             Content = new TextBlock
             {
                 Text = item.Icon,
@@ -296,6 +319,7 @@ public class WorkspaceWindow : Window
             Padding = new Thickness(0),
             Width = 48,
             Height = 48,
+            Classes = { "transparent" },
             Content = new TextBlock
             {
                 Text = icon,
@@ -341,44 +365,95 @@ public class WorkspaceWindow : Window
 
     // ===== 侧面板创建 =====
 
-    /// <summary>文件树侧面板（故事编辑器）——从当前编辑区页面获取 ViewModel</summary>
+    /// <summary>文件树侧面板——从 Router 事件参数获取 ViewModel</summary>
     private Control CreateFileTreePanel()
     {
-        var panel = new StackPanel { Background = s_sideBarBg };
-
-        panel.Children.Add(new Border
+        var panel = new StackPanel
         {
-            Background = new SolidColorBrush(Color.Parse("#333333")),
-            Padding = new Thickness(12, 8),
-            Child = new TextBlock
-            {
-                Text = "故事文件",
-                FontSize = 12,
-                FontWeight = FontWeight.Bold,
-                Foreground = new SolidColorBrush(Color.Parse("#CCCCCC")),
-            }
+            Background = s_sideBarBg,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+        };
+
+        // 统一标题栏（含新建文件按钮）
+        var headerPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            Margin = new Thickness(8, 6, 8, 4),
+        };
+        headerPanel.Children.Add(new TextBlock
+        {
+            Text = "故事文件",
+            FontSize = 12,
+            FontWeight = FontWeight.Bold,
+            Foreground = new SolidColorBrush(Color.Parse("#CCCCCC")),
+            VerticalAlignment = VerticalAlignment.Center,
         });
 
-        var fileTree = new Components.FileTreeView();
-
-        // 从当前编辑区页面获取 ViewModel
-        if (_editorArea.Content is StoryEditorPage editorPage
-            && editorPage.DataContext is StoryEditorViewModel vm)
+        var newFileBtn = new Button
         {
+            Content = "+",
+            FontSize = 14,
+            Padding = new Thickness(6, 0),
+            MinWidth = 24,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Classes = { "transparent" },
+        };
+        headerPanel.Children.Add(newFileBtn);
+
+        panel.Children.Add(headerPanel);
+
+        _fileTree = new Components.FileTreeView();
+        var fileTree = _fileTree;
+
+        // 从 DI 获取 StoryEditorViewModel（Singleton 或 KeepAlive 缓存的同一实例）
+        var vm = _services.GetService<StoryEditorViewModel>();
+        if (vm != null)
+        {
+            // 传递文件树引用给页面（用于脏标记更新）
+            // 页面实例由 Router 管理，通过 Navigated 事件设置 DataContext
+            // 这里直接使用 VM 即可
+            if (_editorArea.Content is StoryEditorPage editorPage)
+            {
+                editorPage.SetExternalFileTree(fileTree);
+            }
+
             if (vm.StoriesDirectory != null)
                 fileTree.LoadDirectory(vm.StoriesDirectory);
 
             vm.PropertyChanged += (_, e) =>
             {
-                if (e.PropertyName == nameof(StoryEditorViewModel.StoriesDirectory)
-                    && vm.StoriesDirectory != null)
+                if (e.PropertyName == nameof(StoryEditorViewModel.StoriesDirectory))
                 {
-                    fileTree.LoadDirectory(vm.StoriesDirectory);
+                    if (vm.StoriesDirectory != null)
+                        fileTree.LoadDirectory(vm.StoriesDirectory);
+                    else
+                        fileTree.Clear(); // 项目关闭时清空文件树
                 }
             };
 
+            // 连接全部四个事件
             fileTree.FileOpenRequested += async path => await vm.OpenFileCommand.ExecuteAsync(path);
-            fileTree.CreateFileRequested += async dir => await vm.CreateNewFileCommand.ExecuteAsync(dir);
+            fileTree.CreateFileRequested += async filePath => await vm.CreateNewFileCommand.ExecuteAsync(filePath);
+            fileTree.FileDeleteRequested += path =>
+            {
+                vm.DeleteFileCommand.Execute(path);
+            };
+            fileTree.FileRenameRequested += (oldPath, newName) =>
+            {
+                vm.RenameFileCommand.Execute(new[] { oldPath, newName });
+            };
+
+            // 文件创建/删除/重命名后刷新文件树
+            vm.FileTreeNeedsRefresh += () => fileTree.Refresh();
+
+            // 新建文件按钮
+            newFileBtn.Click += (_, _) =>
+            {
+                if (fileTree.RootDirectory != null)
+                    fileTree.ShowNewFileDialog(fileTree.RootDirectory);
+            };
         }
 
         panel.Children.Add(fileTree);
@@ -413,9 +488,9 @@ public class WorkspaceWindow : Window
         foreach (var cat in categories)
             (list.Items as System.Collections.IList)?.Add(new TextBlock { Text = cat, Padding = new Thickness(12, 6) });
 
-        // 从当前编辑区页面获取 ViewModel
-        if (_editorArea.Content is AssetManagerPage assetPage
-            && assetPage.DataContext is AssetManagerViewModel vm)
+        // 从 DI 获取 ViewModel
+        var vm = _services.GetService<AssetManagerViewModel>();
+        if (vm != null)
         {
             list.SelectionChanged += (_, _) =>
             {
@@ -445,7 +520,7 @@ public class WorkspaceWindow : Window
         return panel;
     }
 
-    /// <summary>构建配置侧面板</summary>
+    /// <summary>构建配置侧面板（概览 + 快捷构建按钮）</summary>
     private Control CreateBuildConfigPanel()
     {
         var panel = new StackPanel
@@ -457,42 +532,110 @@ public class WorkspaceWindow : Window
 
         panel.Children.Add(new TextBlock
         {
-            Text = "构建配置",
+            Text = "构建概览",
             FontSize = 12,
             FontWeight = FontWeight.Bold,
             Foreground = new SolidColorBrush(Color.Parse("#CCCCCC")),
         });
 
-        panel.Children.Add(new TextBlock { Text = "目标平台", FontSize = 11, Foreground = new SolidColorBrush(Color.Parse("#888888")) });
-
-        // 从当前编辑区页面获取 ViewModel
-        if (_editorArea.Content is BuildPage buildPage
-            && buildPage.DataContext is BuildViewModel vm)
+        var vm = _services.GetService<BuildViewModel>();
+        if (vm != null)
         {
-            var winCheck = new CheckBox { Content = "Windows", FontSize = 12, Foreground = new SolidColorBrush(Color.Parse("#CCCCCC")) };
-            winCheck.IsChecked = vm.TargetWindows;
-            winCheck.IsCheckedChanged += (_, _) => vm.TargetWindows = winCheck.IsChecked ?? false;
-            panel.Children.Add(winCheck);
+            // 平台摘要（只读）
+            var platformSummary = new TextBlock
+            {
+                FontSize = 12,
+                Foreground = new SolidColorBrush(Color.Parse("#AAAAAA")),
+                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            };
+            void UpdatePlatformSummary()
+            {
+                var parts = new System.Collections.Generic.List<string>();
+                if (vm.TargetWindows) parts.Add("Windows ✓");
+                if (vm.TargetLinux) parts.Add("Linux ✓");
+                if (vm.TargetMacOS) parts.Add("macOS ✓");
+                platformSummary.Text = "平台: " + (parts.Count > 0 ? string.Join("  ", parts) : "(未选择)");
+            }
+            UpdatePlatformSummary();
+            vm.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName is nameof(BuildViewModel.TargetWindows) or nameof(BuildViewModel.TargetLinux) or nameof(BuildViewModel.TargetMacOS))
+                    UpdatePlatformSummary();
+            };
+            panel.Children.Add(platformSummary);
 
-            var linuxCheck = new CheckBox { Content = "Linux", FontSize = 12, Foreground = new SolidColorBrush(Color.Parse("#CCCCCC")) };
-            linuxCheck.IsChecked = vm.TargetLinux;
-            linuxCheck.IsCheckedChanged += (_, _) => vm.TargetLinux = linuxCheck.IsChecked ?? false;
-            panel.Children.Add(linuxCheck);
+            // 加密摘要（只读）
+            var encSummary = new TextBlock
+            {
+                FontSize = 12,
+                Foreground = new SolidColorBrush(Color.Parse("#AAAAAA")),
+                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            };
+            void UpdateEncSummary()
+            {
+                if (!vm.EnableEncryption)
+                    encSummary.Text = "加密: 未启用";
+                else if (!vm.EncryptResources)
+                    encSummary.Text = "加密: 已启用（资源不加密）";
+                else
+                {
+                    var count = 0;
+                    foreach (var item in vm.EncryptFileTypes)
+                        if (item.IsChecked) count++;
+                    encSummary.Text = $"加密: 资源加密 ({count} 种文件类型)";
+                }
+            }
+            UpdateEncSummary();
+            vm.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName is nameof(BuildViewModel.EnableEncryption) or nameof(BuildViewModel.EncryptResources))
+                    UpdateEncSummary();
+            };
+            panel.Children.Add(encSummary);
 
-            var macCheck = new CheckBox { Content = "macOS", FontSize = 12, Foreground = new SolidColorBrush(Color.Parse("#CCCCCC")) };
-            macCheck.IsChecked = vm.TargetMacOS;
-            macCheck.IsCheckedChanged += (_, _) => vm.TargetMacOS = macCheck.IsChecked ?? false;
-            panel.Children.Add(macCheck);
+            // AOT 摘要
+            var aotSummary = new TextBlock
+            {
+                FontSize = 12,
+                Foreground = new SolidColorBrush(Color.Parse("#AAAAAA")),
+            };
+            void UpdateAotSummary() => aotSummary.Text = $"AOT: {(vm.PublishAot ? "启用" : "禁用")}";
+            UpdateAotSummary();
+            vm.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(BuildViewModel.PublishAot))
+                    UpdateAotSummary();
+            };
+            panel.Children.Add(aotSummary);
 
-            var encCheck = new CheckBox { Content = "启用加密", FontSize = 12, Foreground = new SolidColorBrush(Color.Parse("#CCCCCC")) };
-            encCheck.IsChecked = vm.EnableEncryption;
-            encCheck.IsCheckedChanged += (_, _) => vm.EnableEncryption = encCheck.IsChecked ?? false;
-            panel.Children.Add(encCheck);
+            panel.Children.Add(new Border { Height = 1, Background = new SolidColorBrush(Color.Parse("#333333")) });
 
-            var aotCheck = new CheckBox { Content = "AOT 发布", FontSize = 12, Foreground = new SolidColorBrush(Color.Parse("#CCCCCC")) };
-            aotCheck.IsChecked = vm.PublishAot;
-            aotCheck.IsCheckedChanged += (_, _) => vm.PublishAot = aotCheck.IsChecked ?? false;
-            panel.Children.Add(aotCheck);
+            // 构建按钮
+            var buildBtn = new Button
+            {
+                Content = "开始构建",
+                Command = vm.BuildCommand,
+                FontSize = 13,
+                Padding = new Thickness(16, 6),
+                Background = new SolidColorBrush(Color.Parse("#0E639C")),
+                Foreground = Brushes.White,
+                BorderThickness = new Thickness(0),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+            };
+            panel.Children.Add(buildBtn);
+
+            // 进度条
+            var progress = new ProgressBar
+            {
+                Height = 4,
+                Value = vm.BuildProgress,
+            };
+            vm.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(BuildViewModel.BuildProgress))
+                    progress.Value = vm.BuildProgress;
+            };
+            panel.Children.Add(progress);
         }
 
         return panel;
@@ -538,7 +681,6 @@ public class WorkspaceWindow : Window
 
     private void OnWindowClosed(object? sender, EventArgs e)
     {
-        _router.Navigated -= OnRouterNavigated;
         SaveWindowState();
     }
 
@@ -596,13 +738,4 @@ public class WorkspaceWindow : Window
         {
         }
     }
-}
-
-/// <summary>活动页枚举</summary>
-public enum ActivityPage
-{
-    StoryEditor,
-    Assets,
-    Build,
-    Settings
 }

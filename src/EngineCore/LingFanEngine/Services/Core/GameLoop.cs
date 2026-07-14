@@ -1,8 +1,8 @@
 using System.Diagnostics;
-using Avalonia.Threading;
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.EngineOptions;
 using LingFanEngine.Abstractions.Interfaces.Core;
+using LingFanEngine.Abstractions.Interfaces.Events;
 using LingFanEngine.Abstractions.Interfaces.Media;
 // Router 已移除
 using LingFanEngine.Abstractions.Interfaces.Saves;
@@ -15,7 +15,7 @@ namespace LingFanEngine.Services.Core;
 
 /// <summary>
 /// 游戏主循环实现（后台线程 + 可配置帧率）
-/// <para>帧循环在后台线程运行，通过 Dispatcher.UIThread.Post 触发 SceneView 更新。</para>
+/// <para>帧循环在后台线程运行，通过 IUIThreadDispatcher.Post 触发 SceneView 更新。</para>
 /// <para>帧率由 TargetFps 控制（0=不限，15~600=限制），使用 Stopwatch 自旋 + Task.Delay 混合节流。</para>
 /// </summary>
 public class GameLoop : IGameLoop
@@ -32,7 +32,9 @@ public class GameLoop : IGameLoop
     private readonly ITransitionEngine? _transitionEngine;
     private readonly IAudioManager? _audioManager;
     private readonly IVideoManager? _videoManager;
+    private readonly IEventScheduler? _eventScheduler;
     private readonly IDslExecutor? _dslExecutor;
+    private readonly IUIThreadDispatcher? _uiThreadDispatcher;
     private CancellationTokenSource? _stopCts;
     private Task? _loopTask;
     private int _targetFps = 60;
@@ -55,7 +57,7 @@ public class GameLoop : IGameLoop
     private Action<double>? _uiFrameAction;
 
     /// <summary>场景渲染器引用（截图用）</summary>
-    private LingFanEngine.Views.ISceneRenderer? _sceneRenderer;
+    private LingFanEngine.Abstractions.Interfaces.Views.ISceneRenderer? _sceneRenderer;
 
     /// <summary>场景名→SceneScriptEntry 映射（C# 剧情脚本，SceneType 决定存档/堆栈行为）</summary>
     private readonly Dictionary<string, Abstractions.Scripting.SceneScriptEntry> _scriptEntries = new(StringComparer.OrdinalIgnoreCase);
@@ -137,7 +139,9 @@ public class GameLoop : IGameLoop
         IDslExecutor? dslExecutor = null,
         ITransitionEngine? transitionEngine = null,
         IAudioManager? audioManager = null,
-        IVideoManager? videoManager = null)
+        IVideoManager? videoManager = null,
+        IEventScheduler? eventScheduler = null,
+        IUIThreadDispatcher? uiThreadDispatcher = null)
     {
         _pipeline = pipeline;
         _state = state;
@@ -154,6 +158,8 @@ public class GameLoop : IGameLoop
         _transitionEngine = transitionEngine;
         _audioManager = audioManager;
         _videoManager = videoManager;
+        _eventScheduler = eventScheduler;
+        _uiThreadDispatcher = uiThreadDispatcher;
 
         _stateInitializer = stateInitializer;
         _animationService = animationService;
@@ -223,7 +229,7 @@ public class GameLoop : IGameLoop
     /// <summary>
     /// 注册场景视图（UI 层引用，非 DI 管理——用于截图功能）
     /// </summary>
-    public void SetSceneView(LingFanEngine.Views.ISceneRenderer view)
+    public void SetSceneView(LingFanEngine.Abstractions.Interfaces.Views.ISceneRenderer view)
     {
         _sceneRenderer = view;
         // 连接截图回调到 SaveDataService
@@ -338,20 +344,30 @@ public class GameLoop : IGameLoop
                     // 合并跳帧期间累积的 delta，确保打字机/通知等计时准确
                     var delta = frameDelta + _pendingDelta;
                     _pendingDelta = 0;
-                    var priority = _firstFrame ? DispatcherPriority.Normal : DispatcherPriority.Render;
+                    var highPriority = _firstFrame;
                     _firstFrame = false;
                     _uiFramePending = true;
-                    Dispatcher.UIThread.Post(() =>
+                    var dispatcher = _uiThreadDispatcher;
+                    if (dispatcher != null)
                     {
-                        try
+                        dispatcher.Post(() =>
                         {
-                            _uiFrameAction(delta);
-                        }
-                        finally
-                        {
-                            _uiFramePending = false;
-                        }
-                    }, priority);
+                            try
+                            {
+                                _uiFrameAction(delta);
+                            }
+                            finally
+                            {
+                                _uiFramePending = false;
+                            }
+                        }, highPriority);
+                    }
+                    else
+                    {
+                        // fallback：无调度器时同步执行（测试场景）
+                        _uiFramePending = false;
+                        try { _uiFrameAction(delta); } catch { /* ignore */ }
+                    }
                 }
                 else if (_uiFrameAction != null)
                 {
@@ -429,6 +445,8 @@ public class GameLoop : IGameLoop
                 case ICommandHandler<PlaySeCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<PlayVoiceCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<BgmQueueCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<PlayAmbientCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<StopAmbientCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<TransitionCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<AnimateCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<ShowHideCommand> h: _dispatcher.Register(h); break;
@@ -460,6 +478,21 @@ public class GameLoop : IGameLoop
                 case ICommandHandler<ResumeVideoCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<SeekVideoCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<CutsceneCommand> h: _dispatcher.Register(h); break;
+                // Phase 38: 时间事件与通知
+                case ICommandHandler<TimeEventCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<TimePauseCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<TimeResumeCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<NotifyCommand> h: _dispatcher.Register(h); break;
+                // Phase 44-47: DSL 2.0 新命令处理器
+                case ICommandHandler<ArrayPushCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<ArrayPopCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<DictSetCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<SpriteCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<BgSwitchCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<Live2DCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<AchievementUnlockCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<ChapterUnlockCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<SaveDeleteCommand> h: _dispatcher.Register(h); break;
                 default:
                     Debug.WriteLine($"[GameLoop] 未知的默认处理器类型: {handler.GetType().Name}");
                     break;
@@ -509,6 +542,7 @@ public class GameLoop : IGameLoop
         _state.Set(StateKeys.Dialog.TextFont, (string?)null);
         _state.Set(StateKeys.Dialog.Clickable, false);
         _state.Set(StateKeys.Dialog.Noskip, false);
+        _state.Set(StateKeys.Dialog.Instant, false);
         _state.Set<object?>(StateKeys.Dialog.SideImage, null);
         // Phase 24: 不重置 WindowMode——window hide/show 是显式控制，场景切换不应自动重置
 
@@ -590,20 +624,16 @@ public class GameLoop : IGameLoop
             _fpsAccumulator = 0;
             _fpsFrameCount = 0;
             _fpsUpdateTimer = 0;
-        }
 
-        // 命令管道队列深度
-        _state.Set(StateKeys.Performance.CommandQueueDepth, _pipeline.Count);
+            // 非 FPS 指标也仅在 0.5s 周期更新——避免每帧 5+ 次 ConcurrentDictionary 写入 + ValueChanged 事件开销
+            _state.Set(StateKeys.Performance.CommandQueueDepth, _pipeline.Count);
 
-        // DSL 执行位置
-        var dslIndex = _state.Get<int>(StateKeys.Dsl.CurrentIndex);
-        var dslTotal = _state.Get<int>(StateKeys.Dsl.TotalCommands);
-        _state.Set(StateKeys.Performance.DslCurrentIndex, dslIndex);
-        _state.Set(StateKeys.Performance.DslTotalCommands, dslTotal);
+            var dslIndex = _state.Get<int>(StateKeys.Dsl.CurrentIndex);
+            var dslTotal = _state.Get<int>(StateKeys.Dsl.TotalCommands);
+            _state.Set(StateKeys.Performance.DslCurrentIndex, dslIndex);
+            _state.Set(StateKeys.Performance.DslTotalCommands, dslTotal);
 
-        // 活跃动画数量（P1-#10: 仅在 FPS 更新周期(0.5s)扫描一次，而非每帧 LINQ 遍历所有键）
-        if (_fpsUpdateTimer < 0.01) // 刚更新 FPS 时顺便扫描动画数
-        {
+            // 活跃动画数量（仅在 HUD 刷新周期扫描一次）
             var animCount = 0;
             foreach (var k in _state.Keys)
             {
@@ -611,19 +641,16 @@ public class GameLoop : IGameLoop
                     animCount++;
             }
             _state.Set(StateKeys.Performance.ActiveAnimations, animCount);
-        }
 
-        // 场景元素数量
-        var elements = _state.Get<List<Abstractions.Entities.UIs.UIElementEntity>>(StateKeys.Scene.Elements);
-        _state.Set(StateKeys.Performance.SceneElementCount, elements?.Count ?? 0);
+            // 场景元素数量
+            var elements = _state.Get<List<Abstractions.Entities.UIs.UIElementEntity>>(StateKeys.Scene.Elements);
+            _state.Set(StateKeys.Performance.SceneElementCount, elements?.Count ?? 0);
 
-        // 回溯检查点数量
-        var checkpoints = _state.Get<List<Abstractions.Models.RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
-        _state.Set(StateKeys.Performance.CheckpointCount, checkpoints?.Count ?? 0);
+            // 回溯检查点数量
+            var checkpoints = _state.Get<List<Abstractions.Models.RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
+            _state.Set(StateKeys.Performance.CheckpointCount, checkpoints?.Count ?? 0);
 
-        // 托管内存（每 2 秒更新一次，避免频繁 GC 查询）
-        if (_fpsUpdateTimer < 0.01) // 刚更新 FPS 时顺便更新内存
-        {
+            // 托管内存
             var memMb = GC.GetTotalMemory(false) / 1024.0 / 1024.0;
             _state.Set(StateKeys.Performance.MemoryMb, Math.Round(memMb, 1));
         }
@@ -646,6 +673,7 @@ public class GameLoop : IGameLoop
         public ITransitionEngine? TransitionEngine => loop._transitionEngine;
         public IAudioManager? AudioManager => loop._audioManager;
         public IVideoManager? VideoManager => loop._videoManager;
+        public IEventScheduler? EventScheduler => loop._eventScheduler;
         public ISaveService? SaveService => loop._saveService;
         public LingFanEngineOptions Options => loop._options;
         public Func<byte[]?>? CaptureThumbnail => loop._sceneRenderer == null ? null : () => loop._sceneRenderer.CaptureThumbnail();

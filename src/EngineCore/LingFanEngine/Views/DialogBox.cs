@@ -186,6 +186,9 @@ public class DialogBox : UserControl, IDialogBox
         var twEnabled = _state.ContainsKey(StateKeys.Dialog.TypewriterEnabled)
             ? _state.Get<bool>(StateKeys.Dialog.TypewriterEnabled) : true;
         if (!twEnabled) { SkipToEnd(); return; }
+        // Phase 44: instant=true 时跳过打字机效果，瞬时显示全部文本
+        if (_state.ContainsKey(StateKeys.Dialog.Instant) && _state.Get<bool>(StateKeys.Dialog.Instant))
+        { SkipToEnd(); return; }
         if (IsPausedByTag) return;
 
         // NVL 模式：跳过已显示的旧文本，只对新追加的行打字机

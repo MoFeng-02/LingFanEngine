@@ -30,7 +30,11 @@ public sealed partial class CallStmt : DslStatement
     public required string TargetLabel { get; init; }
 }
 
-public sealed partial class ReturnStmt : DslStatement { }
+public sealed partial class ReturnStmt : DslStatement
+{
+    /// <summary>返回值表达式（可选，null=无返回值）</summary>
+    public string? ValuePart { get; init; }
+}
 
 // ====== 对话与导航 ======
 
@@ -42,6 +46,10 @@ public sealed partial class SayStmt : DslStatement
     public bool Clickable { get; init; }
     /// <summary>此对话不可跳过（say noskip=true）</summary>
     public bool Noskip { get; init; }
+    /// <summary>瞬时显示文本（say instant=true，跳过打字机效果）</summary>
+    public bool Instant { get; init; }
+    /// <summary>显式启用打字机效果（say typewriter=true）</summary>
+    public bool? Typewriter { get; init; }
 }
 
 public sealed partial class NavigateStmt : DslStatement
@@ -79,6 +87,16 @@ public sealed partial class LetStmt : DslStatement
     public required string ValuePart { get; init; }
 }
 
+/// <summary>
+/// undef 销毁变量语句——DSL 2.0
+/// <para>语法：undef "key"</para>
+/// <para>编译为 SetVariableCommand { Value = null }，同时清理 _local_ 前缀的局部变量。</para>
+/// </summary>
+public sealed partial class UndefStmt : DslStatement
+{
+    public required string Key { get; init; }
+}
+
 // ====== 媒体 ======
 
 public sealed partial class BgmStmt : DslStatement
@@ -86,6 +104,35 @@ public sealed partial class BgmStmt : DslStatement
     public required string Path { get; init; }
     public float? Volume { get; init; }
 }
+
+/// <summary>
+/// 音效语句——DSL 2.0
+/// <para>语法：se "path" [volume=N]</para>
+/// <para>一次性播放，不循环。</para>
+/// </summary>
+public sealed partial class SeStmt : DslStatement
+{
+    public required string Path { get; init; }
+    public float? Volume { get; init; }
+}
+
+/// <summary>
+/// 环境音语句——DSL 2.0
+/// <para>语法：ambient "path" [loop=true] [volume=N]</para>
+/// <para>循环播放的环境音，独立于 BGM/SE/Voice 通道。</para>
+/// </summary>
+public sealed partial class AmbientStmt : DslStatement
+{
+    public required string Path { get; init; }
+    public bool Loop { get; init; } = true;
+    public float? Volume { get; init; }
+}
+
+/// <summary>
+/// 停止环境音语句——DSL 2.0
+/// <para>语法：stop_ambient</para>
+/// </summary>
+public sealed partial class StopAmbientStmt : DslStatement { }
 
 // ====== 视频 ======
 
@@ -202,6 +249,10 @@ public sealed partial class MenuOptionStmt : DslStatement
 public sealed partial class SaveStmt : DslStatement
 {
     public required string SlotId { get; init; }
+    /// <summary>存档标题（可选，DSL 2.0：save "slot" title "标题"）</summary>
+    public string? Title { get; init; }
+    /// <summary>是否截取截图（可选，DSL 2.0：screenshot=true）</summary>
+    public bool Screenshot { get; init; } = true;
 }
 
 public sealed partial class LoadStmt : DslStatement
@@ -259,7 +310,8 @@ public sealed partial class ToggleAutoStmt : DslStatement { }
 public sealed partial class GalleryUnlockStmt : DslStatement
 {
     public required string Id { get; init; }
-    public required string ImagePath { get; init; }
+    /// <summary>CG 图片路径（可选——gallery_unlock 语法不需要路径）</summary>
+    public string ImagePath { get; init; } = "";
     public string? Title { get; init; }
     public string? SceneName { get; init; }
 }
@@ -272,7 +324,11 @@ public sealed partial class DebugLogStmt : DslStatement
 
 public sealed partial class NvlStmt : DslStatement
 {
+    /// <summary>清空累积文本（不退出 NVL 模式）</summary>
     public bool IsClear { get; init; }
+
+    /// <summary>退出 NVL 模式并清空累积文本（恢复 ADV 模式）</summary>
+    public bool IsExit { get; init; }
 }
 
 /// <summary>
@@ -353,6 +409,65 @@ public sealed partial class ShowElementStmt : DslStatement
     //public required object Element { get; init; }
 }
 
+// ====== Phase 38: 时间事件与通知 ======
+
+/// <summary>
+/// 时间事件注册语句——注册游戏时间驱动的自动触发事件
+/// <para>语法：time_event day=1 hour=12 minute=30 target="noon_event" once=true condition="{sunny}" desc="中午事件"</para>
+/// <para>需要 EnableTimeSystem=true 才生效。</para>
+/// </summary>
+public sealed partial class TimeEventStmt : DslStatement
+{
+    /// <summary>触发的游戏天数（从第0天开始）</summary>
+    public int TriggerDay { get; init; }
+
+    /// <summary>触发的小时（null=任意小时）</summary>
+    public int? TriggerHour { get; init; }
+
+    /// <summary>触发的分钟（null=任意分钟）</summary>
+    public int? TriggerMinute { get; init; }
+
+    /// <summary>触发时导航到的场景/label</summary>
+    public required string Target { get; init; }
+
+    /// <summary>是否只触发一次（默认 true）</summary>
+    public bool IsOneShot { get; init; } = true;
+
+    /// <summary>条件表达式（可选）</summary>
+    public string? Condition { get; init; }
+
+    /// <summary>事件描述（可选，用于日志）</summary>
+    public string? Description { get; init; }
+}
+
+/// <summary>
+/// 暂停游戏时间语句
+/// <para>语法：time_pause</para>
+/// </summary>
+public sealed partial class TimePauseStmt : DslStatement { }
+
+/// <summary>
+/// 恢复游戏时间语句
+/// <para>语法：time_resume</para>
+/// </summary>
+public sealed partial class TimeResumeStmt : DslStatement { }
+
+/// <summary>
+/// 通知语句——显示 Toast 通知
+/// <para>语法：notify "text" type=warning duration=5.0</para>
+/// </summary>
+public sealed partial class NotifyStmt : DslStatement
+{
+    /// <summary>通知文本</summary>
+    public required string Text { get; init; }
+
+    /// <summary>通知类型：info / warning / error（默认 info）</summary>
+    public string? Type { get; init; }
+
+    /// <summary>显示时长秒数（默认 3.0）</summary>
+    public double? Duration { get; init; }
+}
+
 // ====== Phase 24: Ren'Py 功能对齐 ======
 
 /// <summary>
@@ -385,4 +500,373 @@ public sealed partial class ForStmt : DslStatement
 
     /// <summary>迭代源表达式（如 [1,2,3] 或 player.items）</summary>
     public required string SourceExpr { get; init; }
+}
+
+// ====== Phase 44: 叙事增强 ======
+
+/// <summary>
+/// switch 多分支语句——DSL 2.0
+/// <para>语法：switch {expr}</para>
+/// <para>编译为 if/else 链：将 switch 表达式存入临时变量，每个 case 编译为 BranchCommand 比较相等。</para>
+/// </summary>
+public sealed partial class SwitchStmt : DslStatement
+{
+    /// <summary>switch 表达式（不含花括号）</summary>
+    public required string Expression { get; init; }
+}
+
+/// <summary>
+/// switch case 分支——DSL 2.0
+/// <para>语法：case N</para>
+/// </summary>
+public sealed partial class CaseStmt : DslStatement
+{
+    /// <summary>case 比较值（字符串形式，运行时与 switch 表达式求值结果比较）</summary>
+    public required string Value { get; init; }
+}
+
+/// <summary>
+/// switch default 分支——DSL 2.0
+/// <para>语法：default</para>
+/// </summary>
+public sealed partial class DefaultStmt : DslStatement { }
+
+/// <summary>
+/// 函数定义语句——DSL 2.0
+/// <para>语法：func name(param1, param2) { ... }</para>
+/// <para>编译为 label + 参数列表存储。函数体作为 label 的内容执行。</para>
+/// </summary>
+public sealed partial class FuncStmt : DslStatement
+{
+    /// <summary>函数名（同时作为 label 名）</summary>
+    public required string Name { get; init; }
+
+    /// <summary>参数名列表</summary>
+    public required List<string> Parameters { get; init; }
+}
+
+/// <summary>
+/// 数组初始化语句——DSL 2.0
+/// <para>语法：array "key" [item1, item2, ...] [once]</para>
+/// </summary>
+public sealed partial class ArrayStmt : DslStatement
+{
+    /// <summary>状态键名</summary>
+    public required string Key { get; init; }
+
+    /// <summary>初始元素列表（字符串形式，运行时解析类型）</summary>
+    public required List<string> Items { get; init; }
+
+    /// <summary>是否仅初始化一次（已存在则跳过）</summary>
+    public bool IsDefine { get; init; }
+}
+
+/// <summary>
+/// 数组追加语句——DSL 2.0
+/// <para>语法：array_push "key" "value"</para>
+/// </summary>
+public sealed partial class ArrayPushStmt : DslStatement
+{
+    /// <summary>状态键名</summary>
+    public required string Key { get; init; }
+
+    /// <summary>追加的值（字符串形式，运行时解析）</summary>
+    public required string ValuePart { get; init; }
+}
+
+/// <summary>
+/// 数组弹出语句——DSL 2.0
+/// <para>语法：array_pop "key"</para>
+/// </summary>
+public sealed partial class ArrayPopStmt : DslStatement
+{
+    /// <summary>状态键名</summary>
+    public required string Key { get; init; }
+}
+
+/// <summary>
+/// foreach 遍历语句——DSL 2.0
+/// <para>语法：foreach "var" in "key" { ... }</para>
+/// <para>编译为 for 循环，迭代源为数组状态键。</para>
+/// </summary>
+public sealed partial class ForeachStmt : DslStatement
+{
+    /// <summary>迭代变量名</summary>
+    public required string VarName { get; init; }
+
+    /// <summary>数组状态键名</summary>
+    public required string SourceKey { get; init; }
+}
+
+/// <summary>
+/// 字典初始化语句——DSL 2.0
+/// <para>语法：dict "key" {"field":value,...} [once]</para>
+/// </summary>
+public sealed partial class DictStmt : DslStatement
+{
+    /// <summary>状态键名</summary>
+    public required string Key { get; init; }
+
+    /// <summary>字段列表（字段名, 值字符串）</summary>
+    public required List<(string Field, string Value)> Fields { get; init; }
+
+    /// <summary>是否仅初始化一次</summary>
+    public bool IsDefine { get; init; }
+}
+
+/// <summary>
+/// 字典设值语句——DSL 2.0
+/// <para>语法：dict_set "key" "field" value</para>
+/// </summary>
+public sealed partial class DictSetStmt : DslStatement
+{
+    /// <summary>状态键名</summary>
+    public required string Key { get; init; }
+
+    /// <summary>字段名</summary>
+    public required string Field { get; init; }
+
+    /// <summary>值（字符串形式，运行时解析）</summary>
+    public required string ValuePart { get; init; }
+}
+
+// ====== Phase 45: UI 增强 ======
+
+/// <summary>
+/// 弹窗语句——DSL 2.0
+/// <para>语法：popup "name" width=N height=N mask=true { ... }</para>
+/// </summary>
+public sealed partial class PopupStmt : DslStatement
+{
+    /// <summary>弹窗名称</summary>
+    public required string Name { get; init; }
+
+    /// <summary>宽度（可选）</summary>
+    public double? Width { get; init; }
+
+    /// <summary>高度（可选）</summary>
+    public double? Height { get; init; }
+
+    /// <summary>是否显示遮罩（默认 true）</summary>
+    public bool Mask { get; init; } = true;
+}
+
+/// <summary>
+/// 层级设置语句——DSL 2.0
+/// <para>语法：zindex N</para>
+/// </summary>
+public sealed partial class ZindexStmt : DslStatement
+{
+    /// <summary>Z-Index 值</summary>
+    public int ZIndex { get; init; }
+}
+
+/// <summary>
+/// 立绘显示语句——DSL 2.0
+/// <para>语法：sprite "id" src="path" x=N y=N fade=N</para>
+/// </summary>
+public sealed partial class SpriteStmt : DslStatement
+{
+    public required string Id { get; init; }
+    public required string Source { get; init; }
+    public double? X { get; init; }
+    public double? Y { get; init; }
+    public double? Fade { get; init; }
+}
+
+/// <summary>
+/// 立绘状态切换语句——DSL 2.0
+/// <para>语法：sprite_state "id" emotion="smile"</para>
+/// </summary>
+public sealed partial class SpriteStateStmt : DslStatement
+{
+    public required string Id { get; init; }
+    public required string Emotion { get; init; }
+}
+
+/// <summary>
+/// 立绘移动语句——DSL 2.0
+/// <para>语法：sprite_move "id" x=N y=N duration=N</para>
+/// </summary>
+public sealed partial class SpriteMoveStmt : DslStatement
+{
+    public required string Id { get; init; }
+    public double? X { get; init; }
+    public double? Y { get; init; }
+    public double? Duration { get; init; }
+}
+
+/// <summary>
+/// 立绘隐藏语句——DSL 2.0
+/// <para>语法：sprite_hide "id" fade=N</para>
+/// </summary>
+public sealed partial class SpriteHideStmt : DslStatement
+{
+    public required string Id { get; init; }
+    public double? Fade { get; init; }
+}
+
+/// <summary>
+/// 背景切换语句——DSL 2.0
+/// <para>语法：bg_switch "path" transition=fade duration=N</para>
+/// </summary>
+public sealed partial class BgSwitchStmt : DslStatement
+{
+    public required string Path { get; init; }
+    public string? Transition { get; init; }
+    public double? Duration { get; init; }
+}
+
+/// <summary>
+/// 打字机速度设置语句——DSL 2.0
+/// <para>语法：text_typewriter speed=N</para>
+/// </summary>
+public sealed partial class TextTypewriterStmt : DslStatement
+{
+    /// <summary>打字机速度（字符/秒），0=关闭打字机</summary>
+    public double Speed { get; init; }
+}
+
+// ====== Phase 46: Live2D ======
+
+/// <summary>Live2D 模型注册语句</summary>
+public sealed partial class Live2DCharStmt : DslStatement
+{
+    public required string Id { get; init; }
+    public required string Source { get; init; }
+    public double? Height { get; init; }
+    public double? X { get; init; }
+    public double? Y { get; init; }
+    public double? Fade { get; init; }
+    public bool Loop { get; init; } = true;
+    public bool Seamless { get; init; }
+    public double BlinkRate { get; init; } = 3.0;
+    public bool MouseTrackHead { get; init; } = true;
+    public bool VoiceSyncMouth { get; init; } = true;
+}
+
+public sealed partial class Live2DShowStmt : DslStatement
+{
+    public required string Id { get; init; }
+}
+
+public sealed partial class Live2DMotionStmt : DslStatement
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public double? Fade { get; init; }
+    public bool Loop { get; init; } = true;
+}
+
+public sealed partial class Live2DExprStmt : DslStatement
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public double? Fade { get; init; }
+}
+
+public sealed partial class Live2DParamStmt : DslStatement
+{
+    public required string Id { get; init; }
+    public required string ParamName { get; init; }
+    public double Value { get; init; }
+    public double Weight { get; init; } = 1.0;
+}
+
+public sealed partial class Live2DHideStmt : DslStatement
+{
+    public required string Id { get; init; }
+    public double? Fade { get; init; }
+}
+
+public sealed partial class Live2DPauseStmt : DslStatement
+{
+    public required string Id { get; init; }
+}
+
+public sealed partial class Live2DResumeStmt : DslStatement
+{
+    public required string Id { get; init; }
+}
+
+// ====== Phase 47: 存档/成就/章节 ======
+
+/// <summary>
+/// 自动存档语句——DSL 2.0
+/// <para>语法：auto_save true / auto_save false</para>
+/// </summary>
+public sealed partial class AutoSaveStmt : DslStatement
+{
+    public bool Enabled { get; init; }
+}
+
+/// <summary>
+/// 删除存档语句——DSL 2.0
+/// <para>语法：save_delete "slot"</para>
+/// </summary>
+public sealed partial class SaveDeleteStmt : DslStatement
+{
+    public required string SlotId { get; init; }
+}
+
+/// <summary>
+/// 章节解锁语句——DSL 2.0
+/// <para>语法：chapter "id" name "章节名" unlock=true</para>
+/// </summary>
+public sealed partial class ChapterStmt : DslStatement
+{
+    public required string Id { get; init; }
+    public string? ChapterName { get; init; }
+    public bool Unlock { get; init; } = true;
+}
+
+/// <summary>
+/// 成就解锁语句——DSL 2.0
+/// <para>语法：achievement "id" name "成就名"</para>
+/// </summary>
+public sealed partial class AchievementStmt : DslStatement
+{
+    public required string Id { get; init; }
+    public string? AchievementName { get; init; }
+}
+
+/// <summary>
+/// 自动模式速度设置语句——DSL 2.0
+/// <para>语法：auto_speed N</para>
+/// </summary>
+public sealed partial class AutoSpeedStmt : DslStatement
+{
+    public double Speed { get; init; }
+}
+
+/// <summary>
+/// 禁止跳过语句——DSL 2.0
+/// <para>语法：no_skip</para>
+/// </summary>
+public sealed partial class NoSkipStmt : DslStatement { }
+
+/// <summary>
+/// 强制跳过语句——DSL 2.0
+/// <para>语法：force_skip</para>
+/// </summary>
+public sealed partial class ForceSkipStmt : DslStatement { }
+
+// ====== Phase 48: 视频增强 ======
+
+/// <summary>
+/// 视频跳过设置语句——DSL 2.0
+/// <para>语法：video_skipable true / video_skipable false</para>
+/// </summary>
+public sealed partial class VideoSkipableStmt : DslStatement
+{
+    public bool Enabled { get; init; } = true;
+}
+
+/// <summary>
+/// 视频结束后自动导航语句——DSL 2.0
+/// <para>语法：video_auto_nav "scene_name"</para>
+/// </summary>
+public sealed partial class VideoAutoNavStmt : DslStatement
+{
+    public required string SceneName { get; init; }
 }

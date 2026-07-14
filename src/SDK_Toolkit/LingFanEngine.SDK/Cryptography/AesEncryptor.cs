@@ -26,38 +26,39 @@ public static class AesEncryptor
 
     /// <summary>
     /// 加密：返回 魔数(4) + 版本(1) + nonce(12) + tag(16) + ciphertext
+    /// <para>一次性分配结果缓冲区，nonce/ciphertext/tag 直接写入对应位置——零中间分配。</para>
     /// </summary>
-    public static byte[] Encrypt(byte[] plaintext, byte[] key)
+    public static byte[] Encrypt(ReadOnlySpan<byte> plaintext, ReadOnlySpan<byte> key)
     {
         if (key.Length != KeySize)
             throw new ArgumentException($"密钥长度必须为 {KeySize} 字节", nameof(key));
 
-        var nonce = new byte[NonceSize];
-        RandomNumberGenerator.Fill(nonce);
+        // 一次性分配结果缓冲区
+        var result = new byte[Magic.Length + 1 + NonceSize + TagSize + plaintext.Length];
 
-        var ciphertext = new byte[plaintext.Length];
-        var tag = new byte[TagSize];
+        // 写入头部
+        Magic.CopyTo(result, 0);
+        result[Magic.Length] = Version;
+
+        // nonce 直接写入 result（避免单独 byte[] 分配）
+        var nonceSpan = result.AsSpan(Magic.Length + 1, NonceSize);
+        RandomNumberGenerator.Fill(nonceSpan);
+
+        // ciphertext + tag 直接写入 result 的尾部区域——零中间分配
+        var tagSpan = result.AsSpan(Magic.Length + 1 + NonceSize, TagSize);
+        var ciphertextSpan = result.AsSpan(Magic.Length + 1 + NonceSize + TagSize);
 
         using var aes = new AesGcm(key, TagSize);
-        aes.Encrypt(nonce, plaintext, ciphertext, tag);
-
-        // 组装结果
-        var result = new byte[Magic.Length + 1 + NonceSize + TagSize + ciphertext.Length];
-        var offset = 0;
-
-        Magic.CopyTo(result, offset); offset += Magic.Length;
-        result[offset++] = Version;
-        nonce.CopyTo(result, offset); offset += NonceSize;
-        tag.CopyTo(result, offset); offset += TagSize;
-        ciphertext.CopyTo(result, offset);
+        aes.Encrypt(nonceSpan, plaintext, ciphertextSpan, tagSpan);
 
         return result;
     }
 
     /// <summary>
     /// 解密：从 魔数(4) + 版本(1) + nonce(12) + tag(16) + ciphertext 还原明文
+    /// <para>使用 Span 切片直接引用输入数据——零拷贝 nonce/tag/ciphertext。</para>
     /// </summary>
-    public static byte[] Decrypt(byte[] encrypted, byte[] key)
+    public static byte[] Decrypt(ReadOnlySpan<byte> encrypted, ReadOnlySpan<byte> key)
     {
         if (key.Length != KeySize)
             throw new ArgumentException($"密钥长度必须为 {KeySize} 字节", nameof(key));
@@ -69,20 +70,13 @@ public static class AesEncryptor
         if (version != Version)
             throw new FormatException($"不支持的加密版本: {version}");
 
-        var offset = Magic.Length + 1; // 跳过魔数+版本
-        var nonce = new byte[NonceSize];
-        Array.Copy(encrypted, offset, nonce, 0, NonceSize);
-        offset += NonceSize;
-
-        var tag = new byte[TagSize];
-        Array.Copy(encrypted, offset, tag, 0, TagSize);
-        offset += TagSize;
-
-        var ciphertext = new byte[encrypted.Length - offset];
-        Array.Copy(encrypted, offset, ciphertext, 0, ciphertext.Length);
+        // 直接用 Span 切片引用原始数据——零拷贝
+        var headerEnd = Magic.Length + 1; // 魔数 + 版本号
+        var nonce = encrypted.Slice(headerEnd, NonceSize);
+        var tag = encrypted.Slice(headerEnd + NonceSize, TagSize);
+        var ciphertext = encrypted[(headerEnd + NonceSize + TagSize)..];
 
         var plaintext = new byte[ciphertext.Length];
-
         using var aes = new AesGcm(key, TagSize);
         aes.Decrypt(nonce, ciphertext, tag, plaintext);
 
@@ -90,7 +84,7 @@ public static class AesEncryptor
     }
 
     /// <summary>检测数据是否为 LFEN 加密格式</summary>
-    public static bool IsEncrypted(byte[] data)
+    public static bool IsEncrypted(ReadOnlySpan<byte> data)
     {
         if (data.Length < Magic.Length + 1 + NonceSize + TagSize)
             return false;

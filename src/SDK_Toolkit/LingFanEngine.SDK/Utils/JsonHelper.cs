@@ -18,6 +18,9 @@ namespace LingFanEngine.SDK.Utils;
 [JsonSerializable(typeof(List<DslDiagnostic>))]
 [JsonSerializable(typeof(List<VariableInfo>))]
 [JsonSerializable(typeof(List<SceneReference>))]
+[JsonSerializable(typeof(PackManifestInfo))]
+[JsonSerializable(typeof(PackResult))]
+[JsonSerializable(typeof(SdkSettings))]
 [JsonSourceGenerationOptions(
     WriteIndented = true,
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,

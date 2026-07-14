@@ -6,6 +6,16 @@ namespace LingFanEngine.DslCore;
 /// </summary>
 public static class DslKeywords
 {
+    // ====== UI 元素类型 ======    // scene 块内可用的元素类型
+    private static readonly HashSet<string> _uiElementTypes = new()
+    {
+        "text", "button", "image", "background", "portrait",
+        "panel", "vbox", "hbox", "dialog", "narrator", "speaker",
+        "choice", "video", "container", "scrollview",
+        "sprite", "live2d", "progressbar", "slider",
+        "checkbox", "input", "label", "spacer", "divider",
+    };
+
     // ====== 语句关键字 ======
     // 可以作为 DSL 行首单词的关键字（DslStatementParser 中每个解析器匹配的第一个 String）
     private static readonly HashSet<string> _statements = new()
@@ -13,18 +23,40 @@ public static class DslKeywords
         // 对话与导航
         "say", "navigate", "scene", "jump", "call", "return", "back", "forward",
         // 变量操作
-        "set", "define", "let",
+        "set", "define", "let", "local", "undef",
         // 流程控制
         "if", "else", "while", "for", "break", "continue", "end",
+        "switch", "case", "default",
+        // 函数
+        "func",
+        // 数据结构
+        "array", "array_push", "array_pop", "foreach",
+        "dict", "dict_set",
         // 交互
         "menu", "input",
         // 媒体
-        "bgm", "background", "video", "stop_video", "pause_video",
+        "bgm", "se", "ambient", "stop_ambient", "background", "video", "stop_video", "pause_video",
         "resume_video", "seek_video", "cutscene",
         // 显示与动画
         "transition", "show", "hide", "animate", "animate_block", "style", "shake",
+        // 立绘系统
+        "sprite", "sprite_state", "sprite_move", "sprite_hide",
+        // 背景切换
+        "bg_switch",
+        // 文字动画
+        "text_typewriter",
+        // UI 增强
+        "popup", "zindex",
         // 场景管理
         "window", "nvl", "save", "load",
+        // 存档增强
+        "auto_save", "save_delete",
+        // 章节/成就
+        "chapter", "achievement",
+        // 播放控制
+        "auto_speed", "no_skip", "force_skip",
+        // 视频增强
+        "video_skipable", "video_auto_nav",
         // 回溯控制
         "block_rollback", "fix_rollback",
         // 角色
@@ -32,9 +64,16 @@ public static class DslKeywords
         // 界面调用
         "call_screen",
         // 图鉴
-        "gallery",
+        "gallery", "gallery_unlock",
         // 调试
         "debug",
+        // 时间事件
+        "time_event", "time_pause", "time_resume",
+        // 通知
+        "notify",
+        // Live2D
+        "live2d_char", "live2d_show", "live2d_motion", "live2d_expr",
+        "live2d_param", "live2d_hide", "live2d_pause", "live2d_resume",
         // 杂项
         "skip", "auto", "wait", "pause", "label",
     };
@@ -72,16 +111,33 @@ public static class DslKeywords
         // for 循环结构
         "in",
         // nvl 子命令
-        "clear",
+        "clear", "exit",
         // scene 头属性键
         "type", "layout",
+        // time_event 参数
+        "day", "hour", "minute", "target", "desc",
+        // notify 参数
+        "duration",
+        // popup 参数
+        "mask",
+        // sprite / live2d 参数
+        "src", "fade", "emotion", "weight",
+        // live2d_param 参数
+        "param",
+        // save 增强
+        "screenshot",
+        // say 增强
+        "instant",
+        "typewriter",
+        // bg_switch 参数
+        "transition",
     };
 
     // ====== UI 元素属性键 ======
     // DslParser.BuildEntity 中处理的 UI 元素 key=value 属性名
     private static readonly HashSet<string> _elementAttributes = new()
     {
-        "class", "source", "text",
+        "class", "style", "source", "text",
         "align", "halign", "valign",
         "width", "height", "fontSize", "order",
         "cmd", "nav", "value",
@@ -91,7 +147,7 @@ public static class DslKeywords
     // 作为属性值出现的关键字（如 type=game 中的 game）
     private static readonly HashSet<string> _literals = new()
     {
-        "game", "ui", "true", "false",
+        "game", "ui", "true", "false", "menu",
     };
 
     /// <summary>语句关键字（可作为 DSL 行首单词）</summary>
@@ -106,11 +162,15 @@ public static class DslKeywords
     /// <summary>枚举值 / 字面量关键字（如 type=game 中的 game）</summary>
     public static IReadOnlySet<string> Literals => _literals;
 
+    /// <summary>UI 元素类型（scene 块内的元素名）</summary>
+    public static IReadOnlySet<string> UiElementTypes => _uiElementTypes;
+
     /// <summary>所有关键字的合并只读集合（自动去重）</summary>
     public static IReadOnlySet<string> All { get; } =
         new HashSet<string>(
             _statements
                 .Concat(_parameters)
                 .Concat(_elementAttributes)
-                .Concat(_literals));
+                .Concat(_literals)
+                .Concat(_uiElementTypes));
 }

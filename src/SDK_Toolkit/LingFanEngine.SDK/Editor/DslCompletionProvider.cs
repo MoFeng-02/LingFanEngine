@@ -60,12 +60,19 @@ public class DslCompletionProvider
         switch (context)
         {
             case CompletionContext.StatementStart:
-                // 行首 → 语句关键字
+                // 行首 → 语句关键字 + UI 元素类型
                 foreach (var kw in DslKeywords.Statements)
                 {
                     if (string.IsNullOrEmpty(prefix) || kw.StartsWith(prefix))
                     {
                         results.Add(new DslCompletionData(kw, kw, s_keywordColor, "语句关键字"));
+                    }
+                }
+                foreach (var el in DslKeywords.UiElementTypes)
+                {
+                    if (string.IsNullOrEmpty(prefix) || el.StartsWith(prefix))
+                    {
+                        results.Add(new DslCompletionData(el, el, s_keywordColor, "UI 元素"));
                     }
                 }
                 break;
@@ -134,12 +141,19 @@ public class DslCompletionProvider
 
             case CompletionContext.General:
             default:
-                // 通用补全：关键字 + 变量
+                // 通用补全：关键字 + UI 元素 + 变量
                 foreach (var kw in DslKeywords.Statements)
                 {
                     if (string.IsNullOrEmpty(prefix) || kw.StartsWith(prefix))
                     {
                         results.Add(new DslCompletionData(kw, kw, s_keywordColor, "语句关键字"));
+                    }
+                }
+                foreach (var el in DslKeywords.UiElementTypes)
+                {
+                    if (string.IsNullOrEmpty(prefix) || el.StartsWith(prefix))
+                    {
+                        results.Add(new DslCompletionData(el, el, s_keywordColor, "UI 元素"));
                     }
                 }
                 foreach (var v in variables)

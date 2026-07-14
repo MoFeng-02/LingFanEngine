@@ -30,6 +30,9 @@ internal sealed class AnimationApplier : IAnimationApplier
     /// <summary>每控件的 Transform 缓存，避免每帧创建新对象</summary>
     private readonly Dictionary<Control, TransformBundle> _transformCache = new();
 
+    /// <summary>新动画扫描节流计数器——每 N 帧才全量扫描 _state.Keys 发现新动画</summary>
+    private int _newAnimScanCounter;
+
     public AnimationApplier(IStateContainer state)
     {
         _state = state;
@@ -44,6 +47,8 @@ internal sealed class AnimationApplier : IAnimationApplier
         _transformCache.Clear();
         _activeAnimCache.Clear();
         _controlMapInitialized = true;
+        // 重置扫描计数器——场景重建后强制下一帧立即扫描新动画
+        _newAnimScanCounter = 30;
         if (sceneRoot == null) return;
         foreach (var child in sceneRoot.Children)
         {
@@ -80,8 +85,11 @@ internal sealed class AnimationApplier : IAnimationApplier
                 _activeAnimCache.Remove(key);
         }
 
-        // 扫描新的活跃动画键（仅当缓存可能过时时）
-        // 使用前缀过滤减少遍历范围
+        // 扫描新的活跃动画键——节流到每 30 帧（~0.25s @120fps）扫描一次
+        // 大部分帧没有新动画启动，跳过全量 _state.Keys 枚举可显著减少每帧开销
+        if (++_newAnimScanCounter < 30) return;
+        _newAnimScanCounter = 0;
+
         foreach (var key in _state.Keys)
         {
             if (key is not string sk) continue;

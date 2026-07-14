@@ -254,7 +254,13 @@ public static class DslParser
 
         // 收集所有 key=value 属性
         foreach (var (key, value) in props)
-            propDict[key] = value;
+        {
+            // DSL 2.0: style=name 作为 class=name 的别名
+            if (key == "style")
+                propDict["class"] = value;
+            else
+                propDict[key] = value;
+        }
 
         // 安全网：align → halign（如果未显式设 halign）
         if (propDict.TryGetValue("align", out var alignVal) && !propDict.ContainsKey("halign"))

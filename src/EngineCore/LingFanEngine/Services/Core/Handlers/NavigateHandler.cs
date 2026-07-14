@@ -3,6 +3,7 @@ using LingFanEngine.Abstractions.Entities.Enums;
 using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Scripting;
+using LingFanEngine.Services.Core;
 using LingFanEngine.Services.Scripting;
 
 namespace LingFanEngine.Services.Core.Handlers;
@@ -121,21 +122,11 @@ public class NavigateHandler : ICommandHandler<NavigateCommand>, IDefaultCommand
                     {
                         ctx.DslExecutor.LoadCommands(cmds, lbls, preserveCps);
                         // 回放场景构建命令重建元素（与存档恢复逻辑一致）
-                        var replayElements = new List<UIElementEntity>();
-                        string? replayBg = null;
-                        for (int i = 0; i < savedIdx && i < cmds.Count; i++)
-                        {
-                            if (cmds[i] is ShowElementCommand se)
-                                replayElements.Add(se.Element);
-                            else if (cmds[i] is ShowHideCommand sh && sh.IsBackground && sh.IsShow)
-                                replayBg = sh.Target;
-                        }
-                        ctx.State.Set(StateKeys.Scene.Elements, replayElements);
-                        if (replayBg != null)
-                            ctx.State.Set(StateKeys.Scene.CurrentBackground, replayBg);
+                        // 统一使用 SceneReplayHelper 处理所有运行时元素命令
+                        var replayCount = SceneReplayHelper.ReplaySceneState(cmds, savedIdx, ctx.State);
                         ctx.State.Set(StateKeys.Dsl.CurrentIndex, savedIdx);
                         ctx.DslExecutor.Start();
-                        System.Diagnostics.Debug.WriteLine($"[NavigateHandler] Menu→Game 返回: 从索引 {savedIdx} 恢复");
+                        System.Diagnostics.Debug.WriteLine($"[NavigateHandler] Menu→Game 返回: 从索引 {savedIdx} 恢复, {replayCount} 个场景元素");
                     }
                 }
                 else if (nc.EntryLabel != null)

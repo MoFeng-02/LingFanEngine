@@ -382,10 +382,17 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
         await Task.Yield();
     }
 
-    public void StopSe() => _pipeline.SendAsync(new PlaySeCommand { Path = "", Volume = 0 });
-    public async Task StopSeAsync() { await _pipeline.SendAsync(new PlaySeCommand { Path = "", Volume = 0 }); await Task.Yield(); }
+public void StopSe() => _pipeline.SendAsync(new PlaySeCommand { Path = "", Volume = 0 });
+public async Task StopSeAsync() { await _pipeline.SendAsync(new PlaySeCommand { Path = "", Volume = 0 }); await Task.Yield(); }
 
-    /// <summary>播放语音（独立通道）</summary>
+// DSL 2.0: 环境音
+public void PlayAmbient(string path, float volume = 0.8f, bool loop = true) =>
+    _pipeline.SendAsync(new PlayAmbientCommand { Path = path, Volume = volume, Loop = loop });
+
+public void StopAmbient() =>
+    _pipeline.SendAsync(new StopAmbientCommand());
+
+/// <summary>播放语音（独立通道）</summary>
     public void PlayVoice(string path, float volume = 1.0f, bool? autoStop = null) =>
         _pipeline.SendAsync(new PlayVoiceCommand { Path = path, Volume = volume, AutoStop = autoStop });
     public async Task PlayVoiceAsync(string path, float volume = 1.0f, bool? autoStop = null)
@@ -604,11 +611,16 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
     // ========== 通知 ==========
 
     /// <summary>显示通知 Toast</summary>
-    public void Notify(string text, string type = "info")
-    {
-        _state.Set(StateKeys.Notify.Text, text);
-        _state.Set(StateKeys.Notify.Type, type);
-    }
+public void Notify(string text, string type = "info", double duration = 0)
+{
+var cmd = new NotifyCommand
+{
+Text = text,
+Type = type,
+Duration = duration > 0 ? duration : 3.0
+};
+_pipeline.SendAsync(cmd);
+}
 
     // ========== NVL 模式 ==========
 
@@ -623,16 +635,27 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
         await Task.Yield();
     }
 
-    /// <summary>清空 NVL 累积文本并退出 NVL 模式</summary>
-    public void ClearNvl() =>
-        _pipeline.SendAsync(new NvlCommand { IsClear = true });
+/// <summary>清空 NVL 累积文本（不退出 NVL 模式）</summary>
+public void ClearNvl() =>
+_pipeline.SendAsync(new NvlCommand { IsClear = true });
 
-    /// <summary>清空 NVL 累积文本并退出 NVL 模式（异步）</summary>
-    public async Task ClearNvlAsync()
-    {
-        await _pipeline.SendAsync(new NvlCommand { IsClear = true });
-        await Task.Yield();
-    }
+/// <summary>清空 NVL 累积文本（不退出 NVL 模式，异步）</summary>
+public async Task ClearNvlAsync()
+{
+await _pipeline.SendAsync(new NvlCommand { IsClear = true });
+await Task.Yield();
+}
+
+/// <summary>退出 NVL 模式并清空累积文本（恢复 ADV 模式）</summary>
+public void ExitNvl() =>
+_pipeline.SendAsync(new NvlCommand { IsExit = true });
+
+/// <summary>退出 NVL 模式并清空累积文本（恢复 ADV 模式，异步）</summary>
+public async Task ExitNvlAsync()
+{
+await _pipeline.SendAsync(new NvlCommand { IsExit = true });
+await Task.Yield();
+}
 
     /// <summary>NVL 模式是否激活</summary>
     public bool IsNvlActive =>
@@ -655,7 +678,30 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
         _state.Set(StateKeys.ScreenResult, result);
     }
 
-    // ========== 视频 ==========
+    // ========== 时间事件 ==========
+
+/// <inheritdoc/>
+public void RegisterTimeEvent(string target, int triggerDay, int? triggerHour = null,
+    int? triggerMinute = null, bool isOneShot = true,
+    string? condition = null, string? description = null) =>
+    _pipeline.SendAsync(new TimeEventCommand
+    {
+        Target = target,
+        TriggerDay = triggerDay,
+        TriggerHour = triggerHour,
+        TriggerMinute = triggerMinute,
+        IsOneShot = isOneShot,
+        Condition = condition,
+        Description = description
+    });
+
+/// <inheritdoc/>
+public void PauseGameTime() => _pipeline.SendAsync(new TimePauseCommand());
+
+/// <inheritdoc/>
+public void ResumeGameTime() => _pipeline.SendAsync(new TimeResumeCommand());
+
+// ========== 视频 ==========
 
     /// <inheritdoc/>
     public void PlayVideo(string path, float volume = 1.0f, bool loop = false, bool autoPlay = true) =>

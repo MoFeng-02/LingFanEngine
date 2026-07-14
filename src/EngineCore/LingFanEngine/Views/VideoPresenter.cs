@@ -13,12 +13,17 @@ namespace LingFanEngine.Views;
 internal sealed class VideoPresenter : IVideoPresenter
 {
     private readonly IStateContainer _state;
+    private readonly IEncryptedFileReader? _fileReader;
 
     private Panel? _sceneRoot;
     private Grid? _outerGrid;
 
     private MediaPlayer.Controls.GpuMediaPlayer? _videoPlayer;
     private string _lastVideoPath = "";
+    /// <summary>当前播放用的实际路径（可能是临时解密文件）</summary>
+    private string _currentPlayPath = "";
+    /// <summary>当前是否使用临时文件</summary>
+    private bool _currentIsTemp;
     private bool _lastVideoIsPlaying;
     private double _lastVideoPosition = -1;
     private double _lastVideoDuration = -1;
@@ -26,9 +31,10 @@ internal sealed class VideoPresenter : IVideoPresenter
 
     private Border? _cutsceneMask;
 
-    public VideoPresenter(IStateContainer state)
+    public VideoPresenter(IStateContainer state, IEncryptedFileReader? fileReader = null)
     {
         _state = state;
+        _fileReader = fileReader;
     }
 
     public void Attach(Panel? sceneRoot, Grid? outerGrid)
@@ -63,6 +69,13 @@ internal sealed class VideoPresenter : IVideoPresenter
 
             if (!string.IsNullOrEmpty(videoPath))
             {
+                // Phase 50：即解即用——加密视频解密到临时文件
+                var (playPath, isTemp) = _fileReader != null
+                    ? _fileReader.TryDecryptToFile(videoPath)
+                    : (videoPath, false);
+                _currentPlayPath = playPath;
+                _currentIsTemp = isTemp;
+
                 _videoPlayer = new MediaPlayer.Controls.GpuMediaPlayer
                 {
                     AutoPlay = _state.Get<bool>(StateKeys.Video.AutoPlay),
@@ -72,7 +85,7 @@ internal sealed class VideoPresenter : IVideoPresenter
 
                 try
                 {
-                    _videoPlayer.Source = new Uri(System.IO.Path.GetFullPath(videoPath));
+                    _videoPlayer.Source = new Uri(System.IO.Path.GetFullPath(playPath));
                 }
                 catch
                 {
@@ -166,10 +179,19 @@ internal sealed class VideoPresenter : IVideoPresenter
 
     private void RemoveVideoPlayerFromTree()
     {
-        if (_videoPlayer == null) return;
-        _videoPlayer.Stop();
-        _sceneRoot?.Children.Remove(_videoPlayer);
-        _videoPlayer = null;
+        if (_videoPlayer != null)
+        {
+            _videoPlayer.Stop();
+            _sceneRoot?.Children.Remove(_videoPlayer);
+            _videoPlayer = null;
+        }
+        // Phase 50：释放临时解密文件
+        if (_currentIsTemp && !string.IsNullOrEmpty(_currentPlayPath))
+        {
+            _fileReader?.ReleaseTempFile(_currentPlayPath, _currentIsTemp);
+        }
+        _currentPlayPath = "";
+        _currentIsTemp = false;
         _lastVideoPath = "";
         _lastVideoIsPlaying = false;
         _lastVideoPosition = -1;

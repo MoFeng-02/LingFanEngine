@@ -61,13 +61,17 @@ public class ShowHideHandler : ICommandHandler<ShowHideCommand>, IDefaultCommand
 
         if (sh.IsShow)
         {
+            // background 先移除旧背景元素，避免堆积（与 BgSwitchHandler 行为一致）
+            if (sh.IsBackground)
+                rtList.RemoveAll(e => e.ElementType == "background");
+
             var elType = sh.IsBackground ? "background" : "image";
             var props = new Dictionary<string, object>
             {
                 ["source"] = sh.Target,
                 ["x"] = sh.X,
                 ["y"] = sh.Y,
-                [StateKeys.UiTags.Tag] = sh.Tag ?? ""
+                [StateKeys.UiTags.Tag] = sh.Tag ?? (sh.IsBackground ? "background" : "")
             };
             // background 始终在底层（Order = -1000）
             rtList.Add(new UIElementEntity

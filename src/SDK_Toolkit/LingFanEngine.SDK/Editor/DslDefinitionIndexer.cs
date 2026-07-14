@@ -7,8 +7,9 @@ using System.Threading.Tasks;
 namespace LingFanEngine.SDK.Editor;
 
 /// <summary>
-/// DSL 定义索引器——扫描项目 Stories/ 目录，索引场景名、标签、角色键。
-/// <para>用于 Go to Definition 和代码补全。</para>
+/// DSL 定义索引器——扫描项目 Stories/ 目录，索引所有可导航的定义。
+/// <para>P0-2: 从仅索引 scene/label/character 扩展到索引
+/// style/variable/array/dict/func/sprite 等所有可导航定义。</para>
 /// </summary>
 public class DslDefinitionIndexer
 {
@@ -16,6 +17,12 @@ public class DslDefinitionIndexer
     private static readonly Regex s_sceneRegex = new(@"^\s*scene\s+""([^""]+)""", RegexOptions.Compiled);
     private static readonly Regex s_labelRegex = new(@"^\s*label\s+(\w+)\s*:", RegexOptions.Compiled);
     private static readonly Regex s_characterRegex = new(@"^\s*character\s+""([^""]+)""", RegexOptions.Compiled);
+    private static readonly Regex s_styleRegex = new(@"^\s*style\s+""([^""]+)""", RegexOptions.Compiled);
+    private static readonly Regex s_variableRegex = new(@"^\s*(?:set|define|let|local)\s+""([^""]+)""", RegexOptions.Compiled);
+    private static readonly Regex s_arrayRegex = new(@"^\s*array\s+""([^""]+)""", RegexOptions.Compiled);
+    private static readonly Regex s_dictRegex = new(@"^\s*dict\s+""([^""]+)""", RegexOptions.Compiled);
+    private static readonly Regex s_funcRegex = new(@"^\s*func\s+(\w+)\s*\(", RegexOptions.Compiled);
+    private static readonly Regex s_spriteRegex = new(@"^\s*sprite\s+""([^""]+)""", RegexOptions.Compiled);
 
     /// <summary>所有索引的定义</summary>
     public List<DslDefinition> Definitions { get; private set; } = [];
@@ -41,6 +48,34 @@ public class DslDefinitionIndexer
         .Distinct()
         .ToList();
 
+    /// <summary>样式名集合（P0-2）</summary>
+    public List<string> StyleNames => Definitions
+        .Where(d => d.Type == DefinitionType.Style)
+        .Select(d => d.Name)
+        .Distinct()
+        .ToList();
+
+    /// <summary>变量名集合（P0-2）</summary>
+    public List<string> VariableNames => Definitions
+        .Where(d => d.Type == DefinitionType.Variable)
+        .Select(d => d.Name)
+        .Distinct()
+        .ToList();
+
+    /// <summary>函数名集合（P0-2）</summary>
+    public List<string> FunctionNames => Definitions
+        .Where(d => d.Type == DefinitionType.Function)
+        .Select(d => d.Name)
+        .Distinct()
+        .ToList();
+
+    /// <summary>Sprite ID 集合（P0-2）</summary>
+    public List<string> SpriteIds => Definitions
+        .Where(d => d.Type == DefinitionType.Sprite)
+        .Select(d => d.Name)
+        .Distinct()
+        .ToList();
+
     /// <summary>扫描 Stories 目录并重建索引</summary>
     public async Task ReindexAsync(string storiesDirectory)
     {
@@ -52,51 +87,7 @@ public class DslDefinitionIndexer
         var storyFiles = Directory.GetFiles(storiesDirectory, "*.story", SearchOption.AllDirectories);
         foreach (var file in storyFiles)
         {
-            try
-            {
-                var lines = await File.ReadAllLinesAsync(file);
-                for (var i = 0; i < lines.Length; i++)
-                {
-                    var line = lines[i];
-
-                    // 场景定义
-                    var sceneMatch = s_sceneRegex.Match(line);
-                    if (sceneMatch.Success)
-                    {
-                        Definitions.Add(new DslDefinition(
-                            sceneMatch.Groups[1].Value,
-                            DefinitionType.Scene,
-                            file,
-                            i + 1));
-                    }
-
-                    // 标签定义
-                    var labelMatch = s_labelRegex.Match(line);
-                    if (labelMatch.Success)
-                    {
-                        Definitions.Add(new DslDefinition(
-                            labelMatch.Groups[1].Value,
-                            DefinitionType.Label,
-                            file,
-                            i + 1));
-                    }
-
-                    // 角色定义
-                    var charMatch = s_characterRegex.Match(line);
-                    if (charMatch.Success)
-                    {
-                        Definitions.Add(new DslDefinition(
-                            charMatch.Groups[1].Value,
-                            DefinitionType.Character,
-                            file,
-                            i + 1));
-                    }
-                }
-            }
-            catch
-            {
-                // 文件读取失败——跳过
-            }
+            await IndexFileInternalAsync(file);
         }
     }
 
@@ -105,6 +96,14 @@ public class DslDefinitionIndexer
     {
         return Definitions.FirstOrDefault(d =>
             d.Name == name && (type == null || d.Type == type));
+    }
+
+    /// <summary>按名称查找所有同名定义（用于重复定义检测）</summary>
+    public List<DslDefinition> FindAllDefinitions(string name, DefinitionType? type = null)
+    {
+        return Definitions
+            .Where(d => d.Name == name && (type == null || d.Type == type))
+            .ToList();
     }
 
     /// <summary>按名称前缀查找定义</summary>
@@ -121,7 +120,11 @@ public class DslDefinitionIndexer
     {
         // 移除旧索引
         Definitions.RemoveAll(d => d.FilePath == filePath);
+        await IndexFileInternalAsync(filePath);
+    }
 
+    private async Task IndexFileInternalAsync(string filePath)
+    {
         if (!File.Exists(filePath))
             return;
 
@@ -132,34 +135,33 @@ public class DslDefinitionIndexer
             {
                 var line = lines[i];
 
-                var sceneMatch = s_sceneRegex.Match(line);
-                if (sceneMatch.Success)
-                {
-                    Definitions.Add(new DslDefinition(
-                        sceneMatch.Groups[1].Value,
-                        DefinitionType.Scene, filePath, i + 1));
-                }
-
-                var labelMatch = s_labelRegex.Match(line);
-                if (labelMatch.Success)
-                {
-                    Definitions.Add(new DslDefinition(
-                        labelMatch.Groups[1].Value,
-                        DefinitionType.Label, filePath, i + 1));
-                }
-
-                var charMatch = s_characterRegex.Match(line);
-                if (charMatch.Success)
-                {
-                    Definitions.Add(new DslDefinition(
-                        charMatch.Groups[1].Value,
-                        DefinitionType.Character, filePath, i + 1));
-                }
+                TryMatch(s_sceneRegex, line, filePath, i + 1, DefinitionType.Scene);
+                TryMatch(s_labelRegex, line, filePath, i + 1, DefinitionType.Label);
+                TryMatch(s_characterRegex, line, filePath, i + 1, DefinitionType.Character);
+                TryMatch(s_styleRegex, line, filePath, i + 1, DefinitionType.Style);
+                TryMatch(s_variableRegex, line, filePath, i + 1, DefinitionType.Variable);
+                TryMatch(s_arrayRegex, line, filePath, i + 1, DefinitionType.Array);
+                TryMatch(s_dictRegex, line, filePath, i + 1, DefinitionType.Dict);
+                TryMatch(s_funcRegex, line, filePath, i + 1, DefinitionType.Function);
+                TryMatch(s_spriteRegex, line, filePath, i + 1, DefinitionType.Sprite);
             }
         }
         catch
         {
-            // 忽略错误
+            // 文件读取失败——跳过
+        }
+    }
+
+    private void TryMatch(Regex regex, string line, string filePath, int lineNum, DefinitionType type)
+    {
+        var match = regex.Match(line);
+        if (match.Success)
+        {
+            Definitions.Add(new DslDefinition(
+                match.Groups[1].Value,
+                type,
+                filePath,
+                lineNum));
         }
     }
 }
@@ -170,6 +172,13 @@ public enum DefinitionType
     Scene,
     Label,
     Character,
+    // P0-2 新增
+    Style,
+    Variable,
+    Array,
+    Dict,
+    Function,
+    Sprite,
 }
 
 /// <summary>DSL 定义项</summary>

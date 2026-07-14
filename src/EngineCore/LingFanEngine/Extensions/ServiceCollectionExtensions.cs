@@ -61,14 +61,23 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IScriptEngine, LingFanDslEngine>();
 
         // 注册故事加载管线（StoryLoader 必须在 StoryRegistry 之前）
-        services.AddSingleton<IStoryLoader, StoryLoader>();
+        // Phase 50：注入 IEncryptedFileReader 支持 .story 文件即解即用
+        services.AddSingleton<IStoryLoader>(sp => new StoryLoader(
+            sp.GetRequiredService<IScriptEngine>(),
+            sp.GetRequiredService<ICommandPipeline>(),
+            sp.GetRequiredService<IStateContainer>(),
+            sp.GetRequiredService<ISceneRegistry>(),
+            sp.GetService<IDslExecutor>(),
+            sp.GetService<PackLoader>(),
+            sp.GetService<IEncryptedFileReader>()));
         services.AddSingleton<IStoryRegistry>(sp =>
         {
             var sceneRegistry = sp.GetRequiredService<ISceneRegistry>();
             var dslEngine = sp.GetRequiredService<IScriptEngine>();
             var storyLoader = sp.GetRequiredService<IStoryLoader>();
             var opts = sp.GetRequiredService<LingFanEngineOptions>();
-            return new StoryRegistry(sceneRegistry, dslEngine, (StoryLoader)storyLoader, opts.StoriesDirectory);
+            return new StoryRegistry(sceneRegistry, dslEngine, (StoryLoader)storyLoader, opts.StoriesDirectory,
+                sp.GetService<IEncryptedFileReader>());
         });
         services.AddSingleton<IDslExecutor>(sp => new DslExecutor(
             sp.GetRequiredService<IStateContainer>(),
@@ -82,17 +91,24 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<LingFanEngineOptions>(),
             sp.GetRequiredService<IAsyncWaitService>()));
 services.AddSingleton<IEventAggregator, EventAggregator>();
-services.AddSingleton<II18nService, I18nService>();
+services.AddSingleton<II18nService>(sp => new I18nService(
+    sp.GetRequiredService<IStateContainer>(),
+    sp.GetService<IEncryptedFileReader>()));
 
 // 注册日志服务（游戏可替换为自定义实现）
 services.TryAddSingleton<IEngineLogger, DebugEngineLogger>();
 
         // 注册资源包加载器
         services.AddSingleton<PackLoader>();
+        // Phase 50：即解即用加密——密钥提供者（游戏层可覆盖）+ 加密文件读取器
+        services.TryAddSingleton<IEncryptionKeyProvider, NullEncryptionKeyProvider>();
+        services.AddSingleton<IEncryptedFileReader>(sp => new EncryptedFileReader(
+            sp.GetService<IEncryptionKeyProvider>()));
         services.AddSingleton<IAudioManager>(sp => new AudioManager(
             sp.GetRequiredService<ICommandPipeline>(),
             sp.GetRequiredService<IStateContainer>(),
-            CreateAudioPlayerFactory()
+            CreateAudioPlayerFactory(),
+            sp.GetService<IEncryptedFileReader>()
         ));
         services.AddSingleton<IVideoManager>(sp => new VideoManager(
             sp.GetRequiredService<IStateContainer>()
@@ -145,6 +161,23 @@ services.TryAddSingleton<IEngineLogger, DebugEngineLogger>();
         services.AddSingleton<IDefaultCommandHandler, SeekVideoHandler>();
         services.AddSingleton<IDefaultCommandHandler, CutsceneHandler>();
 
+        // Phase 38: 时间事件与通知处理器
+        services.AddSingleton<IDefaultCommandHandler, TimeEventHandler>();
+        services.AddSingleton<IDefaultCommandHandler, TimePauseHandler>();
+        services.AddSingleton<IDefaultCommandHandler, TimeResumeHandler>();
+        services.AddSingleton<IDefaultCommandHandler, NotifyHandler>();
+
+        // Phase 44-47: DSL 2.0 新命令处理器
+        services.AddSingleton<IDefaultCommandHandler, ArrayPushHandler>();
+        services.AddSingleton<IDefaultCommandHandler, ArrayPopHandler>();
+        services.AddSingleton<IDefaultCommandHandler, DictSetHandler>();
+        services.AddSingleton<IDefaultCommandHandler, SpriteHandler>();
+        services.AddSingleton<IDefaultCommandHandler, BgSwitchHandler>();
+        services.AddSingleton<IDefaultCommandHandler, Live2DHandler>();
+        services.AddSingleton<IDefaultCommandHandler, AchievementUnlockHandler>();
+        services.AddSingleton<IDefaultCommandHandler, ChapterUnlockHandler>();
+        services.AddSingleton<IDefaultCommandHandler, SaveDeleteHandler>();
+
         // 注册子服务（从 GameLoop 拆分）
         services.AddSingleton<IStateInitializer, StateInitializer>();
         services.AddSingleton<IAnimationService, AnimationService>();
@@ -153,14 +186,16 @@ services.TryAddSingleton<IEngineLogger, DebugEngineLogger>();
         // 对话框工厂（游戏可注册自定义实现替换内置 DialogBox）
         services.TryAddSingleton<Views.IDialogBoxFactory, Views.DefaultDialogBoxFactory>();
 
-        // Phase 32: SceneView 模块化——注册子模块接口
+        // Phase 32: SceneView 模块化——注册子模块接口（Phase 50：VideoPresenter 注入 IEncryptedFileReader）
         services.AddSingleton<Views.IControlFactory, Views.ControlFactory>();
         services.AddSingleton<Views.IInteractionBinder>(sp => new Views.InteractionBinder(
             sp.GetRequiredService<IStateContainer>(),
             sp.GetRequiredService<ICommandPipeline>(),
             sp.GetService<ICommandService>()));
         services.AddSingleton<Views.IOverlayRenderer, Views.OverlayRenderer>();
-        services.AddSingleton<Views.IVideoPresenter, Views.VideoPresenter>();
+        services.AddSingleton<Views.IVideoPresenter>(sp => new Views.VideoPresenter(
+            sp.GetRequiredService<IStateContainer>(),
+            sp.GetService<IEncryptedFileReader>()));
         services.AddSingleton<Views.IAnimationApplier, Views.AnimationApplier>();
         services.AddSingleton<ISaveDataService>(sp => new SaveDataService(
             sp.GetRequiredService<IStateContainer>(),
@@ -190,6 +225,8 @@ services.TryAddSingleton<IEngineLogger, DebugEngineLogger>();
             var transition = sp.GetService<ITransitionEngine>();
             var audio = sp.GetService<IAudioManager>();
             var video = sp.GetService<IVideoManager>();
+            var eventScheduler = sp.GetService<IEventScheduler>();
+            var uiDispatcher = sp.GetService<IUIThreadDispatcher>();
             var loop = new GameLoop(
                 pipeline, state, time,
                 dispatcher, tween, jsonConverter, defaultHandlers,
@@ -199,7 +236,7 @@ services.TryAddSingleton<IEngineLogger, DebugEngineLogger>();
                 sp.GetRequiredService<IPlaybackService>(),
                 sp.GetRequiredService<ISaveDataService>(),
                 save, sceneReg, options,
-                sceneStack, storyReg, dslExec, transition, audio, video);
+                sceneStack, storyReg, dslExec, transition, audio, video, eventScheduler, uiDispatcher);
             loop.TargetFps = options.GetTargetFps();
             // StoryRegistry 扫描副作用（需在 GameLoop 构造后执行）
             storyReg?.Scan();
@@ -225,6 +262,13 @@ services.TryAddSingleton<IEngineLogger, DebugEngineLogger>();
             var opts = sp.GetRequiredService<LingFanEngineOptions>();
             return new Live2DDataService(opts.Live2DDirectory);
         });
+
+        // 注册 UI 线程调度器
+        services.AddSingleton<IUIThreadDispatcher, LingFanEngine.Views.AvaloniaUIThreadDispatcher>();
+
+        // 注册资源访问器（Phase 50：注入 IEncryptedFileReader 自动检测 LFEN 加密）
+        services.AddSingleton<IAssetAccessor>(sp => new LingFanEngine.Views.AvaloniaAssetAccessor(
+            sp.GetService<IEncryptedFileReader>()));
 
         // 注册故事热重载服务
         services.AddSingleton<StoryHotReloadService>();

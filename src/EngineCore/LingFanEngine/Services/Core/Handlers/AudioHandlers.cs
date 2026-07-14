@@ -50,3 +50,25 @@ public class BgmQueueHandler : ICommandHandler<BgmQueueCommand>, IDefaultCommand
         _ = ctx.AudioManager?.QueueBgmAsync(q.Path, q.Volume, q.CrossFadeDuration);
     }
 }
+
+/// <summary>
+/// 播放环境音命令处理器（DSL 2.0）
+/// </summary>
+public class PlayAmbientHandler : ICommandHandler<PlayAmbientCommand>, IDefaultCommandHandler
+{
+    public void Handle(PlayAmbientCommand cmd, ICommandContext ctx)
+    {
+        ctx.AudioManager?.PlayAmbient(cmd.Path, cmd.Volume, cmd.Loop);
+    }
+}
+
+/// <summary>
+/// 停止环境音命令处理器（DSL 2.0）
+/// </summary>
+public class StopAmbientHandler : ICommandHandler<StopAmbientCommand>, IDefaultCommandHandler
+{
+    public void Handle(StopAmbientCommand cmd, ICommandContext ctx)
+    {
+        _ = ctx.AudioManager?.StopAmbientAsync();
+    }
+}

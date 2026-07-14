@@ -1,4 +1,6 @@
+using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Extensions;
+using _LingFanEngineTemplateTitle_.Security;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace _LingFanEngineTemplateTitle_.Extensions;
@@ -10,6 +12,10 @@ public static class ServiceExtensions
     /// </summary>
     public static IServiceCollection AddGameService(this IServiceCollection services)
     {
+        // 注册加密密钥提供者（必须在 AddLingFanEngine 之前，引擎的 TryAddSingleton 会跳过 NullEncryptionKeyProvider）
+        // GeneratedKeys.cs 在构建加密时由 KeyInjector 生成真实密钥；开发期占位返回 null
+        services.AddSingleton<IEncryptionKeyProvider, GeneratedKeyProvider>();
+
         // 注册引擎核心（包含所有运行时服务）
         services.AddLingFanEngine(options =>
         {

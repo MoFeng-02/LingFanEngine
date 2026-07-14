@@ -90,6 +90,13 @@ string? sideImage = null);
     Task PlaySeAsync(string path, float volume = 0.6f);
     void StopSe();
     Task StopSeAsync();
+
+    // ========== 环境音（DSL 2.0） ==========
+    /// <summary>播放环境音（独立通道，循环播放）</summary>
+    void PlayAmbient(string path, float volume = 0.8f, bool loop = true);
+    /// <summary>停止环境音</summary>
+    void StopAmbient();
+
     void PlayVoice(string path, float volume = 1.0f, bool? autoStop = null);
     Task PlayVoiceAsync(string path, float volume = 1.0f, bool? autoStop = null);
     void StopVoice();
@@ -170,13 +177,16 @@ string? sideImage = null);
     /// </summary>
     /// <param name="text">通知文本</param>
     /// <param name="type">类型："info" / "warning" / "error"</param>
-    void Notify(string text, string type = "info");
+    /// <param name="duration">显示时长秒数（0=默认 3 秒）</param>
+    void Notify(string text, string type = "info", double duration = 0);
 
     // ========== NVL 模式 ==========
     void EnterNvl();
     Task EnterNvlAsync();
     void ClearNvl();
     Task ClearNvlAsync();
+    void ExitNvl();
+    Task ExitNvlAsync();
     bool IsNvlActive { get; }
     string GetNvlText();
     string GetNvlSpeakers();
@@ -198,6 +208,29 @@ string? sideImage = null);
     /// </summary>
     /// <param name="result">返回结果字符串</param>
     void SetScreenResult(string? result);
+
+    // ========== 时间事件 ==========
+
+    /// <summary>
+    /// 注册游戏时间事件
+    /// <para>需要 EnableTimeSystem=true。时间条件满足时自动导航到 target。</para>
+    /// </summary>
+    /// <param name="target">触发时导航到的场景/label</param>
+    /// <param name="triggerDay">触发的游戏天数</param>
+    /// <param name="triggerHour">触发的小时（null=任意小时）</param>
+    /// <param name="triggerMinute">触发的分钟（null=任意分钟）</param>
+    /// <param name="isOneShot">是否只触发一次</param>
+    /// <param name="condition">条件表达式（可选）</param>
+    /// <param name="description">事件描述</param>
+    void RegisterTimeEvent(string target, int triggerDay, int? triggerHour = null,
+        int? triggerMinute = null, bool isOneShot = true,
+        string? condition = null, string? description = null);
+
+    /// <summary>暂停游戏时间推进</summary>
+    void PauseGameTime();
+
+    /// <summary>恢复游戏时间推进</summary>
+    void ResumeGameTime();
 
     // ========== 视频 ==========
 

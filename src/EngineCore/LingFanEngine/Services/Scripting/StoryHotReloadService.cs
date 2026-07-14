@@ -19,6 +19,7 @@ public class StoryHotReloadService : IDisposable
     private readonly IStateContainer _state;
     private readonly ICommandPipeline _pipeline;
     private readonly LingFanEngineOptions _options;
+    private readonly IUIThreadDispatcher? _uiThreadDispatcher;
     private FileSystemWatcher? _watcher;
     private readonly Dictionary<string, DateTime> _lastReloadTimes = new(StringComparer.OrdinalIgnoreCase);
     private bool _started;
@@ -27,12 +28,14 @@ public class StoryHotReloadService : IDisposable
         IStoryRegistry storyRegistry,
         IStateContainer state,
         ICommandPipeline pipeline,
-        LingFanEngineOptions options)
+        LingFanEngineOptions options,
+        IUIThreadDispatcher? uiThreadDispatcher = null)
     {
         _storyRegistry = storyRegistry;
         _state = state;
         _pipeline = pipeline;
         _options = options;
+        _uiThreadDispatcher = uiThreadDispatcher;
     }
 
     /// <summary>
@@ -137,19 +140,35 @@ public class StoryHotReloadService : IDisposable
             System.Diagnostics.Debug.WriteLine($"[StoryHotReload] 当前场景 [{currentScene}] 被重载，刷新 SceneView");
 
             // 在 UI 线程上发送导航命令刷新场景
-            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            if (_uiThreadDispatcher != null)
             {
+                _uiThreadDispatcher.Post(() =>
+                {
+                    _pipeline.SendAsync(new NavigateCommand { Path = currentScene });
+                    _state.Set(StateKeys.Notify.Text, $"🔄 已热重载: {Path.GetFileName(filePath)}");
+                });
+            }
+            else
+            {
+                // fallback：无调度器时直接发送
                 _pipeline.SendAsync(new NavigateCommand { Path = currentScene });
                 _state.Set(StateKeys.Notify.Text, $"🔄 已热重载: {Path.GetFileName(filePath)}");
-            });
+            }
         }
         else
         {
             // 仅显示通知
-            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            if (_uiThreadDispatcher != null)
+            {
+                _uiThreadDispatcher.Post(() =>
+                {
+                    _state.Set(StateKeys.Notify.Text, $"🔄 故事文件已重载: {Path.GetFileName(filePath)}");
+                });
+            }
+            else
             {
                 _state.Set(StateKeys.Notify.Text, $"🔄 故事文件已重载: {Path.GetFileName(filePath)}");
-            });
+            }
         }
     }
 

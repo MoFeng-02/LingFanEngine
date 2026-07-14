@@ -133,6 +133,9 @@ public string? SideImage { get; init; }
 /// <summary>此对话不可跳过 (Phase 37，say noskip=true)，Skip 模式下仍需手动点击</summary>
 public bool Noskip { get; init; }
 
+/// <summary>瞬时显示文本（DSL 2.0，say instant=true），跳过打字机效果</summary>
+public bool Instant { get; init; }
+
 public ShowDialogCommand() { }
 }
 
@@ -220,6 +223,29 @@ public readonly record struct BgmQueueCommand : ICommand
     public float Volume { get; init; } = 1.0f;
     public double CrossFadeDuration { get; init; } = 2.0;
     public BgmQueueCommand() { }
+}
+
+/// <summary>
+/// 播放环境音命令（DSL 2.0）——循环播放的环境音，独立通道
+/// </summary>
+public readonly record struct PlayAmbientCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public required string Path { get; init; }
+    public bool Loop { get; init; } = true;
+    public float Volume { get; init; } = 0.8f;
+    public PlayAmbientCommand() { }
+}
+
+/// <summary>
+/// 停止环境音命令（DSL 2.0）
+/// </summary>
+public readonly record struct StopAmbientCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public StopAmbientCommand() { }
 }
 
 // ========== 视频命令 ==========

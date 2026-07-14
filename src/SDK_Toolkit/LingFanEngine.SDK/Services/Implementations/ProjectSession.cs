@@ -44,6 +44,9 @@ public partial class ProjectSession : ObservableObject, IProjectSession
         if (project == null)
             return false;
 
+        // 确保引擎所需目录存在（与 CreateAndOpenAsync 一致）
+        EnsureProjectDirectories(project.ProjectDirectory);
+
         CurrentProject = project;
         IsProjectOpen = true;
         _projectService.CurrentProject = project;
@@ -52,15 +55,17 @@ public partial class ProjectSession : ObservableObject, IProjectSession
     }
 
     /// <inheritdoc/>
-    public async Task<bool> CreateAndOpenAsync(string name, string title, string author, string outputDir)
+    public async Task<bool> CreateAndOpenAsync(
+        string name, string title, string author, string outputDir,
+        string version = "1.0.0", string description = "")
     {
-        // P2-1: 先从模板创建项目文件结构
+        // 从模板创建项目文件结构（含版本/作者/描述替换）
         if (_templateService != null)
         {
-            await _templateService.CreateProjectFromTemplateAsync(outputDir, name, title);
+            await _templateService.CreateProjectFromTemplateAsync(outputDir, name, title, version, author, description);
         }
 
-        var project = await _projectService.CreateNewAsync(name, title, author, outputDir);
+        var project = await _projectService.CreateNewAsync(name, title, author, outputDir, version, description);
         if (project == null)
             return false;
 
@@ -84,6 +89,13 @@ public partial class ProjectSession : ObservableObject, IProjectSession
         IsProjectOpen = false;
         _projectService.CurrentProject = null;
         ProjectClosed?.Invoke();
+    }
+
+    /// <inheritdoc/>
+    public async Task SaveCurrentProjectAsync()
+    {
+        if (CurrentProject == null) return;
+        await _projectService.SaveAsync(CurrentProject);
     }
 
     /// <summary>确保引擎所需的标准目录存在</summary>

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace LingFanEngine.SDK.Utils;
@@ -22,7 +23,12 @@ public static class ProcessHelper
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
         };
+
+        // 强制 dotnet CLI 输出英文，避免中文 Windows 乱码
+        psi.EnvironmentVariables["DOTNET_CLI_UI_LANGUAGE"] = "en";
 
         if (!string.IsNullOrEmpty(workingDir))
             psi.WorkingDirectory = workingDir;

@@ -1030,9 +1030,22 @@ public class DslExecutor : IDslExecutor
             case List<string> strs:
                 return new List<string>(strs);
             case List<GalleryEntry> gals:
-                return new List<GalleryEntry>(gals);
+                // 深拷贝——GalleryEntry 是 class，可能被运行时修改
+                return gals.Select(g => new GalleryEntry { Id = g.Id, ImagePath = g.ImagePath, Title = g.Title, SceneName = g.SceneName, UnlockedAt = g.UnlockedAt }).ToList();
+            case List<AchievementEntry> achs:
+                // 深拷贝——AchievementEntry 是 class，防止快照与运行时共享引用
+                return achs.Select(a => new AchievementEntry { Id = a.Id, Name = a.Name, UnlockedAt = a.UnlockedAt }).ToList();
+            case List<ChapterEntry> chaps:
+                // 深拷贝——ChapterEntry 是 class，Unlocked/UnlockedAt 可被 ChapterUnlockHandler 修改
+                return chaps.Select(c => new ChapterEntry { Id = c.Id, Name = c.Name, Unlocked = c.Unlocked, UnlockedAt = c.UnlockedAt }).ToList();
             case List<DebugLogEntry> logs:
                 return new List<DebugLogEntry>(logs);
+            case List<object?> objs:
+                // 深拷贝——元素可能为可变对象（Dictionary/List），递归拷贝防止快照与运行时共享引用
+                var objCopy = new List<object?>(objs.Count);
+                foreach (var o in objs)
+                    objCopy.Add(DeepCopyMutable("", o));
+                return objCopy;
             case HashSet<string> hs:
                 return new HashSet<string>(hs, hs.Comparer);
             case Dictionary<string, object?> dict:

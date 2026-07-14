@@ -1,7 +1,8 @@
-namespace LingFanEngine.Views;
+namespace LingFanEngine.Abstractions.Interfaces.Views;
 
 /// <summary>
-/// 场景渲染器接口——GameLoop 通过此接口驱动场景渲染，解耦具体实现。
+/// 场景渲染器接口——GameLoop 通过此接口驱动场景渲染，解耦具体 UI 框架实现。
+/// <para>定义在 Abstractions 层，确保 Services 层不直接依赖 Views 层。</para>
 /// </summary>
 public interface ISceneRenderer
 {

@@ -12,4 +12,10 @@ public interface II18nService
 
     /// <summary>原文→译文翻译</summary>
     string Translate(string original);
+
+    /// <summary>
+    /// 获取可用语言列表（扫描 Lang/ 目录下的子目录和 .json 文件）
+    /// </summary>
+    /// <returns>语言代码列表，如 ["zh-CN", "en-US"]</returns>
+    IReadOnlyList<string> GetAvailableLanguages();
 }

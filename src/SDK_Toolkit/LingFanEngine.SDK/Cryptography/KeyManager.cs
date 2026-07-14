@@ -20,7 +20,7 @@ public static class KeyManager
         return key;
     }
 
-    /// <summary>保存密钥到本地（~/.lingfan/keys/{SHA256(projectPath)}.key）</summary>
+    /// <summary>保存密钥到本地（{AppData}/LingFan/keys/{SHA256(projectPath)}.key）</summary>
     public static void SaveKey(string projectPath, byte[] key)
     {
         var keysDir = PathHelper.GetKeysDirectory();
@@ -60,19 +60,26 @@ public static class KeyManager
             File.Delete(keyFile);
     }
 
-    /// <summary>将密钥分片为 N 段</summary>
+    /// <summary>将密钥分片为 N 段（最后一片吸收余数，保证总长 = KeySize）</summary>
     public static byte[][] ShardKey(byte[] key, int shardCount)
     {
         if (key.Length != KeySize)
             throw new ArgumentException($"密钥长度必须为 {KeySize} 字节", nameof(key));
+        if (shardCount < 1 || shardCount > KeySize)
+            throw new ArgumentOutOfRangeException(nameof(shardCount), $"分片数必须在 1~{KeySize} 之间");
 
-        var shardSize = KeySize / shardCount;
+        var baseSize = KeySize / shardCount;
+        var remainder = KeySize % shardCount;
         var shards = new byte[shardCount][];
 
+        var offset = 0;
         for (var i = 0; i < shardCount; i++)
         {
-            shards[i] = new byte[shardSize];
-            Array.Copy(key, i * shardSize, shards[i], 0, shardSize);
+            // 前 remainder 片各多 1 字节，保证总长恰好 KeySize
+            var size = baseSize + (i < remainder ? 1 : 0);
+            shards[i] = new byte[size];
+            Array.Copy(key, offset, shards[i], 0, size);
+            offset += size;
         }
 
         return shards;
@@ -89,6 +96,9 @@ public static class KeyManager
             Array.Copy(shard, 0, key, offset, shard.Length);
             offset += shard.Length;
         }
+
+        if (offset != KeySize)
+            throw new ArgumentException($"分片总长度 {offset} != 密钥长度 {KeySize}");
 
         return key;
     }

@@ -34,7 +34,13 @@ public enum TransitionType
     /// <summary>缩放退出</summary>
     ZoomOut,
     /// <summary>闪烁消失</summary>
-    BlinkOut
+    BlinkOut,
+    /// <summary>淡入+上移（DSL 2.0）</summary>
+    FadeUp,
+    /// <summary>淡入+下移（DSL 2.0）</summary>
+    FadeDown,
+    /// <summary>模糊过渡（DSL 2.0，近似为快速交叉淡入+缩放脉冲）</summary>
+    Blur
 }
 
 /// <summary>

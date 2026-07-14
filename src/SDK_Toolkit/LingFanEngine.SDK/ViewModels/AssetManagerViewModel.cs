@@ -138,4 +138,52 @@ public partial class AssetManagerViewModel : ViewModelBase
             StatusMessage = $"预览失败: {ex.Message}";
         }
     }
+
+    /// <summary>P2-5: 拖拽导入资源文件</summary>
+    [RelayCommand]
+    private async Task ImportFilesAsync(string[] filePaths)
+    {
+        if (string.IsNullOrEmpty(ProjectDirectory))
+        {
+            StatusMessage = "请先打开项目";
+            return;
+        }
+
+        var mediaDir = System.IO.Path.Combine(ProjectDirectory, "Media");
+        System.IO.Directory.CreateDirectory(mediaDir);
+
+        var imported = 0;
+        foreach (var filePath in filePaths)
+        {
+            if (!System.IO.File.Exists(filePath)) continue;
+
+            try
+            {
+                var fileName = System.IO.Path.GetFileName(filePath);
+                var ext = System.IO.Path.GetExtension(fileName).ToLowerInvariant();
+
+                // 根据扩展名确定目标子目录
+                var targetSubDir = ext switch
+                {
+                    ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" => "Images",
+                    ".mp3" or ".ogg" or ".wav" => "BGM",
+                    ".mp4" or ".webm" or ".mkv" => "Video",
+                    _ => "",
+                };
+
+                await _assetManager.ImportAssetAsync(ProjectDirectory, filePath, targetSubDir);
+                imported++;
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"导入失败 {System.IO.Path.GetFileName(filePath)}: {ex.Message}";
+            }
+        }
+
+        if (imported > 0)
+        {
+            StatusMessage = $"已导入 {imported} 个资源";
+            await ScanAssetsAsync();
+        }
+    }
 }

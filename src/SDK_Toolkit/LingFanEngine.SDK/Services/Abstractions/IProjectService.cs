@@ -9,7 +9,9 @@ namespace LingFanEngine.SDK.Services.Abstractions;
 public interface IProjectService : INotifyPropertyChanged
 {
     /// <summary>创建新项目</summary>
-    Task<ProjectConfig> CreateNewAsync(string name, string title, string author, string outputDir);
+    Task<ProjectConfig> CreateNewAsync(
+        string name, string title, string author, string outputDir,
+        string version = "1.0.0", string description = "");
 
     /// <summary>加载项目</summary>
     Task<ProjectConfig?> LoadAsync(string projectFilePath);

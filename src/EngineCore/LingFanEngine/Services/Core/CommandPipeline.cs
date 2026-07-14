@@ -43,14 +43,33 @@ public class CommandPipeline : ICommandPipeline, IDisposable
     /// <inheritdoc/>
     public async ValueTask SendAsync(ICommand command, CancellationToken ct = default)
     {
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _disposeCts.Token);
-        await _channel.Writer.WriteAsync(command, linked.Token);
+        // Fast path：外部 CT 可取消时直接使用，避免每次 Send 创建 LinkedTokenSource（减少 GC 压力）
+        if (ct.CanBeCanceled)
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _disposeCts.Token);
+            await _channel.Writer.WriteAsync(command, linked.Token);
+        }
+        else
+        {
+            await _channel.Writer.WriteAsync(command, _disposeCts.Token);
+        }
         Interlocked.Increment(ref _count);
     }
 
     /// <inheritdoc/>
     public async IAsyncEnumerable<ICommand> ReceiveAllAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
+        // Fast path：外部 CT 不可取消时直接用 _disposeCts.Token，避免 LinkedTokenSource 分配
+        if (!ct.CanBeCanceled)
+        {
+            await foreach (var command in _channel.Reader.ReadAllAsync(_disposeCts.Token))
+            {
+                Interlocked.Decrement(ref _count);
+                yield return command;
+            }
+            yield break;
+        }
+
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _disposeCts.Token);
         await foreach (var command in _channel.Reader.ReadAllAsync(linked.Token))
         {

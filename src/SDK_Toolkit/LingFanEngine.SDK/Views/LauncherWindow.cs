@@ -167,17 +167,25 @@ public class LauncherWindow : Window
                 formPanel.IsVisible = _viewModel.IsNewProjectPanelVisible;
         };
 
-        var (namePanel, nameBox) = CreateFormField("项目名（英文）");
-        BindTwoWayText(nameBox, () => _viewModel.NewProjectName, v => _viewModel.NewProjectName = v);
+        var (namePanel, nameBox) = CreateFormField("项目名称");
+        BindTwoWayText(nameBox, () => _viewModel.NewProjectName, v => _viewModel.NewProjectName = v, nameof(LauncherViewModel.NewProjectName));
         formPanel.Children.Add(namePanel);
 
-        var (titlePanel, titleBox) = CreateFormField("中文标题");
-        BindTwoWayText(titleBox, () => _viewModel.NewProjectTitle, v => _viewModel.NewProjectTitle = v);
+        var (titlePanel, titleBox) = CreateFormField("游戏名称");
+        BindTwoWayText(titleBox, () => _viewModel.NewProjectTitle, v => _viewModel.NewProjectTitle = v, nameof(LauncherViewModel.NewProjectTitle));
         formPanel.Children.Add(titlePanel);
 
         var (authorPanel, authorBox) = CreateFormField("作者");
-        BindTwoWayText(authorBox, () => _viewModel.NewProjectAuthor, v => _viewModel.NewProjectAuthor = v);
+        BindTwoWayText(authorBox, () => _viewModel.NewProjectAuthor, v => _viewModel.NewProjectAuthor = v, nameof(LauncherViewModel.NewProjectAuthor));
         formPanel.Children.Add(authorPanel);
+
+        var (versionPanel, versionBox) = CreateFormField("版本号");
+        BindTwoWayText(versionBox, () => _viewModel.NewProjectVersion, v => _viewModel.NewProjectVersion = v, nameof(LauncherViewModel.NewProjectVersion));
+        formPanel.Children.Add(versionPanel);
+
+        var (descPanel, descBox) = CreateFormField("描述（可选）");
+        BindTwoWayText(descBox, () => _viewModel.NewProjectDescription, v => _viewModel.NewProjectDescription = v, nameof(LauncherViewModel.NewProjectDescription));
+        formPanel.Children.Add(descPanel);
 
         // 路径选择
         var pathPanel = new StackPanel { Spacing = 4 };
@@ -192,7 +200,7 @@ public class LauncherWindow : Window
             ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
         };
         var pathBox = new TextBox { FontSize = 12 };
-        BindTwoWayText(pathBox, () => _viewModel.NewProjectPath, v => _viewModel.NewProjectPath = v);
+        BindTwoWayText(pathBox, () => _viewModel.NewProjectPath, v => _viewModel.NewProjectPath = v, nameof(LauncherViewModel.NewProjectPath));
         Grid.SetColumn(pathBox, 0);
         pathRow.Children.Add(pathBox);
 
@@ -296,11 +304,16 @@ public class LauncherWindow : Window
         return (stack, box);
     }
 
-    /// <summary>AOT 安全的双向文本绑定（VM→TextBox + TextBox→VM）</summary>
-    private static void BindTwoWayText(TextBox box, Func<string> getter, Action<string> setter)
+    /// <summary>AOT 安全的双向文本绑定（VM→TextBox + TextBox→VM，含 PropertyChanged 订阅）</summary>
+    private void BindTwoWayText(TextBox box, Func<string> getter, Action<string> setter, string propertyName)
     {
-        // VM → TextBox
+        // VM → TextBox（初始 + PropertyChanged 响应）
         box.Text = getter();
+        _viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == propertyName && box.Text != getter())
+                box.Text = getter();
+        };
         // TextBox → VM
         box.TextChanged += (_, _) => setter(box.Text);
     }

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using LingFanEngine.DslCore;
+using LingFanEngine.SDK.Dsl;
 using LingFanEngine.SDK.Dsl.Analysis;
 using LingFanEngine.SDK.Dsl.Highlight;
 using LingFanEngine.SDK.Models;
@@ -17,30 +18,62 @@ public class DslAnalyzer : IDslAnalyzer
     /// <inheritdoc/>
     public Task<DslAnalysisResult> AnalyzeAsync(string source, string filePath)
     {
-        var sw = Stopwatch.StartNew();
-
-        var statements = ParseSource(source);
-        var rawLines = source.Split(["\r\n", "\n", "\r"], System.StringSplitOptions.None).ToList();
-
-        var (errors, warnings) = DiagnosticCollector.Collect(statements, rawLines);
-        var variables = VariableCollector.Collect(statements);
-        var references = SceneReferenceResolver.Collect(statements, filePath);
-
-        sw.Stop();
-
-        var result = new DslAnalysisResult
+        return Task.Run(() =>
         {
-            Success = errors.Count == 0,
-            Errors = errors,
-            Warnings = warnings,
-            Variables = variables,
-            References = references,
-            Ast = statements,
-            Elapsed = sw.Elapsed,
-            FilePath = filePath,
-        };
+            var sw = Stopwatch.StartNew();
 
-        return Task.FromResult(result);
+            var statements = ParseSource(source);
+            var rawLines = source.Split(["\r\n", "\n", "\r"], System.StringSplitOptions.None).ToList();
+
+            var (errors, warnings) = DiagnosticCollector.Collect(statements, rawLines);
+            var variables = VariableCollector.Collect(statements);
+            var references = SceneReferenceResolver.Collect(statements, filePath);
+
+            sw.Stop();
+
+            return new DslAnalysisResult
+            {
+                Success = errors.Count == 0,
+                Errors = errors,
+                Warnings = warnings,
+                Variables = variables,
+                References = references,
+                Ast = statements,
+                Elapsed = sw.Elapsed,
+                FilePath = filePath,
+            };
+        });
+    }
+
+    /// <summary>分析单个源文件（含跨文件引用检测，P1-1）</summary>
+    public Task<DslAnalysisResult> AnalyzeWithIndexerAsync(string source, string filePath, Editor.DslDefinitionIndexer? indexer)
+    {
+        return Task.Run(() =>
+        {
+            var sw = Stopwatch.StartNew();
+
+            var statements = ParseSource(source);
+            var rawLines = source.Split(["\r\n", "\n", "\r"], System.StringSplitOptions.None).ToList();
+
+            var (errors, warnings, infos) = DiagnosticCollector.CollectWithReferences(statements, rawLines, indexer);
+            var variables = VariableCollector.Collect(statements);
+            var references = SceneReferenceResolver.Collect(statements, filePath);
+
+            sw.Stop();
+
+            return new DslAnalysisResult
+            {
+                Success = errors.Count == 0,
+                Errors = errors,
+                Warnings = warnings,
+                Infos = infos,
+                Variables = variables,
+                References = references,
+                Ast = statements,
+                Elapsed = sw.Elapsed,
+                FilePath = filePath,
+            };
+        });
     }
 
     /// <inheritdoc/>
@@ -99,13 +132,23 @@ public class DslAnalyzer : IDslAnalyzer
 
         for (var i = 0; i < lines.Length; i++)
         {
-            var trimmed = lines[i].Trim();
-            if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith('#'))
+            // 跳过空行和注释行
+            var line = lines[i];
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            var trimmed = DslCommentHelper.StripInlineComment(line.Trim());
+            if (string.IsNullOrEmpty(trimmed) || DslCommentHelper.IsCommentLine(trimmed))
                 continue;
 
-            var stmt = DslStatementParser.ParseLine(trimmed, i);
-            if (stmt != null)
-                statements.Add(stmt);
+            try
+            {
+                var stmt = DslStatementParser.ParseLine(trimmed, i);
+                if (stmt != null)
+                    statements.Add(stmt);
+            }
+            catch
+            {
+                // 解析失败的行跳过——诊断收集器会报告语法错误
+            }
         }
 
         return statements;

@@ -215,9 +215,11 @@ internal sealed class ControlFactory : IControlFactory
                 return img;
             }
 
-            case "panel" or "frame" or "window" or "dialogbox" or "choicebox" or "infobox" or "overlay" or "popup":
+            case "panel" or "frame" or "window" or "dialogbox" or "choicebox" or "infobox" or "overlay" or "popup" or "vbox" or "hbox":
             {
-                var direction = props.GetValueOrDefault("direction")?.ToString()?.ToLowerInvariant() ?? "vertical";
+                // vbox 默认垂直，hbox 默认水平，其他默认垂直（可被 direction= 覆盖）
+                var defaultDirection = type is "hbox" ? "horizontal" : "vertical";
+                var direction = props.GetValueOrDefault("direction")?.ToString()?.ToLowerInvariant() ?? defaultDirection;
                 var panel = new Border
                 {
                     Background = new SolidColorBrush(Color.FromArgb(60, 0, 0, 0)),
@@ -233,6 +235,10 @@ internal sealed class ControlFactory : IControlFactory
                             ? Orientation.Horizontal
                             : Orientation.Vertical
                     };
+                    // 在此处直接应用 spacing（ApplyCommonProps 检查的是 StackPanel 类型，
+                    // 但 panel 返回的是 Border，无法触及内部 StackPanel）
+                    var spacing = LayoutHelper.ParseDouble(props, "spacing");
+                    if (spacing > 0) stack.Spacing = spacing;
                     panel.Child = stack;
                     foreach (var child in element.Children)
                     {

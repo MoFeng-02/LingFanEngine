@@ -36,12 +36,19 @@ public partial class LauncherViewModel : ViewModelBase
     private string _newProjectAuthor = "";
 
     [ObservableProperty]
+    private string _newProjectVersion = "1.0.0";
+
+    [ObservableProperty]
+    private string _newProjectDescription = "";
+
+    [ObservableProperty]
     private string _newProjectPath = "";
 
     [ObservableProperty]
     private string _statusMessage = "选择或创建一个项目开始";
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CreateProjectCommand))]
     private bool _isBusy;
 
     /// <summary>新建项目面板是否展开</summary>
@@ -74,7 +81,9 @@ public partial class LauncherViewModel : ViewModelBase
                 ? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
                 : NewProjectPath;
 
-            var success = await _session.CreateAndOpenAsync(NewProjectName, NewProjectTitle, NewProjectAuthor, outputDir);
+            var success = await _session.CreateAndOpenAsync(
+                NewProjectName, NewProjectTitle, NewProjectAuthor, outputDir,
+                NewProjectVersion, NewProjectDescription);
             if (success)
             {
                 StatusMessage = $"项目 {NewProjectTitle} 创建成功！";

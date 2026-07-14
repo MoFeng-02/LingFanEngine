@@ -4,6 +4,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
+using LingFanEngine.Abstractions.Models;
 
 namespace LingFanEngine.Views;
 
@@ -32,6 +33,7 @@ internal sealed class OverlayRenderer : IOverlayRenderer
 
     // 性能 HUD
     private TextBlock? _perfHud;
+    private string _lastPerfHudText = "";
 
     public OverlayRenderer(IStateContainer state)
     {
@@ -165,6 +167,8 @@ internal sealed class OverlayRenderer : IOverlayRenderer
         if (text != null)
         {
             var type = _state.Get<string>(StateKeys.Notify.Type) ?? "info";
+            var duration = _state.Get<double>(StateKeys.Notify.Duration);
+            if (duration <= 0) duration = 3.0;
             var root = _outerGrid;
             if (root == null) return;
 
@@ -206,7 +210,8 @@ internal sealed class OverlayRenderer : IOverlayRenderer
             _currentNotify = notify;
             _state.Set(StateKeys.Notify.Text, (string?)null);
             _state.Set(StateKeys.Notify.Type, (string?)null);
-            _notifyRemainSeconds = 3.0;
+            _state.Set(StateKeys.Notify.Duration, 0.0);
+            _notifyRemainSeconds = duration;
             _notifyFadeSeconds = NotifyFadeDuration;
         }
         else if (_notifyRemainSeconds > 0)
@@ -242,9 +247,31 @@ internal sealed class OverlayRenderer : IOverlayRenderer
             {
                 if (_outerGrid != null)
                     RemoveNotifyToast(_outerGrid);
+                _currentNotify = null;
                 _notifyFadeSeconds = 0;
+
+                // 通知队列：显示下一条
+                DequeueNextNotify();
             }
         }
+    }
+
+    /// <summary>
+    /// 从通知队列中取出下一条通知显示
+    /// </summary>
+    private void DequeueNextNotify()
+    {
+        var queue = _state.Get<List<NotificationItem>>(StateKeys.Notify.Queue);
+        if (queue == null || queue.Count == 0) return;
+
+        var next = queue[0];
+        queue.RemoveAt(0);
+        _state.Set(StateKeys.Notify.Queue, queue);
+
+        // 触发显示
+        _state.Set(StateKeys.Notify.Text, next.Text);
+        _state.Set(StateKeys.Notify.Type, next.Type);
+        _state.Set(StateKeys.Notify.Duration, next.Duration);
     }
 
     private void RemoveNotifyToast(Panel root)
@@ -294,10 +321,17 @@ internal sealed class OverlayRenderer : IOverlayRenderer
         var memMb = _state.Get<double>(StateKeys.Performance.MemoryMb);
         var cpCount = _state.Get<int>(StateKeys.Performance.CheckpointCount);
 
-        _perfHud.Text = $"FPS: {fps:F1} | {frameMs:F1}ms\n" +
-                        $"Cmd: {cmdQueue} | DSL: {dslIdx}/{dslTotal}\n" +
-                        $"Anim: {animCount} | Els: {sceneEls}\n" +
-                        $"CP: {cpCount} | Mem: {memMb:F1}MB";
+        var hudText = $"FPS: {fps:F1} | {frameMs:F1}ms\n" +
+            $"Cmd: {cmdQueue} | DSL: {dslIdx}/{dslTotal}\n" +
+            $"Anim: {animCount} | Els: {sceneEls}\n" +
+            $"CP: {cpCount} | Mem: {memMb:F1}MB";
+
+        // 仅在文本变化时更新 TextBlock.Text——避免每帧 Avalonia 布局失效
+        if (hudText != _lastPerfHudText)
+        {
+            _perfHud.Text = hudText;
+            _lastPerfHudText = hudText;
+        }
     }
 
     // ========== 对话模态遮罩 ==========

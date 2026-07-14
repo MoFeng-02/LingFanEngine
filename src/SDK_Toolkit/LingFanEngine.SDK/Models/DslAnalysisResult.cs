@@ -15,6 +15,9 @@ public class DslAnalysisResult
     /// <summary>警告列表</summary>
     public List<DslDiagnostic> Warnings { get; set; } = new();
 
+    /// <summary>信息级诊断列表（P1-1：未使用变量等提示）</summary>
+    public List<DslDiagnostic> Infos { get; set; } = new();
+
     /// <summary>提取的变量列表</summary>
     public List<VariableInfo> Variables { get; set; } = new();
 
@@ -35,7 +38,9 @@ public class DslAnalysisResult
 public enum DiagnosticSeverity
 {
     Error,
-    Warning
+    Warning,
+    /// <summary>信息级（P1-1：未使用变量等提示）</summary>
+    Info
 }
 
 /// <summary>诊断信息（错误/警告）</summary>

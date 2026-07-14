@@ -27,8 +27,9 @@ public class StoryLoader : IStoryLoader
     private readonly ICommandPipeline _pipeline;
     private readonly IStateContainer _state;
     private readonly ISceneRegistry _sceneRegistry;
-    private readonly DslExecutor? _dslExecutor;
+    private readonly IDslExecutor? _dslExecutor;
     private readonly PackLoader? _packLoader;
+    private readonly IEncryptedFileReader? _fileReader;
     private readonly Dictionary<string, List<StoryFile>> _loadedStories = new(StringComparer.OrdinalIgnoreCase);
     private string _currentLang = "zh-CN";
 
@@ -42,7 +43,8 @@ public class StoryLoader : IStoryLoader
     /// </summary>
     public StoryLoader(IScriptEngine dslEngine, ICommandPipeline pipeline, IStateContainer state,
         ISceneRegistry sceneRegistry,
-        DslExecutor? dslExecutor = null, PackLoader? packLoader = null)
+        IDslExecutor? dslExecutor = null, PackLoader? packLoader = null,
+        IEncryptedFileReader? fileReader = null)
     {
         _dslEngine = dslEngine;
         _pipeline = pipeline;
@@ -50,6 +52,7 @@ public class StoryLoader : IStoryLoader
         _sceneRegistry = sceneRegistry;
         _dslExecutor = dslExecutor;
         _packLoader = packLoader;
+        _fileReader = fileReader;
     }
 
     /// <summary>
@@ -104,7 +107,7 @@ public class StoryLoader : IStoryLoader
     /// <returns>加载的故事文件，失败返回 null</returns>
     public async ValueTask<StoryFile?> LoadFromFileAsync(string filePath, CancellationToken ct = default)
     {
-        // 优先从 PackLoader（加密包）读取，再回落文件系统
+        // 读取优先级：PackLoader → EncryptedFileReader（即解即用）→ 文件系统回退
         string content;
         var packPath = filePath.Replace('\\', '/');
         var packData = _packLoader != null ? await _packLoader.ReadBytesAsync(packPath, ct) : null;
@@ -112,21 +115,28 @@ public class StoryLoader : IStoryLoader
         {
             content = Encoding.UTF8.GetString(packData);
         }
-        else if (File.Exists(filePath))
-        {
-            content = await File.ReadAllTextAsync(filePath, ct);
-            System.Diagnostics.Debug.WriteLine($"[StoryLoader] 读取文件: {filePath}, 长度: {content?.Length ?? 0} (实际字节: {new System.IO.FileInfo(filePath).Length})");
-            if (content != null && content.Length < 300)
-                System.Diagnostics.Debug.WriteLine($"[StoryLoader]   >>> 内容疑似被截断: {content}");
-        }
         else
         {
-            // 尝试从项目根目录查找
-            var altPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", filePath);
-            if (File.Exists(altPath))
+            // 尝试原始路径
+            var resolvedPath = File.Exists(filePath) ? filePath
+                : File.Exists(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", filePath))
+                    ? Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", filePath)
+                    : null;
+
+            if (resolvedPath != null)
             {
-                content = await File.ReadAllTextAsync(altPath, ct);
-                System.Diagnostics.Debug.WriteLine($"[StoryLoader] 从项目根目录读取: {altPath}, 长度: {content?.Length ?? 0}");
+                // 即解即用：EncryptedFileReader 自动检测 LFEN 魔数，加密则解密，不加密则直接读
+                if (_fileReader != null)
+                {
+                    content = await _fileReader.ReadAllTextAsync(resolvedPath, ct) ?? "";
+                }
+                else
+                {
+                    content = await File.ReadAllTextAsync(resolvedPath, ct);
+                }
+                System.Diagnostics.Debug.WriteLine($"[StoryLoader] 读取文件: {resolvedPath}, 长度: {content?.Length ?? 0}");
+                if (content != null && content.Length < 300)
+                    System.Diagnostics.Debug.WriteLine($"[StoryLoader]   >>> 内容疑似被截断: {content}");
             }
             else
             {
@@ -862,7 +872,8 @@ ExtractSceneBlocks(string script)
 "checkbox", "imagebutton", "separator", "spacer", "narrator",
 "speaker", "dialog", "choice", "progress", "progressbar",
 "toggle", "switch", "combobox", "dropdown", "listbox", "treeview",
-"tab", "tabitem", "menubar", "tooltip", "textbox", "passwordbox"
+"tab", "tabitem", "menubar", "tooltip", "textbox", "passwordbox",
+"vbox", "hbox"
     };
 
     /// <summary>

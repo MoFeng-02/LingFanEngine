@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿using System.Collections.Concurrent;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System.Collections.Concurrent;
 using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Services.Core;
@@ -186,6 +186,12 @@ public readonly record struct SaveLoadCommand : ICommand
 
     /// <summary>是否为保存操作（false = 加载）</summary>
     public bool IsSave { get; init; } = true;
+
+    /// <summary>存档标题（可选，DSL 2.0）</summary>
+    public string? Title { get; init; }
+
+    /// <summary>是否截取截图（默认 true，DSL 2.0）</summary>
+    public bool Screenshot { get; init; } = true;
 
     public SaveLoadCommand() { }
 }
@@ -738,17 +744,21 @@ public readonly record struct DebugLogCommand : ICommand
 /// <summary>
 /// NVL 模式命令——DSL 中 nvl / nvl clear 编译结果
 /// <para>nvl：进入 NVL 模式，后续对话累积显示。</para>
-/// <para>nvl clear：清空 NVL 累积文本并退出 NVL 模式。</para>
+/// <para>nvl clear：清空 NVL 累积文本（不退出 NVL 模式）。</para>
+/// <para>nvl exit：退出 NVL 模式并清空累积文本（恢复 ADV 模式）。</para>
 /// </summary>
 public readonly record struct NvlCommand : ICommand
 {
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+public CommandPriority Priority { get; init; } = CommandPriority.Normal;
 
-    /// <summary>是否为清空操作（false=进入NVL模式，true=清空并退出）</summary>
-    public bool IsClear { get; init; }
+/// <summary>是否为清空操作（仅清空文本，不退出 NVL 模式）</summary>
+public bool IsClear { get; init; }
 
-    public NvlCommand() { }
+/// <summary>是否为退出操作（退出 NVL 模式并清空文本，恢复 ADV 模式）</summary>
+public bool IsExit { get; init; }
+
+public NvlCommand() { }
 }
 
 /// <summary>
@@ -814,4 +824,247 @@ public readonly record struct CallScreenCommand : ICommand
     public Dictionary<string, object?>? Params { get; init; }
 
     public CallScreenCommand() { }
+}
+
+// ====== Phase 38: 时间事件与通知 ======
+
+/// <summary>
+/// 时间事件注册命令——注册游戏时间驱动的自动触发事件
+/// <para>DSL time_event 编译结果。需要 EnableTimeSystem=true。</para>
+/// <para>由 EventScheduler 监听 GameTimeService.OnTimeAdvanced 检查触发。</para>
+/// </summary>
+public readonly record struct TimeEventCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+
+    /// <summary>触发的游戏天数</summary>
+    public int TriggerDay { get; init; }
+
+    /// <summary>触发的小时（null=任意小时）</summary>
+    public int? TriggerHour { get; init; }
+
+    /// <summary>触发的分钟（null=任意分钟）</summary>
+    public int? TriggerMinute { get; init; }
+
+    /// <summary>触发时导航到的场景/label</summary>
+    public required string Target { get; init; }
+
+    /// <summary>是否只触发一次</summary>
+    public bool IsOneShot { get; init; } = true;
+
+    /// <summary>条件表达式（可选）</summary>
+    public string? Condition { get; init; }
+
+    /// <summary>事件描述</summary>
+    public string? Description { get; init; }
+
+    public TimeEventCommand() { }
+}
+
+/// <summary>
+/// 暂停游戏时间命令
+/// </summary>
+public readonly record struct TimePauseCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+
+    public TimePauseCommand() { }
+}
+
+/// <summary>
+/// 恢复游戏时间命令
+/// </summary>
+public readonly record struct TimeResumeCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+
+    public TimeResumeCommand() { }
+}
+
+/// <summary>
+/// 通知命令——显示 Toast 通知
+/// <para>DSL notify 编译结果。写入通知队列，由 OverlayRenderer 排队显示。</para>
+/// </summary>
+public readonly record struct NotifyCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+
+    /// <summary>通知文本</summary>
+    public required string Text { get; init; }
+
+    /// <summary>通知类型：info / warning / error</summary>
+    public string Type { get; init; } = "info";
+
+    /// <summary>显示时长秒数（0 或负数=使用默认 3 秒）</summary>
+    public double Duration { get; init; } = 3.0;
+
+    public NotifyCommand() { }
+}
+
+// ====== Phase 44-48: DSL 2.0 新命令 ======
+
+/// <summary>
+/// 数组追加命令——DSL 2.0
+/// <para>array_push "key" "value" 编译结果。</para>
+/// </summary>
+public readonly record struct ArrayPushCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public required string Key { get; init; }
+    public required string ValuePart { get; init; }
+    public ArrayPushCommand() { }
+}
+
+/// <summary>
+/// 数组弹出命令——DSL 2.0
+/// </summary>
+public readonly record struct ArrayPopCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public required string Key { get; init; }
+    public ArrayPopCommand() { }
+}
+
+/// <summary>
+/// 字典设值命令——DSL 2.0
+/// </summary>
+public readonly record struct DictSetCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public required string Key { get; init; }
+    public required string Field { get; init; }
+    public required string ValuePart { get; init; }
+    public DictSetCommand() { }
+}
+
+/// <summary>
+/// 立绘操作命令——DSL 2.0
+/// <para>统一命令，Operation 区分 show/state/move/hide。</para>
+/// </summary>
+public readonly record struct SpriteCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+
+    /// <summary>操作类型："show" / "state" / "move" / "hide"</summary>
+    public required string Operation { get; init; }
+
+    /// <summary>立绘 ID</summary>
+    public required string Id { get; init; }
+
+    /// <summary>资源路径（show）</summary>
+    public string? Source { get; init; }
+
+    /// <summary>X 坐标（show/move）</summary>
+    public double? X { get; init; }
+
+    /// <summary>Y 坐标（show/move）</summary>
+    public double? Y { get; init; }
+
+    /// <summary>淡入淡出时长（show/hide）</summary>
+    public double? Fade { get; init; }
+
+    /// <summary>表情状态（state）</summary>
+    public string? Emotion { get; init; }
+
+    /// <summary>移动持续时间（move）</summary>
+    public double? Duration { get; init; }
+
+    public SpriteCommand() { }
+}
+
+/// <summary>
+/// 背景切换命令——DSL 2.0
+/// <para>bg_switch "path" transition=fade duration=N 编译结果。</para>
+/// </summary>
+public readonly record struct BgSwitchCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public required string Path { get; init; }
+    public string? Transition { get; init; }
+    public double? Duration { get; init; }
+    public BgSwitchCommand() { }
+}
+
+/// <summary>
+/// Live2D 命令——DSL 2.0
+/// <para>统一命令，Operation 区分 char/show/motion/expr/param/hide/pause/resume。</para>
+/// </summary>
+public readonly record struct Live2DCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+
+    /// <summary>操作类型</summary>
+    public required string Operation { get; init; }
+
+    /// <summary>模型 ID</summary>
+    public required string Id { get; init; }
+
+    /// <summary>模型配置（char 操作）</summary>
+    public Dictionary<string, object?>? Config { get; init; }
+
+    /// <summary>动作/表情名称（motion/expr）</summary>
+    public string? Name { get; init; }
+
+    /// <summary>淡入淡出时长</summary>
+    public double? Fade { get; init; }
+
+    /// <summary>是否循环（motion）</summary>
+    public bool Loop { get; init; } = true;
+
+    /// <summary>参数名（param）</summary>
+    public string? ParamName { get; init; }
+
+    /// <summary>参数值（param）</summary>
+    public double ParamValue { get; init; }
+
+    /// <summary>权重（param）</summary>
+    public double Weight { get; init; } = 1.0;
+
+    public Live2DCommand() { }
+}
+
+/// <summary>
+/// 章节解锁命令——DSL 2.0
+/// </summary>
+public readonly record struct ChapterUnlockCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public required string Id { get; init; }
+    public string? ChapterName { get; init; }
+    public bool Unlock { get; init; } = true;
+    public ChapterUnlockCommand() { }
+}
+
+/// <summary>
+/// 成就解锁命令——DSL 2.0
+/// </summary>
+public readonly record struct AchievementUnlockCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public required string Id { get; init; }
+    public string? AchievementName { get; init; }
+    public AchievementUnlockCommand() { }
+}
+
+/// <summary>
+/// 删除存档命令——DSL 2.0
+/// </summary>
+public readonly record struct SaveDeleteCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public required string SlotId { get; init; }
+    public SaveDeleteCommand() { }
 }

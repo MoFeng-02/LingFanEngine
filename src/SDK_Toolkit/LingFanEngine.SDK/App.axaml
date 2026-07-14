@@ -1,0 +1,58 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="LingFanEngine.SDK.App"
+             RequestedThemeVariant="Dark">
+    <Application.Styles>
+        <FluentTheme />
+        <!-- AvaloniaEdit 必需主题样式——AXAML 中 StyleInclude 构建时编译为 C# 代码，AOT 安全 -->
+        <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
+
+        <!-- 暗色背景 -->
+        <Style Selector="Window">
+            <Setter Property="Background" Value="#1E1E1E" />
+            <Setter Property="Foreground" Value="#D4D4D4" />
+        </Style>
+
+        <!-- 导航按钮统一样式 -->
+        <Style Selector="Button.nav-button">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="16,10" />
+            <Setter Property="Margin" Value="0,2" />
+        </Style>
+
+        <!-- 页面标题样式（暗色） -->
+        <Style Selector="TextBlock.page-title">
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,16" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+        </Style>
+
+        <!-- TextBox 暗色 -->
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="#2D2D30" />
+            <Setter Property="Foreground" Value="#D4D4D4" />
+            <Setter Property="BorderBrush" Value="#3C3C3C" />
+        </Style>
+
+        <!-- ListBox 暗色 -->
+        <Style Selector="ListBox">
+            <Setter Property="Background" Value="#252526" />
+            <Setter Property="Foreground" Value="#D4D4D4" />
+            <Setter Property="BorderBrush" Value="#3C3C3C" />
+        </Style>
+
+        <!-- Button 暗色——排除 .transparent 类 -->
+        <Style Selector="Button:not(.transparent)">
+            <Setter Property="Background" Value="#0E639C" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="BorderBrush" Value="#0E639C" />
+        </Style>
+
+        <!-- CheckBox 暗色 -->
+        <Style Selector="CheckBox">
+            <Setter Property="Foreground" Value="#D4D4D4" />
+        </Style>
+    </Application.Styles>
+</Application>

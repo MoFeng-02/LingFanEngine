@@ -28,7 +28,9 @@ public partial class ProjectService : ObservableObject, IProjectService
     }
 
     /// <inheritdoc/>
-    public async Task<ProjectConfig> CreateNewAsync(string name, string title, string author, string outputDir)
+    public async Task<ProjectConfig> CreateNewAsync(
+        string name, string title, string author, string outputDir,
+        string version = "1.0.0", string description = "")
     {
         var projectDir = Path.Combine(outputDir, name);
         PathHelper.EnsureDirectory(projectDir);
@@ -37,7 +39,9 @@ public partial class ProjectService : ObservableObject, IProjectService
         {
             Name = name,
             Title = title,
+            Description = string.IsNullOrWhiteSpace(description) ? title : description,
             Author = author,
+            Version = string.IsNullOrWhiteSpace(version) ? "1.0.0" : version,
             ProjectPath = Path.Combine(projectDir, name + ProjectFileExtension),
             TargetPlatforms = [.. PlatformConfig.DesktopPlatforms],
             Encryption = new EncryptionConfig(),
@@ -113,7 +117,10 @@ public partial class ProjectService : ObservableObject, IProjectService
 
         try
         {
-            var json = FileHelper.ReadAllTextAsync(recentFile).GetAwaiter().GetResult();
+            // 直接同步读取——小 JSON 文件，避免 sync-over-async 死锁
+            // （File.ReadAllTextAsync 在 UI 线程 .GetAwaiter().GetResult() 会捕获
+            //   DispatcherSynchronizationContext 导致经典死锁）
+            var json = File.ReadAllText(recentFile);
             _recentProjectsCache = JsonHelper.Deserialize(json, SdkJsonContext.Default.ListRecentProject) ?? [];
         }
         catch
@@ -153,7 +160,8 @@ public partial class ProjectService : ObservableObject, IProjectService
         if (!string.IsNullOrEmpty(dir))
             PathHelper.EnsureDirectory(dir);
 
+        // 直接同步写入——小 JSON 文件，避免 sync-over-async 死锁
         var json = JsonHelper.Serialize(_recentProjectsCache, SdkJsonContext.Default.ListRecentProject);
-        FileHelper.WriteAllTextAsync(recentFile, json).GetAwaiter().GetResult();
+        File.WriteAllText(recentFile, json);
     }
 }

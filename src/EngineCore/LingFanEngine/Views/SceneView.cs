@@ -9,6 +9,7 @@ using LingFanEngine.Abstractions.EngineOptions;
 using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Entry;
+using LingFanEngine.Abstractions.Interfaces.Views;
 using LingFanEngine.Services.Core;
 using LingFanEngine.Services.Scripting;
 
@@ -58,6 +59,9 @@ public partial class SceneView : UserControl, ISceneRenderer
     private Grid? _outerGrid;
     private Border? _transitionOverlay;
     private Border? _dialogMask;
+
+    // ── 震动复用 Transform（避免每帧 GC 分配） ──
+    private readonly TranslateTransform _shakeTransform = new();
 
     public SceneView(
         IStateContainer state,
@@ -456,8 +460,10 @@ public partial class SceneView : UserControl, ISceneRenderer
             }
             else
             {
-                // 仅震动活跃：每帧创建全新的 Transform，避免累积 TranslateTransform
-                _sceneRoot.RenderTransform = new TranslateTransform(shakeOffsetX, shakeOffsetY);
+                // 仅震动活跃：复用缓存 TranslateTransform，仅更新 X/Y——零 GC 分配
+                _shakeTransform.X = shakeOffsetX;
+                _shakeTransform.Y = shakeOffsetY;
+                _sceneRoot.RenderTransform = _shakeTransform;
             }
         }
         else if (!shakeActive && !transActive)

@@ -50,7 +50,7 @@ public class LingFanDslEngine : IScriptEngine
             for (int i = 0; i < lines.Length; i++)
             {
                 var rawLine = lines[i].TrimEnd('\r');
-                var trimmed = rawLine.Trim();
+                var trimmed = StripInlineComment(rawLine.Trim());
                 if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("//") || trimmed.StartsWith('#'))
                     continue;
 
@@ -88,6 +88,20 @@ public class LingFanDslEngine : IScriptEngine
                     continue;
                 }
 
+                // func（DSL 2.0）：注册为 label + 存储参数列表
+                if (stmt is FuncStmt fn)
+                {
+                    labels[fn.Name] = commands.Count;
+                    // 存储参数名列表到状态容器（供 call 时绑定实参）
+                    commands.Add(new SetVariableCommand
+                    {
+                        Key = $"__func_params_{fn.Name}",
+                        Value = fn.Parameters
+                    });
+                    idx++;
+                    continue;
+                }
+
                 // end（已废弃 no-op）
                 if (stmt is EndStmt)
                 {
@@ -112,6 +126,24 @@ public class LingFanDslEngine : IScriptEngine
         // for 块（Phase 24）
         if (stmt is ForStmt)
         {
+            idx = CompileForBlock(parsed, idx, commands, labels, pendingJumps);
+            continue;
+        }
+
+        // switch 块（DSL 2.0）
+        if (stmt is SwitchStmt)
+        {
+            idx = CompileSwitchBlock(parsed, idx, commands, labels, pendingJumps);
+            continue;
+        }
+
+        // foreach 块（DSL 2.0——编译为 for 循环）
+        if (stmt is ForeachStmt fe)
+        {
+            // 将 foreach 转换为 for 并编译
+            var forStmt = new ForStmt { VarName = fe.VarName, SourceExpr = fe.SourceKey };
+            // 替换 parsed 中的语句
+            parsed[idx] = parsed[idx] with { Stmt = forStmt };
             idx = CompileForBlock(parsed, idx, commands, labels, pendingJumps);
             continue;
         }
@@ -162,6 +194,20 @@ public class LingFanDslEngine : IScriptEngine
                             Easing = ab.Easing ?? "EaseOutQuad"
                         });
                     }
+                }
+
+                // undef——同时清理 _local_ 前缀的局部变量
+                if (stmt is UndefStmt u)
+                {
+                    var localKey = "_local_" + u.Key.Replace('.', '_');
+                    if (localKey != u.Key)
+                        commands.Add(new SetVariableCommand { Key = localKey, Value = null });
+                }
+
+                // return with value——SetVariableCommand 已由 StatementToCommand 返回，追加 ReturnCommand
+                if (stmt is ReturnStmt ret && ret.ValuePart != null)
+                {
+                    commands.Add(new ReturnCommand());
                 }
 
                 idx++;
@@ -447,6 +493,94 @@ public class LingFanDslEngine : IScriptEngine
     }
 
     /// <summary>
+    /// 编译 switch 块——DSL 2.0
+    /// <para>语法：</para>
+    /// <para>  switch {expr}</para>
+    /// <para>    case 0 ... </para>
+    /// <para>    case 5 ... </para>
+    /// <para>    default ... </para>
+    /// <para>编译为 if/else 链：将 switch 表达式存入临时变量，每个 case 编译为 BranchCommand 比较相等。</para>
+    /// </summary>
+    private int CompileSwitchBlock(List<ParsedLine> parsed, int startIndex,
+        List<ICommand> commands, Dictionary<string, int> labels,
+        List<(int CmdIndex, string TargetLabel)> pendingJumps)
+    {
+        var baseIndent = parsed[startIndex].Indent;
+        var switchStmt = (SwitchStmt)parsed[startIndex].Stmt!;
+        var endSwitchLabel = $"__endswitch_{startIndex}_{commands.Count}";
+
+        // 将 switch 表达式存入临时变量
+        var switchVar = $"_local___switch_val_{commands.Count}";
+        commands.Add(new SetVariableCommand
+        {
+            Key = switchVar,
+            Value = new DslExpressionPlaceholder(switchStmt.Expression)
+        });
+
+        int idx = startIndex + 1;
+
+        // 空 switch——没有 case/default 行
+        if (idx >= parsed.Count || parsed[idx].Indent <= baseIndent)
+        {
+            labels[endSwitchLabel] = commands.Count;
+            commands.Add(new SetVariableCommand { Key = switchVar, Value = null });
+            return idx;
+        }
+
+        // case/default 的缩进级别 = switch 的第一个子行缩进
+        var caseIndent = parsed[idx].Indent;
+
+        while (idx < parsed.Count && parsed[idx].Indent == caseIndent)
+        {
+            var stmt = parsed[idx].Stmt;
+
+            if (stmt is CaseStmt caseStmt)
+            {
+                // BranchCommand: switchVar == caseValue
+                var branchIdx = commands.Count;
+                commands.Add(new BranchCommand
+                {
+                    Condition = $"{switchVar} == {caseStmt.Value}",
+                    SkipCount = 0,
+                    HasMatched = false
+                });
+
+                // case body（缩进 > caseIndent 的行）
+                idx = CompileBody(parsed, idx + 1, caseIndent, commands, labels, pendingJumps);
+
+                // JumpCommand to endSwitch
+                var jumpIdx = commands.Count;
+                commands.Add(new JumpCommand { TargetLabel = endSwitchLabel, TargetIndex = -1 });
+                pendingJumps.Add((jumpIdx, endSwitchLabel));
+                labels[endSwitchLabel] = -1;
+
+                // Fill SkipCount = body + JumpCommand
+                commands[branchIdx] = (BranchCommand)commands[branchIdx] with
+                {
+                    SkipCount = commands.Count - branchIdx - 1
+                };
+            }
+            else if (stmt is DefaultStmt)
+            {
+                // default body (no BranchCommand)
+                idx = CompileBody(parsed, idx + 1, caseIndent, commands, labels, pendingJumps);
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        // endSwitch position
+        labels[endSwitchLabel] = commands.Count;
+
+        // Cleanup temp variable
+        commands.Add(new SetVariableCommand { Key = switchVar, Value = null });
+
+        return idx;
+    }
+
+    /// <summary>
     /// 编译块体（所有缩进 > baseIndent 的行），递归处理嵌套块
     /// </summary>
     private int CompileBody(List<ParsedLine> parsed, int startIndex, int parentIndent,
@@ -468,6 +602,19 @@ public class LingFanDslEngine : IScriptEngine
             if (stmt is LabelStmt lbl)
             {
                 labels[lbl.Name] = commands.Count;
+                idx++;
+                continue;
+            }
+
+            // func 在块内：注册为 label + 存储参数列表
+            if (stmt is FuncStmt fn)
+            {
+                labels[fn.Name] = commands.Count;
+                commands.Add(new SetVariableCommand
+                {
+                    Key = $"__func_params_{fn.Name}",
+                    Value = fn.Parameters
+                });
                 idx++;
                 continue;
             }
@@ -528,6 +675,22 @@ public class LingFanDslEngine : IScriptEngine
                 continue;
             }
 
+            // 嵌套 switch 块（DSL 2.0）
+            if (stmt is SwitchStmt)
+            {
+                idx = CompileSwitchBlock(parsed, idx, commands, labels, pendingJumps);
+                continue;
+            }
+
+            // 嵌套 foreach 块（DSL 2.0——编译为 for 循环）
+            if (stmt is ForeachStmt fe2)
+            {
+                var forStmt2 = new ForStmt { VarName = fe2.VarName, SourceExpr = fe2.SourceKey };
+                parsed[idx] = parsed[idx] with { Stmt = forStmt2 };
+                idx = CompileForBlock(parsed, idx, commands, labels, pendingJumps);
+                continue;
+            }
+
             // 嵌套 menu 块
             if (stmt is MenuStmt)
             {
@@ -572,6 +735,20 @@ public class LingFanDslEngine : IScriptEngine
                         Easing = ab2.Easing ?? "EaseOutQuad"
                     });
                 }
+            }
+
+            // undef——同时清理 _local_ 前缀的局部变量
+            if (stmt is UndefStmt u2)
+            {
+                var localKey = "_local_" + u2.Key.Replace('.', '_');
+                if (localKey != u2.Key)
+                    commands.Add(new SetVariableCommand { Key = localKey, Value = null });
+            }
+
+            // return with value——SetVariableCommand 已由 StatementToCommand 返回，追加 ReturnCommand
+            if (stmt is ReturnStmt ret2 && ret2.ValuePart != null)
+            {
+                commands.Add(new ReturnCommand());
             }
 
             idx++;
@@ -684,11 +861,16 @@ public class LingFanDslEngine : IScriptEngine
     {
         "fade" or "crossfade" => "FadeIn",
         "fadeout" => "FadeOut",
+        "dissolve" => "CrossFade",
         "slideleft" or "slideleftin" => "SlideLeftIn",
         "slideright" or "sliderightin" => "SlideRightIn",
         "slideup" or "slideupin" => "SlideUpIn",
         "slidedown" or "slidedownin" => "SlideDownIn",
+        "fadeup" => "FadeUp",
+        "fadedown" => "FadeDown",
+        "blur" => "Blur",
         "zoomin" or "zoom" => "ZoomIn",
+        "shrink" => "ZoomOut",
         "blink" or "blinkout" => "BlinkOut",
         _ => "CrossFade"
     };
@@ -706,6 +888,24 @@ public class LingFanDslEngine : IScriptEngine
         return indent;
     }
 
+    /// <summary>
+    /// 剥离行尾注释——检测引号外的 // 并截断
+    /// <para>规则：跟踪引号开闭状态，仅在引号外遇到 // 时截断。</para>
+    /// <para>这避免了误切 URL 路径 "http://..." 中的 //。</para>
+    /// </summary>
+    private static string StripInlineComment(string line)
+    {
+        bool inQuotes = false;
+        for (int i = 0; i < line.Length - 1; i++)
+        {
+            if (line[i] == '"')
+                inQuotes = !inQuotes;
+            else if (!inQuotes && line[i] == '/' && line[i + 1] == '/')
+                return line[..i].TrimEnd();
+        }
+        return line;
+    }
+
     /// <summary>将 DslStatement AST 节点转换为 ICommand</summary>
     private static ICommand? StatementToCommand(DslStatement? stmt,
         Dictionary<string, int> labels,
@@ -721,7 +921,9 @@ SayStmt s => new ShowDialogCommand
 Text = s.Text,
 Speaker = s.Speaker,
 Clickable = s.Clickable,
-Noskip = s.Noskip
+Noskip = s.Noskip,
+Instant = s.Instant,
+TypewriterEnabled = s.Typewriter ?? true
 },
 
             NavigateStmt n => new NavigateCommand { Path = n.Path, SceneName = n.SceneName },
@@ -729,7 +931,7 @@ Noskip = s.Noskip
             SetStmt st => new SetVariableCommand
             {
                 Key = st.Key,
-                Value = ParseSetValue(st.ValuePart)
+                Value = ParseSetValueWithKey(st.Key, st.ValuePart)
             },
 
             DefineStmt d => new SetVariableCommand
@@ -746,6 +948,13 @@ Noskip = s.Noskip
                 IsDefine = true
             },
 
+            // DSL 2.0: undef "key" — 编译为 SetVariableCommand(null)
+            UndefStmt u => new SetVariableCommand
+            {
+                Key = u.Key,
+                Value = null
+            },
+
             InputStmt ip => new InputCommand
             {
                 Prompt = ip.Prompt,
@@ -758,6 +967,24 @@ Noskip = s.Noskip
                 Path = bg.Path,
                 Volume = bg.Volume ?? 1.0f
             },
+
+            // DSL 2.0: se "path" [volume=N]
+            SeStmt se => new PlaySeCommand
+            {
+                Path = se.Path,
+                Volume = se.Volume ?? 1.0f
+            },
+
+            // DSL 2.0: ambient "path" [loop=true] [volume=N]
+            AmbientStmt amb => new PlayAmbientCommand
+            {
+                Path = amb.Path,
+                Loop = amb.Loop,
+                Volume = amb.Volume ?? 0.8f
+            },
+
+            // DSL 2.0: stop_ambient
+            StopAmbientStmt => new StopAmbientCommand(),
 
             VideoStmt v => new PlayVideoCommand
             {
@@ -793,7 +1020,7 @@ Duration = t.Duration ?? 0.5
 
             CallStmt c => new CallCommand { TargetLabel = c.TargetLabel },
 
-            ReturnStmt => new ReturnCommand(),
+            ReturnStmt r when r.ValuePart == null => new ReturnCommand(),
 
             JumpStmt j =>
                 // 先用 label 名占位，稍后在 ResolvePendingJumps 中解析
@@ -864,7 +1091,7 @@ Duration = t.Duration ?? 0.5
                 Level = d.Level ?? "Info"
             },
 
-            NvlStmt n => new NvlCommand { IsClear = n.IsClear },
+            NvlStmt n => new NvlCommand { IsClear = n.IsClear, IsExit = n.IsExit },
 
             // 角色定义——存储到 __characters[key] 字典
             CharacterStmt ch => new SetVariableCommand
@@ -873,7 +1100,7 @@ Duration = t.Duration ?? 0.5
                 Value = ch.Properties.ToDictionary(p => p.Key, p => (object?)p.Value)
             },
 
-            SaveStmt sv => new SaveLoadCommand { SlotId = sv.SlotId, IsSave = true },
+            SaveStmt sv => new SaveLoadCommand { SlotId = sv.SlotId, IsSave = true, Title = sv.Title, Screenshot = sv.Screenshot },
             LoadStmt ld => new SaveLoadCommand { SlotId = ld.SlotId, IsSave = false },
 
             SceneStmt sc => new SceneCommand { SceneName = sc.SceneName },
@@ -882,7 +1109,198 @@ Duration = t.Duration ?? 0.5
             ForwardStmt => new ForwardCommand(),
 
             // 块结构语句已被 CompileIfBlock/CompileWhileBlock 处理，不应到达此处
-            IfStmt or ElseIfStmt or ElseStmt or WhileStmt or ForStmt or LabelStmt or MenuOptionStmt => null,
+            IfStmt or ElseIfStmt or ElseStmt or WhileStmt or ForStmt or LabelStmt or MenuOptionStmt
+                or SwitchStmt or CaseStmt or DefaultStmt or ForeachStmt => null,
+
+            // func——编译为 label 注册 + 参数列表存储
+            FuncStmt fn => null, // func 在编译循环中作为 label 注册处理
+
+            // return with value——设置 __return_value 后 ReturnCommand
+            ReturnStmt r when r.ValuePart != null => new SetVariableCommand
+            {
+                Key = "__return_value",
+                Value = ParseSetValue(r.ValuePart)
+            },
+
+            // array——初始化数组
+            ArrayStmt arr => new SetVariableCommand
+            {
+                Key = arr.Key,
+                Value = arr.Items.Select(ParseSetValue).ToList(),
+                IsDefine = arr.IsDefine
+            },
+
+            // array_push
+            ArrayPushStmt ap => new ArrayPushCommand { Key = ap.Key, ValuePart = ap.ValuePart },
+
+            // array_pop
+            ArrayPopStmt pop => new ArrayPopCommand { Key = pop.Key },
+
+            // dict——初始化字典
+            DictStmt dc => new SetVariableCommand
+            {
+                Key = dc.Key,
+                Value = dc.Fields.ToDictionary(f => f.Field, f => ParseSetValue(f.Value)),
+                IsDefine = dc.IsDefine
+            },
+
+            // dict_set
+            DictSetStmt ds => new DictSetCommand { Key = ds.Key, Field = ds.Field, ValuePart = ds.ValuePart },
+
+            // sprite
+            SpriteStmt sp => new SpriteCommand
+            {
+                Operation = "show", Id = sp.Id, Source = sp.Source,
+                X = sp.X, Y = sp.Y, Fade = sp.Fade
+            },
+
+            // sprite_state
+            SpriteStateStmt ss => new SpriteCommand
+            {
+                Operation = "state", Id = ss.Id, Emotion = ss.Emotion
+            },
+
+            // sprite_move
+            SpriteMoveStmt sm => new SpriteCommand
+            {
+                Operation = "move", Id = sm.Id, X = sm.X, Y = sm.Y, Duration = sm.Duration
+            },
+
+            // sprite_hide
+            SpriteHideStmt sh => new SpriteCommand
+            {
+                Operation = "hide", Id = sh.Id, Fade = sh.Fade
+            },
+
+            // bg_switch——过渡类型在编译期映射为引擎内部标识符（与 TransitionStmt/ShowStmt 一致）
+            BgSwitchStmt bs => new BgSwitchCommand
+            {
+                Path = bs.Path,
+                Transition = string.IsNullOrEmpty(bs.Transition) ? null : MapTransitionType(bs.Transition),
+                Duration = bs.Duration
+            },
+
+            // text_typewriter
+            TextTypewriterStmt tt => new SetVariableCommand
+            {
+                Key = StateKeys.Dialog.TypewriterSpeed,
+                Value = tt.Speed
+            },
+
+            // zindex
+            ZindexStmt zi => new SetVariableCommand
+            {
+                Key = "__scene_zindex",
+                Value = zi.ZIndex
+            },
+
+            // popup——编译为 ShowElementStmt（弹窗作为容器元素）
+            PopupStmt pu => new SetVariableCommand
+            {
+                Key = "__popup_active",
+                Value = new Dictionary<string, object?>
+                {
+                    ["name"] = pu.Name,
+                    ["width"] = pu.Width,
+                    ["height"] = pu.Height,
+                    ["mask"] = pu.Mask
+                }
+            },
+
+            // Live2D
+            Live2DCharStmt lc => new Live2DCommand
+            {
+                Operation = "char", Id = lc.Id,
+                Config = new Dictionary<string, object?>
+                {
+                    ["src"] = lc.Source, ["height"] = lc.Height,
+                    ["x"] = lc.X, ["y"] = lc.Y, ["fade"] = lc.Fade,
+                    ["loop"] = lc.Loop, ["seamless"] = lc.Seamless,
+                    ["blink_rate"] = lc.BlinkRate,
+                    ["mouse_track_head"] = lc.MouseTrackHead,
+                    ["voice_sync_mouth"] = lc.VoiceSyncMouth
+                }
+            },
+
+            Live2DShowStmt ls => new Live2DCommand { Operation = "show", Id = ls.Id },
+
+            Live2DMotionStmt lm => new Live2DCommand
+            {
+                Operation = "motion", Id = lm.Id, Name = lm.Name,
+                Fade = lm.Fade, Loop = lm.Loop
+            },
+
+            Live2DExprStmt le => new Live2DCommand
+            {
+                Operation = "expr", Id = le.Id, Name = le.Name, Fade = le.Fade
+            },
+
+            Live2DParamStmt lp => new Live2DCommand
+            {
+                Operation = "param", Id = lp.Id, ParamName = lp.ParamName,
+                ParamValue = lp.Value, Weight = lp.Weight
+            },
+
+            Live2DHideStmt lh => new Live2DCommand
+            {
+                Operation = "hide", Id = lh.Id, Fade = lh.Fade
+            },
+
+            Live2DPauseStmt lpause => new Live2DCommand { Operation = "pause", Id = lpause.Id },
+
+            Live2DResumeStmt lresume => new Live2DCommand { Operation = "resume", Id = lresume.Id },
+
+            // 存档增强
+            AutoSaveStmt autos => new SetVariableCommand
+            {
+                Key = StateKeys.PlaybackControl.AutoSave,
+                Value = autos.Enabled
+            },
+
+            SaveDeleteStmt sd => new SaveDeleteCommand { SlotId = sd.SlotId },
+
+            // 章节/成就
+            ChapterStmt ch2 => new ChapterUnlockCommand
+            {
+                Id = ch2.Id, ChapterName = ch2.ChapterName, Unlock = ch2.Unlock
+            },
+
+            AchievementStmt ach => new AchievementUnlockCommand
+            {
+                Id = ach.Id, AchievementName = ach.AchievementName
+            },
+
+            // 播放控制
+            AutoSpeedStmt asp => new SetVariableCommand
+            {
+                Key = StateKeys.Playback.AutoDelay,
+                Value = asp.Speed
+            },
+
+            NoSkipStmt => new SetVariableCommand
+            {
+                Key = StateKeys.PlaybackControl.NoSkip,
+                Value = true
+            },
+
+            ForceSkipStmt => new SetVariableCommand
+            {
+                Key = StateKeys.PlaybackControl.ForceSkip,
+                Value = true
+            },
+
+            // 视频增强
+            VideoSkipableStmt vs => new SetVariableCommand
+            {
+                Key = StateKeys.Video.CutsceneSkipable,
+                Value = vs.Enabled
+            },
+
+            VideoAutoNavStmt van => new SetVariableCommand
+            {
+                Key = StateKeys.PlaybackControl.VideoAutoNav,
+                Value = van.SceneName
+            },
 
             // 场景元素——编译为 ShowElementCommand（由 DslExecutor 按序追加到 Scene.Elements）
             ShowElementStmt se => new ShowElementCommand { Element = se.Element },
@@ -927,6 +1345,28 @@ Duration = t.Duration ?? 0.5
                 Value = -1
             },
 
+            // Phase 38: 时间事件与通知
+            TimeEventStmt te => new TimeEventCommand
+            {
+                TriggerDay = te.TriggerDay,
+                TriggerHour = te.TriggerHour,
+                TriggerMinute = te.TriggerMinute,
+                Target = te.Target,
+                IsOneShot = te.IsOneShot,
+                Condition = te.Condition,
+                Description = te.Description
+            },
+
+            TimePauseStmt => new TimePauseCommand(),
+            TimeResumeStmt => new TimeResumeCommand(),
+
+            NotifyStmt n => new NotifyCommand
+            {
+                Text = n.Text,
+                Type = n.Type ?? "info",
+                Duration = n.Duration ?? 3.0
+            },
+
             // call_screen——导航到 UI 场景并等待返回
             CallScreenStmt cs => new CallScreenCommand
             {
@@ -952,6 +1392,30 @@ Duration = t.Duration ?? 0.5
     public ValueTask<ScriptResult> CompileAsync(string script, CancellationToken ct = default)
     {
         return ValueTask.FromResult(Compile(script));
+    }
+
+    /// <summary>
+    /// 解析 set 语句的值部分——支持复合赋值运算符（+= -= *= /= %=）
+    /// <para>需要变量键来构建表达式：set "gold" += 20 → {gold + (20)}</para>
+    /// </summary>
+    private static object? ParseSetValueWithKey(string key, string valuePart)
+    {
+        // 复合赋值运算符：+= -= *= /= %=
+        if (valuePart.Length >= 2)
+        {
+            var op2 = valuePart[..2];
+            if (op2 is "+=" or "-=" or "*=" or "/=" or "%=")
+            {
+                var rest = valuePart[2..].Trim();
+                // 去掉花括号（如 {base + bonus} → base + bonus）
+                if (rest.StartsWith('{') && rest.EndsWith('}'))
+                    rest = rest[1..^1].Trim();
+                // 构建表达式：key <binaryOp> (rest)
+                var binaryOp = op2[..1]; // "+=" → "+"
+                return new DslExpressionPlaceholder($"{key} {binaryOp} ({rest})");
+            }
+        }
+        return ParseSetValue(valuePart);
     }
 
     /// <summary>解析 set/define 的值部分——支持 {表达式} 和普通值</summary>

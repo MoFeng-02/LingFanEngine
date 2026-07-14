@@ -133,6 +133,9 @@ if (!state.ContainsKey(StateKeys.Playback.AutoActive))
         // Phase 37: noskip 标记
         if (!state.ContainsKey(StateKeys.Dialog.Noskip))
             state.Set(StateKeys.Dialog.Noskip, false);
+        // Phase 44: instant 标记
+        if (!state.ContainsKey(StateKeys.Dialog.Instant))
+            state.Set(StateKeys.Dialog.Instant, false);
         if (!state.ContainsKey(StateKeys.Dialog.TypewriterEnabled))
             state.Set(StateKeys.Dialog.TypewriterEnabled, true);
 
@@ -155,5 +158,21 @@ state.Set(StateKeys.Dsl.CSharpReplayGeneration, 0);
             state.Set<object?>(StateKeys.Screen.Params, null);
         if (!state.ContainsKey(StateKeys.Screen.ActiveScreen))
             state.Set(StateKeys.Screen.ActiveScreen, "");
+
+        // Phase 47: 成就/章节系统
+        if (!state.ContainsKey(StateKeys.Achievements.Unlocked))
+            state.Set(StateKeys.Achievements.Unlocked, new List<AchievementEntry>());
+        if (!state.ContainsKey(StateKeys.Chapters.Unlocked))
+            state.Set(StateKeys.Chapters.Unlocked, new List<ChapterEntry>());
+
+        // Phase 47: 播放控制增强
+        if (!state.ContainsKey(StateKeys.PlaybackControl.NoSkip))
+            state.Set(StateKeys.PlaybackControl.NoSkip, false);
+        if (!state.ContainsKey(StateKeys.PlaybackControl.ForceSkip))
+            state.Set(StateKeys.PlaybackControl.ForceSkip, false);
+        if (!state.ContainsKey(StateKeys.PlaybackControl.AutoSave))
+            state.Set(StateKeys.PlaybackControl.AutoSave, false);
+        if (!state.ContainsKey(StateKeys.PlaybackControl.VideoAutoNav))
+            state.Set<object?>(StateKeys.PlaybackControl.VideoAutoNav, null);
     }
 }

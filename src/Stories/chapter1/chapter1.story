@@ -5,7 +5,7 @@
 // == 小镇入口 ================================================
 scene "town_entrance"
   set "story.progress" 2
-  image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.4
+  bg_switch "Images/door_zoom.jpg" transition=fade duration=0.8
   text "第一章 · 小镇入口" x=50% y=10% size=32 color="#FFD700" halign=center font="Microsoft YaHei"
   text "{player.name} · HP: {player.hp}/{player.maxHp} · 金币: {player.gold}" x=5% y=88% size=14 color="#666666" font="Consolas"
   say "迷雾中隐约可见两座建筑——一座酒馆，一座广场。" speaker="旁白"

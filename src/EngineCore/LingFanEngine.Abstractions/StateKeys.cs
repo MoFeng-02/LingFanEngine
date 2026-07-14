@@ -159,6 +159,9 @@ public const string Clickable = "__dialog_clickable";
 /// <summary>此对话不可跳过 (bool)，Skip 模式下玩家仍需手动点击推进</summary>
 public const string Noskip = "__dialog_noskip";
 
+/// <summary>瞬时文本 (bool)，true=跳过打字机效果，立即显示全部文本</summary>
+public const string Instant = "__dialog_instant";
+
 /// <summary>对话侧脸图路径 (string?)，由角色定义的 side 属性或 SayAsync 参数设置</summary>
         public const string SideImage = "__dialog_side_image";
 
@@ -339,9 +342,12 @@ public const string Pause = "pause";
         /// <summary>Voice 场景切换时自动停止 (bool?)</summary>
         public const string VoiceAutoStop = "__voice_auto_stop";
 
-        /// <summary>BGM 路径 (string)，AudioManager 内部用</summary>
-        public const string BgmPath = "__bgm_path";
-    }
+/// <summary>BGM 路径 (string)，AudioManager 内部用</summary>
+public const string BgmPath = "__bgm_path";
+
+/// <summary>当前环境音路径 (string)</summary>
+public const string AmbientPath = "__ambient_path";
+}
 
     // ==================== 视频 ====================
 
@@ -457,6 +463,9 @@ public const string Pause = "pause";
 
         /// <summary>通知队列 (List&lt;NotificationItem&gt;)，支持排队显示多条通知</summary>
         public const string Queue = "__notify_queue";
+
+        /// <summary>当前通知的显示时长秒数 (double)，由 NotifyHandler 写入</summary>
+        public const string Duration = "__notify_duration";
     }
 
     // ==================== call/return 调用栈 ====================
@@ -622,6 +631,66 @@ public const string SeenSayIndices = "__seen_say_indices";
 
         /// <summary>鉴赏面板是否可见 (bool)</summary>
         public const string Visible = "__gallery_visible";
+    }
+
+    // ==================== 成就系统 ====================
+
+    /// <summary>成就系统状态键</summary>
+    public static class Achievements
+    {
+        /// <summary>已解锁成就列表 (List&lt;AchievementEntry&gt;)</summary>
+        public const string Unlocked = "__achievements_unlocked";
+    }
+
+    // ==================== 章节系统 ====================
+
+    /// <summary>章节系统状态键</summary>
+    public static class Chapters
+    {
+        /// <summary>已解锁章节列表 (List&lt;ChapterEntry&gt;)</summary>
+        public const string Unlocked = "__chapters_unlocked";
+    }
+
+    // ==================== 播放控制增强 ====================
+
+    /// <summary>播放控制增强状态键</summary>
+    public static class PlaybackControl
+    {
+        /// <summary>是否禁止跳过 (bool)</summary>
+        public const string NoSkip = "__no_skip";
+
+        /// <summary>是否强制跳过 (bool)</summary>
+        public const string ForceSkip = "__force_skip";
+
+        /// <summary>自动存档开关 (bool)</summary>
+        public const string AutoSave = "__auto_save";
+
+        /// <summary>视频结束后自动导航的场景名 (string?)</summary>
+        public const string VideoAutoNav = "__video_auto_nav";
+    }
+
+    // ==================== Live2D ====================
+
+    /// <summary>Live2D 相关状态键</summary>
+    public static class Live2D
+    {
+        /// <summary>模型定义键前缀（__live2d_char_ + 模型 ID）</summary>
+        public const string CharPrefix = "__live2d_char_";
+
+        /// <summary>活跃模型状态键前缀（__live2d_ + 模型 ID + _state）</summary>
+        public const string ModelPrefix = "__live2d_";
+
+        /// <summary>动作状态键后缀</summary>
+        public const string MotionSuffix = "_motion";
+
+        /// <summary>表情状态键后缀</summary>
+        public const string ExprSuffix = "_expr";
+
+        /// <summary>参数状态键前缀（__live2d_ + 模型 ID + _param_ + 参数名）</summary>
+        public const string ParamPrefix = "_param_";
+
+        /// <summary>暂停状态键后缀</summary>
+        public const string PausedSuffix = "_paused";
     }
 
     // ==================== 调试控制台 ====================

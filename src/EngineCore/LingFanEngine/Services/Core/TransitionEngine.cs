@@ -115,6 +115,21 @@ public class TransitionEngine : ITransitionEngine
                 var blink = Math.Abs(Math.Cos(t * Math.PI * 4)) * (1.0 - t);
                 _state.Set(StateKeys.Transition.Progress, blink);
                 break;
+            case TransitionType.FadeUp:
+                // 淡入 + 轻微上移（50px 偏移逐渐归零）
+                _state.Set(StateKeys.Transition.Progress, eased);
+                _state.Set(StateKeys.Transition.OffsetY, -50 * (1.0 - eased));
+                break;
+            case TransitionType.FadeDown:
+                // 淡入 + 轻微下移（50px 偏移逐渐归零）
+                _state.Set(StateKeys.Transition.Progress, eased);
+                _state.Set(StateKeys.Transition.OffsetY, 50 * (1.0 - eased));
+                break;
+            case TransitionType.Blur:
+                // 近似模糊：缩放脉冲 + 交叉淡入
+                _state.Set(StateKeys.Transition.Scale, 1.0 + 0.03 * Math.Sin(t * Math.PI));
+                _state.Set(StateKeys.Transition.Progress, eased);
+                break;
             default:
                 _state.Set(StateKeys.Transition.Progress, eased);
                 break;

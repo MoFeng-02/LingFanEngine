@@ -48,6 +48,11 @@ namespace LingFanEngine.Abstractions.Serialization;
 [JsonSerializable(typeof(List<GalleryEntry>))]
 [JsonSerializable(typeof(DebugLogEntry))]
 [JsonSerializable(typeof(List<DebugLogEntry>))]
+[JsonSerializable(typeof(PackManifest))]
+[JsonSerializable(typeof(AchievementEntry))]
+[JsonSerializable(typeof(List<AchievementEntry>))]
+[JsonSerializable(typeof(ChapterEntry))]
+[JsonSerializable(typeof(List<ChapterEntry>))]
 [JsonSerializable(typeof(System.Text.Json.JsonElement))]
 [JsonSourceGenerationOptions(
     WriteIndented = false,
