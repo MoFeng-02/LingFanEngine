@@ -1,4 +1,4 @@
-﻿ <Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
@@ -28,13 +28,15 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<None Include="..\..\..\..\Resources\Images\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Images\" />
-		<None Include="..\..\..\..\Resources\Audio\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Audio\" />
-		<None Include="..\..\..\..\Resources\Video\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Video\" />
+		<!-- 所有资源目录在项目根目录（和 publish/ 同级），核心项目通过 ..\ 引用 -->
 		<None Include="..\Stories\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Stories\" />
 		<None Include="..\Media\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Media\" />
+		<None Include="..\Images\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Images\" />
+		<None Include="..\Audio\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Audio\" />
+		<None Include="..\Video\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Video\" />
 		<None Include="..\Live2D\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Live2D\" />
 		<None Include="..\Mods\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Mods\" />
+		<None Include="..\Lang\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Lang\" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Themes.Fluent;
+using LingFanEngine.Abstractions.Interfaces.Core;
+using LingFanEngine.Entry.Security;
 using LingFanEngine.Entry.Views;
 using LingFanEngine.Extensions;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,6 +44,8 @@ public partial class App : Application
 
         // 注册默认命令服务
         services.AddDefaultCommandService();
+
+        services.AddSingleton<IEncryptionKeyProvider, GeneratedKeyProvider>();
 
         Services = services.BuildServiceProvider();
 

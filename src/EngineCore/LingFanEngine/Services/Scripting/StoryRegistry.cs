@@ -80,53 +80,62 @@ public class StoryRegistry : IStoryRegistry
         var storyFiles = Directory.GetFiles(resolvedRoot, "*.story", SearchOption.AllDirectories);
         foreach (var filePath in storyFiles)
         {
-            // 扫描 scene "xxx" 定义（轻量，只提取场景名）
-            // Phase 56：通过 IEncryptedFileReader 读取（加密文件自动解密）
-            var content = ReadAllText(filePath);
-            if (content == null) continue;
-            using var stringReader = new StringReader(content);
-            string? line;
-            while ((line = stringReader.ReadLine()) != null)
+            // Phase 57: try-catch 防止单个文件解密/解析异常导致整个 Scan 崩溃
+            try
             {
-                var trimmed = line.Trim();
-                if (trimmed.StartsWith("//") || trimmed.StartsWith('#')) continue;
-
-                // 计算原始行缩进（Tab 按 4 空格计算）——与 ExtractSceneBlocks 一致
-                // 仅顶格行（indent=0）的 scene/label 视为定义；
-                // 缩进的 scene 是 DSL 导航命令，缩进的 label 不存在（但防御性跳过）
-                var lineIndent = 0;
-                foreach (var ch in line)
+                // 扫描 scene "xxx" 定义（轻量，只提取场景名）
+                // Phase 56：通过 IEncryptedFileReader 读取（加密文件自动解密）
+                var content = ReadAllText(filePath);
+                if (content == null) continue;
+                using var stringReader = new StringReader(content);
+                string? line;
+                while ((line = stringReader.ReadLine()) != null)
                 {
-                    if (ch == ' ') lineIndent++;
-                    else if (ch == '\t') lineIndent += 4;
-                    else break;
-                }
-                if (lineIndent != 0) continue;
+                    var trimmed = line.Trim();
+                    if (trimmed.StartsWith("//") || trimmed.StartsWith('#')) continue;
 
-                // 匹配 scene "name"（支持 scene 行属性如 layout=canvas type=menu）
-                // 快速前缀过滤 + Pidgin 解析器
-                if (trimmed.StartsWith("scene ") || trimmed.StartsWith("scene\t"))
-                {
-                    var sceneHeader = DslParser.ParseSceneHeader(trimmed);
-                    if (sceneHeader != null)
+                    // 计算原始行缩进（Tab 按 4 空格计算）——与 ExtractSceneBlocks 一致
+                    // 仅顶格行（indent=0）的 scene/label 视为定义；
+                    // 缩进的 scene 是 DSL 导航命令，缩进的 label 不存在（但防御性跳过）
+                    var lineIndent = 0;
+                    foreach (var ch in line)
                     {
-                        var sceneName = sceneHeader.SceneName;
-                        if (!_sceneToFile.ContainsKey(sceneName))
-                            _sceneToFile[sceneName] = filePath;
+                        if (ch == ' ') lineIndent++;
+                        else if (ch == '\t') lineIndent += 4;
+                        else break;
+                    }
+                    if (lineIndent != 0) continue;
+
+                    // 匹配 scene "name"（支持 scene 行属性如 layout=canvas type=menu）
+                    // 快速前缀过滤 + Pidgin 解析器
+                    if (trimmed.StartsWith("scene ") || trimmed.StartsWith("scene\t"))
+                    {
+                        var sceneHeader = DslParser.ParseSceneHeader(trimmed);
+                        if (sceneHeader != null)
+                        {
+                            var sceneName = sceneHeader.SceneName;
+                            if (!_sceneToFile.ContainsKey(sceneName))
+                                _sceneToFile[sceneName] = filePath;
+                        }
+                    }
+
+                    // 匹配 label xxx:（全局 label 索引）
+                    // 快速前缀过滤 + Pidgin 解析器
+                    if (trimmed.StartsWith("label ") || trimmed.StartsWith("label\t"))
+                    {
+                        var labelName = DslParser.ParseLabelLine(trimmed);
+                        if (labelName != null)
+                        {
+                            if (!_labelToFile.ContainsKey(labelName))
+                                _labelToFile[labelName] = filePath;
+                        }
                     }
                 }
-
-                // 匹配 label xxx:（全局 label 索引）
-                // 快速前缀过滤 + Pidgin 解析器
-                if (trimmed.StartsWith("label ") || trimmed.StartsWith("label\t"))
-                {
-                    var labelName = DslParser.ParseLabelLine(trimmed);
-                    if (labelName != null)
-                    {
-                        if (!_labelToFile.ContainsKey(labelName))
-                            _labelToFile[labelName] = filePath;
-                    }
-                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[StoryRegistry] Scan 文件失败: {filePath} -> {ex.Message}");
             }
         }
     }

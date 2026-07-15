@@ -95,7 +95,15 @@ public class PublishService : IPublishService
             var securityDir = Path.Combine(coreDir, "Security");
 
             // 2.5 更新项目引用的引擎 DLL（确保使用最新编译的引擎代码）
-            UpdateEngineDlls(coreDir, Log);
+            // Phase 57: 传入 projectDir 而非 coreDir——.csproj 的 HintPath 指向 projectDir/DLL/
+            UpdateEngineDlls(projectDir, Log);
+
+            // 2.6 修复旧项目的 .csproj 资源路径（Images/Audio/Video 从引擎仓库路径改为项目根目录路径）
+            EnsureCsprojResourcePaths(projectDir, Log);
+
+            // 2.7 解密源目录中可能已加密的文件（上一次构建可能意外加密了源文件）
+            // 源文件必须始终是明文——dotnet publish 从源目录复制文件到输出目录，加密只在输出目录原地执行
+            DecryptSourceFilesIfNeeded(projectDir, project.ProjectPath, Log);
 
             // 3. 生成 GeneratedKeys.cs（必须在 publish 前，因为要编译进程序集）
             byte[]? key = null;
@@ -115,6 +123,9 @@ public class PublishService : IPublishService
                 var keyFilePath = Path.Combine(securityDir, "GeneratedKeys.cs");
                 await FileHelper.WriteAllTextAsync(keyFilePath, keyCode);
                 Log($"密钥代码已生成: {Path.GetRelativePath(projectDir, keyFilePath)}");
+
+                // 确保用户项目的 DI 注册中包含 GeneratedKeyProvider（旧项目可能缺少此注册）
+                EnsureKeyProviderRegistered(projectDir, project.Name, Log);
             }
 
             // 4. 杀掉可能在运行的游戏进程（防止 PDB/DLL 文件被锁定）
@@ -372,33 +383,59 @@ public class PublishService : IPublishService
     }
 
     /// <summary>
-    /// 将 SDK 自带的最引引擎 DLL 复制到项目的 DLL/ 目录，确保 publish 编译使用最新引擎代码。
+    /// 将 SDK 输出目录中的引擎 DLL 复制到用户项目的 DLL/ 目录，确保 publish 编译使用最新引擎代码。
+    /// <para>Phase 57 修复：传入 projectRootDir 而非 coreDir——
+    /// .csproj 的 HintPath 为 ..\DLL\xxx.dll（指向项目根的 DLL/），
+    /// 因此 DLL 必须复制到 projectRootDir/DLL/ 而非 coreDir/DLL/。</para>
+    /// <para>Phase 58：SDK 与引擎核心分离——SDK/DLL/ 只含 3 个 DLL（Abstractions + DslCore + Pidgin），
+    /// LingFanEngine.dll 由项目模板的 DLL/ 目录提供，不在 SDK 层分发。
+    /// 用户从模板创建项目时即获得最新 LingFanEngine.dll，无需运行时更新。</para>
     /// </summary>
-    private static void UpdateEngineDlls(string coreDir, Action<string> log)
+    /// <param name="projectRootDir">用户项目根目录（.lfproj 所在目录，DLL/ 的父目录）</param>
+    /// <param name="log">日志回调</param>
+    private static void UpdateEngineDlls(string projectRootDir, Action<string> log)
     {
         try
         {
-            // SDK 的 DLL 目录位于运行目录下的 DLL/ 文件夹
+            // SDK 输出目录下的 DLL/ 子目录（由 .csproj 的 <None Include="DLL\*.dll" CopyToOutputDirectory="PreserveNewest" /> 复制）
             var sdkDllDir = Path.Combine(AppContext.BaseDirectory, "DLL");
-            if (!Directory.Exists(sdkDllDir)) return;
+            if (!Directory.Exists(sdkDllDir))
+            {
+                log($"警告: SDK DLL 目录不存在: {sdkDllDir}，跳过引擎 DLL 更新");
+                return;
+            }
 
-            // 项目的 DLL 目录（核心项目同级）
-            var projectDllDir = Path.Combine(coreDir, "DLL");
+            // 用户项目的 DLL 目录（项目根/DLL/——.csproj HintPath 指向此处）
+            var projectDllDir = Path.Combine(projectRootDir, "DLL");
             if (!Directory.Exists(projectDllDir))
                 Directory.CreateDirectory(projectDllDir);
 
-            var engineDlls = new[] { "LingFanEngine.dll", "LingFanEngine.Abstractions.dll", "LingFanEngine.DslCore.dll", "Pidgin.dll" };
+            // Phase 58: SDK 与引擎核心分离，只更新 3 个 DLL
+            // LingFanEngine.dll 由模板提供（模板 DLL/ 目录在引擎编译时自动同步）
+            var engineDlls = new[] { "LingFanEngine.Abstractions.dll", "LingFanEngine.DslCore.dll", "Pidgin.dll" };
             var updated = 0;
+            var missing = 0;
             foreach (var dllName in engineDlls)
             {
                 var srcPath = Path.Combine(sdkDllDir, dllName);
-                if (!File.Exists(srcPath)) continue;
+                if (!File.Exists(srcPath))
+                {
+                    log($"  警告: 源 DLL 不存在: {dllName}");
+                    missing++;
+                    continue;
+                }
                 var destPath = Path.Combine(projectDllDir, dllName);
                 File.Copy(srcPath, destPath, overwrite: true);
+                log($"  已复制: {dllName}");
                 updated++;
             }
-            if (updated > 0)
-                log($"已更新 {updated} 个引擎 DLL");
+
+            // 检查 LingFanEngine.dll 是否存在于用户项目（由模板提供）
+            var engineCorePath = Path.Combine(projectDllDir, "LingFanEngine.dll");
+            if (!File.Exists(engineCorePath))
+                log($"  警告: LingFanEngine.dll 不存在于项目 DLL/ 目录——请从模板复制或重新创建项目");
+
+            log($"引擎 DLL 更新完成: {updated} 个成功, {missing} 个缺失");
         }
         catch (Exception ex)
         {
@@ -428,6 +465,216 @@ public class PublishService : IPublishService
             }
         }
         catch { }
+    }
+
+    /// <summary>
+    /// 解密源目录中可能已加密的文件。
+    /// <para>上一次构建可能意外加密了源文件（旧版 bug 或手动操作）。
+    /// 源文件必须始终是明文——dotnet publish 从源目录复制到输出目录，
+    /// 加密只在输出目录原地执行。</para>
+    /// <para>此方法扫描项目根目录下的资源子目录，检测 LFEN 加密文件并解密。
+    /// 解密需要密钥——从 KeyManager 加载，如果密钥不存在则跳过。</para>
+    /// </summary>
+    private static void DecryptSourceFilesIfNeeded(string projectDir, string projectPath, Action<string> log)
+    {
+        try
+        {
+            // 尝试加载已有密钥（如果用户从未加密过则无密钥，跳过）
+            var key = KeyManager.LoadKey(projectPath);
+            if (key == null) return; // 无密钥 = 源文件从未被加密，无需处理
+
+            var resourceDirs = new[] { "Stories", "Media", "Images", "Audio", "Video", "Live2D", "Mods", "Lang" };
+            var decryptedCount = 0;
+
+            foreach (var dirName in resourceDirs)
+            {
+                var dirPath = Path.Combine(projectDir, dirName);
+                if (!Directory.Exists(dirPath)) continue;
+
+                var files = Directory.GetFiles(dirPath, "*.*", SearchOption.AllDirectories);
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        var data = File.ReadAllBytes(file);
+                        if (!AesEncryptor.IsEncrypted(data)) continue;
+
+                        // 解密并写回明文
+                        var plain = AesEncryptor.Decrypt(data, key);
+                        File.WriteAllBytes(file, plain);
+                        decryptedCount++;
+                        log($"  已解密源文件: {Path.GetRelativePath(projectDir, file)}");
+                    }
+                    catch (Exception ex)
+                    {
+                        log($"  ⚠ 无法解密源文件: {Path.GetRelativePath(projectDir, file)} — {ex.Message}");
+                    }
+                }
+            }
+
+            if (decryptedCount > 0)
+                log($"  源文件解密完成: {decryptedCount} 个文件已恢复为明文");
+        }
+        catch (Exception ex)
+        {
+            log($"  警告: 解密源文件检查失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 修复旧项目的 .csproj 资源路径。
+    /// <para>旧模板中 Images/Audio/Video 使用 ..\..\..\..\Resources\ 路径（指向引擎仓库），
+    /// 新模板统一改为 ..\（指向项目根目录）。</para>
+    /// <para>此方法扫描核心 .csproj 文件，将旧路径替换为新路径。</para>
+    /// </summary>
+    private static void EnsureCsprojResourcePaths(string projectDir, Action<string> log)
+    {
+        try
+        {
+            var csprojFiles = Directory.GetFiles(projectDir, "*.csproj", SearchOption.AllDirectories);
+            var patched = 0;
+
+            foreach (var csproj in csprojFiles)
+            {
+                // 跳过 obj/bin 目录
+                if (csproj.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}") ||
+                    csproj.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
+                    continue;
+
+                var content = File.ReadAllText(csproj);
+                var changed = false;
+
+                // 旧路径模式：..\..\..\..\Resources\Images\** → 新路径：..\Images\**
+                var oldPatterns = new[]
+                {
+                    ("..\\..\\..\\..\\Resources\\Images\\", "..\\Images\\"),
+                    ("..\\..\\..\\..\\Resources\\Audio\\", "..\\Audio\\"),
+                    ("..\\..\\..\\..\\Resources\\Video\\", "..\\Video\\"),
+                    ("../../../../Resources/Images/", "../Images/"),
+                    ("../../../../Resources/Audio/", "../Audio/"),
+                    ("../../../../Resources/Video/", "../Video/"),
+                };
+
+                foreach (var (oldPath, newPath) in oldPatterns)
+                {
+                    if (content.Contains(oldPath))
+                    {
+                        content = content.Replace(oldPath, newPath);
+                        changed = true;
+                    }
+                }
+
+                if (changed)
+                {
+                    File.WriteAllText(csproj, content);
+                    patched++;
+                    log($"  已修复 .csproj 资源路径: {Path.GetRelativePath(projectDir, csproj)}");
+                }
+            }
+
+            if (patched > 0)
+                log($"  .csproj 资源路径修复完成: {patched} 个文件");
+        }
+        catch (Exception ex)
+        {
+            log($"  警告: 修复 .csproj 资源路径失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 确保用户项目的 DI 注册中包含 GeneratedKeyProvider。
+    /// <para>扫描所有 .cs 文件，找到调用 AddLingFanEngine 的文件，
+    /// 如果该文件未注册 GeneratedKeyProvider，则自动注入注册代码。</para>
+    /// <para>兼容旧项目（模板更新前创建的项目缺少此注册行）。</para>
+    /// </summary>
+    private static void EnsureKeyProviderRegistered(string projectDir, string projectName, Action<string> log)
+    {
+        try
+        {
+            var securityNamespace = $"{projectName}.Security";
+            var csFiles = Directory.GetFiles(projectDir, "*.cs", SearchOption.AllDirectories);
+            string? patchedFile = null;
+
+            foreach (var csFile in csFiles)
+            {
+                // 跳过 obj/bin 目录
+                if (csFile.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}") ||
+                    csFile.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
+                    continue;
+
+                var content = File.ReadAllText(csFile);
+
+                // 必须包含 AddLingFanEngine 调用
+                if (!content.Contains("AddLingFanEngine")) continue;
+
+                // 已注册 GeneratedKeyProvider → 无需处理
+                if (content.Contains("GeneratedKeyProvider")) continue;
+
+                // 注入注册行：在 AddLingFanEngine 之前插入
+                var idx = content.IndexOf("AddLingFanEngine");
+                if (idx < 0) continue;
+
+                // 向前查找所属行的缩进
+                var lineStart = content.LastIndexOf('\n', idx - 1);
+                if (lineStart < 0) lineStart = 0;
+                var indent = "";
+                for (var i = lineStart + 1; i < idx && i < content.Length; i++)
+                {
+                    if (content[i] == ' ' || content[i] == '\t')
+                        indent += content[i];
+                    else
+                        break;
+                }
+
+                // 确保有 using 引用 Security 命名空间 + IEncryptionKeyProvider 命名空间
+                var usingsToAdd = new List<string>();
+                if (!content.Contains($"using {securityNamespace};"))
+                    usingsToAdd.Add($"using {securityNamespace};");
+                if (!content.Contains("using LingFanEngine.Abstractions.Interfaces.Core;"))
+                    usingsToAdd.Add("using LingFanEngine.Abstractions.Interfaces.Core;");
+
+                if (usingsToAdd.Count > 0)
+                {
+                    // 在第一个 using 之后插入
+                    var firstUsingEnd = content.IndexOf(';');
+                    if (firstUsingEnd >= 0)
+                    {
+                        var lineEnd = content.IndexOf('\n', firstUsingEnd);
+                        if (lineEnd < 0) lineEnd = content.Length;
+                        var insertBlock = string.Join("\n", usingsToAdd) + "\n";
+                        content = content[..(lineEnd + 1)] + insertBlock + content[(lineEnd + 1)..];
+                        // 重新定位 AddLingFanEngine
+                        idx = content.IndexOf("AddLingFanEngine");
+                    }
+                }
+
+                // 在 AddLingFanEngine 行之前插入注册行
+                lineStart = content.LastIndexOf('\n', idx - 1);
+                if (lineStart < 0) lineStart = 0;
+                else lineStart++;
+
+                var registrationLine =
+                    $"{indent}services.AddSingleton<IEncryptionKeyProvider, GeneratedKeyProvider>();\n" +
+                    $"{indent}// ↑ 自动注入：加密密钥提供者必须在 AddLingFanEngine 之前注册\n";
+
+                content = content[..lineStart] + registrationLine + content[lineStart..];
+
+                File.WriteAllText(csFile, content);
+                patchedFile = csFile;
+                log($"  已自动注入 GeneratedKeyProvider 注册: {Path.GetRelativePath(projectDir, csFile)}");
+                break; // 只需处理第一个匹配的文件
+            }
+
+            if (patchedFile == null)
+            {
+                // 所有含 AddLingFanEngine 的文件都已注册，或者没找到
+                log("  GeneratedKeyProvider 注册检查完成（已存在或无需注入）");
+            }
+        }
+        catch (Exception ex)
+        {
+            log($"  警告: 自动注入 GeneratedKeyProvider 失败: {ex.Message}");
+        }
     }
 }
 internal class ManifestData

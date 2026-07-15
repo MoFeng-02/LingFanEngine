@@ -104,9 +104,14 @@ public static class KeyManager
     }
 
     /// <summary>获取密钥文件路径</summary>
+    /// <para>Phase 57: 路径规范化后再 hash，避免路径分隔符差异/尾部斜杠/相对路径导致密钥不一致。</para>
     private static string GetKeyFilePath(string projectPath)
     {
-        var hash = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(projectPath));
+        // 规范化：全路径 + 统一正斜杠 + 去除尾部分隔符
+        var normalized = Path.GetFullPath(projectPath)
+            .Replace('\\', '/')
+            .TrimEnd('/');
+        var hash = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(normalized));
         var hashHex = Convert.ToHexString(hash).ToLowerInvariant();
         return Path.Combine(PathHelper.GetKeysDirectory(), $"{hashHex}.key");
     }
