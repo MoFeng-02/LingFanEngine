@@ -28,15 +28,15 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<!-- 所有资源目录在项目根目录（和 publish/ 同级），核心项目通过 ..\ 引用 -->
-		<None Include="..\Stories\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Stories\" />
-		<None Include="..\Media\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Media\" />
-		<None Include="..\Images\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Images\" />
-		<None Include="..\Audio\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Audio\" />
-		<None Include="..\Video\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Video\" />
-		<None Include="..\Live2D\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Live2D\" />
-		<None Include="..\Mods\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Mods\" />
-		<None Include="..\Lang\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Lang\" />
+		<!-- 所有资源目录在核心项目内部，直接引用 -->
+		<None Include="Stories\**" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="Media\**" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="Images\**" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="Audio\**" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="Video\**" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="Live2D\**" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="Mods\**" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="Lang\**" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>
 
 	<ItemGroup>

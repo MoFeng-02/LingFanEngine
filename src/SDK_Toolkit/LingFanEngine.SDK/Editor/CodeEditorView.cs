@@ -589,30 +589,51 @@ public class CodeEditorView : UserControl
             HandleAutoIndent();
         }
 
-        // 检查是否输入了空格（触发 snippet 展开）
-        if (e.Text == " " && TryExpandSnippet())
+        // 空格 → 尝试 snippet 展开；不匹配则关闭补全窗口，不弹新补全
+        // （补全只在输入单词字符时触发，空格后等用户打字再弹）
+        if (e.Text == " ")
+        {
+            if (TryExpandSnippet())
+                return;
+            _completionWindow?.Close();
             return;
+        }
 
-        // 补全
+        // 引号/花括号/逗号/注释符关闭 → 关闭补全窗口，不弹新补全
+        if (e.Text is "\"" or "}" or "," or "#" or "/")
+        {
+            _completionWindow?.Close();
+            return;
+        }
+
+        // 补全（仅单词字符触发）
         ShowCompletions();
     }
 
     /// <summary>快捷模板——输入关键字+空格自动展开</summary>
     private bool TryExpandSnippet()
     {
+        // 字符串内不展开 snippet（防止对话文本中的关键字误触发）
+        if (IsInsideStringAtCaret())
+            return false;
+
         var doc = _textEditor.Document;
         var offset = _textEditor.CaretOffset;
         // 获取当前行
         var line = doc.GetLineByOffset(offset);
-        var lineText = doc.GetText(line.Offset, offset - line.Offset - 1); // -1 去掉刚输入的空格
+        var textLen = offset - line.Offset - 1; // -1 去掉刚输入的空格
+        if (textLen < 0) return false; // 行首输入空格，无内容可展开
+        var lineText = doc.GetText(line.Offset, textLen);
         var trimmed = lineText.TrimStart();
+        if (string.IsNullOrEmpty(trimmed)) return false; // 空行或纯空白
         var indent = lineText[..^trimmed.Length]; // 保留缩进
 
+        // snippet 是关键字之后的内容（不含前导空格，空格由替换逻辑补充）
         var snippet = trimmed switch
         {
             "say" => "\"\" speaker=\"\"",
             "scene" => "\"\" type=game\n" + indent + "    ",
-            "label" => " ",
+            "label" => "",
             "if" => "{true}\n" + indent + "    ",
             "while" => "{true}\n" + indent + "    ",
             "for" => "\"i\" in {0..10}\n" + indent + "    ",
@@ -631,15 +652,18 @@ public class CodeEditorView : UserControl
         };
         if (snippet == null) return false;
 
-        // 删除已输入的关键字+空格，插入完整模板
+        // 删除已输入的关键字+空格，插入 关键字+空格+snippet
         var wordStart = offset - trimmed.Length - 1; // -1 for space
-        doc.Replace(wordStart, offset - wordStart, trimmed + snippet);
+        var replacement = trimmed + " " + snippet;
+        doc.Replace(wordStart, offset - wordStart, replacement);
 
-        // 定位光标：对于 say "" speaker=""，光标移到第一个引号内
+        // 定位光标
         if (trimmed == "say")
-            _textEditor.CaretOffset = wordStart + trimmed.Length + 1; // 在第一个 " 后
+            // say "" speaker="" → 光标在第一个 " 内（say 后空格+引号 = trimmed.Length + 2）
+            _textEditor.CaretOffset = wordStart + trimmed.Length + 2;
         else
-            _textEditor.CaretOffset = wordStart + trimmed.Length + snippet.Length;
+            // 其他 → 光标在 snippet 末尾
+            _textEditor.CaretOffset = wordStart + replacement.Length;
 
         return true;
     }
@@ -673,6 +697,12 @@ public class CodeEditorView : UserControl
                 MaxHeight = 300,
             };
 
+            // 关键修复：设置补全区域为当前单词范围，使 Complete() 替换而非追加
+            // CompletionWindowBase 构造函数默认 StartOffset=EndOffset=CaretOffset（零长度），
+            // 导致选中补全项后文本被追加而非替换（如输入 s 选 say 变成 ssay）
+            _completionWindow.StartOffset = wordStart;
+            _completionWindow.EndOffset = offset;
+
             // 填充数据后再 Show
             if (_completionWindow.CompletionList == null) return;
 
@@ -692,6 +722,24 @@ public class CodeEditorView : UserControl
 
     private static bool IsWordChar(char c) =>
         char.IsLetterOrDigit(c) || c == '_' || c == '-';
+
+    /// <summary>检测光标是否在未闭合的字符串内（同一行内的引号配对检测）</summary>
+    private bool IsInsideStringAtCaret()
+    {
+        var doc = _textEditor.Document;
+        var offset = _textEditor.CaretOffset;
+        var line = doc.GetLineByOffset(offset);
+        var lineText = doc.GetText(line);
+        var column = offset - line.Offset;
+
+        bool inString = false;
+        for (int i = 0; i < column && i < lineText.Length; i++)
+        {
+            if (lineText[i] == '"' && (i == 0 || lineText[i - 1] != '\\'))
+                inString = !inString;
+        }
+        return inString;
+    }
 
     private static string GetFirstWord(string trimmedLine)
     {

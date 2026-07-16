@@ -1,3 +1,5 @@
+using LingFanEngine.SDK.Constants;
+
 namespace LingFanEngine.SDK.Models;
 
 /// <summary>构建配置</summary>
@@ -23,5 +25,5 @@ public class BuildConfig
     public bool EncryptResources { get; set; } = false;
 
     /// <summary>输出路径（相对于项目目录）</summary>
-    public string OutputPath { get; set; } = "publish";
+    public string OutputPath { get; set; } = ProjectConstants.PublishDir;
 }

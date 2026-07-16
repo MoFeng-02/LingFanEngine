@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using LingFanEngine.SDK.Constants;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Services.Abstractions;
 
@@ -22,8 +23,18 @@ public partial class ProjectSession : ObservableObject, IProjectSession
     private bool _isProjectOpen;
 
     public string ProjectDirectory => CurrentProject?.ProjectDirectory ?? "";
-    public string StoriesDirectory => Path.Combine(ProjectDirectory, "Stories");
-    public string MediaDirectory => Path.Combine(ProjectDirectory, "Media");
+
+    /// <summary>
+    /// 核心项目目录（ProjectDirectory/项目名）。
+    /// <para>所有资源（Stories/Media/Images/Audio/Video 等）都在此目录内，
+    /// .csproj 也在此目录中，MSBuild 通过相对路径直接引用。</para>
+    /// </summary>
+    public string CoreProjectDirectory => CurrentProject != null
+        ? Path.Combine(ProjectDirectory, CurrentProject.Name)
+        : "";
+
+    public string StoriesDirectory => Path.Combine(CoreProjectDirectory, ProjectConstants.StoriesDir);
+    public string MediaDirectory => Path.Combine(CoreProjectDirectory, ProjectConstants.MediaDir);
 
     /// <inheritdoc/>
     public event Action? ProjectOpened;
@@ -44,8 +55,8 @@ public partial class ProjectSession : ObservableObject, IProjectSession
         if (project == null)
             return false;
 
-        // 确保引擎所需目录存在（与 CreateAndOpenAsync 一致）
-        EnsureProjectDirectories(project.ProjectDirectory);
+        // 确保引擎所需目录存在（在核心项目目录内）
+        EnsureProjectDirectories(Path.Combine(project.ProjectDirectory, project.Name));
 
         CurrentProject = project;
         IsProjectOpen = true;
@@ -69,8 +80,8 @@ public partial class ProjectSession : ObservableObject, IProjectSession
         if (project == null)
             return false;
 
-        // 确保引擎所需目录存在
-        EnsureProjectDirectories(project.ProjectDirectory);
+        // 确保引擎所需目录存在（在核心项目目录内）
+        EnsureProjectDirectories(Path.Combine(project.ProjectDirectory, project.Name));
 
         CurrentProject = project;
         IsProjectOpen = true;
@@ -98,13 +109,12 @@ public partial class ProjectSession : ObservableObject, IProjectSession
         await _projectService.SaveAsync(CurrentProject);
     }
 
-    /// <summary>确保引擎所需的标准目录存在</summary>
-    private static void EnsureProjectDirectories(string projectDir)
+    /// <summary>确保引擎所需的标准目录存在（在核心项目目录内）</summary>
+    private static void EnsureProjectDirectories(string coreProjectDir)
     {
-        var dirs = new[] { "Stories", "Media", "Media/BGM", "Media/SE", "Media/Voice", "Media/Images", "Media/Video" };
-        foreach (var dir in dirs)
+        foreach (var dir in ProjectConstants.StandardSubDirs)
         {
-            var path = Path.Combine(projectDir, dir);
+            var path = Path.Combine(coreProjectDir, dir);
             if (!Directory.Exists(path))
                 Directory.CreateDirectory(path);
         }

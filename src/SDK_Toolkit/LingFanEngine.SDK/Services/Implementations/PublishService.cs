@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
+using LingFanEngine.SDK.Constants;
 using LingFanEngine.SDK.Cryptography;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Services.Abstractions;
@@ -51,13 +52,13 @@ public class PublishService : IPublishService
             // 1. 根据平台查找对应的 .csproj 文件
             var csprojSuffix = platform.Name switch
             {
-                "Windows" => ".Desktop.Windows.csproj",
-                "Linux" => ".Desktop.Linux.csproj",
-                "macOS" => ".Desktop.Mac.csproj",
-                "Android" => ".Android.csproj",
-                "iOS" => ".iOS.csproj",
-                "Browser" => ".Browser.csproj",
-                _ => ".csproj",
+                "Windows" => ProjectConstants.CsprojSuffixWindows,
+                "Linux" => ProjectConstants.CsprojSuffixLinux,
+                "macOS" => ProjectConstants.CsprojSuffixMac,
+                "Android" => ProjectConstants.CsprojSuffixAndroid,
+                "iOS" => ProjectConstants.CsprojSuffixIOS,
+                "Browser" => ProjectConstants.CsprojSuffixBrowser,
+                _ => ProjectConstants.CsprojSuffixDefault,
             };
 
             // 在项目目录中查找匹配的 .csproj（递归搜索，防层级不统一）
@@ -92,18 +93,22 @@ public class PublishService : IPublishService
                 ? Path.GetDirectoryName(coreCsproj) ?? csprojDir
                 : csprojDir;
             // 核心项目的 Security 目录路径（相对对核心项目）
-            var securityDir = Path.Combine(coreDir, "Security");
+            var securityDir = Path.Combine(coreDir, ProjectConstants.SecurityDir);
 
             // 2.5 更新项目引用的引擎 DLL（确保使用最新编译的引擎代码）
             // Phase 57: 传入 projectDir 而非 coreDir——.csproj 的 HintPath 指向 projectDir/DLL/
             UpdateEngineDlls(projectDir, Log);
 
-            // 2.6 修复旧项目的 .csproj 资源路径（Images/Audio/Video 从引擎仓库路径改为项目根目录路径）
+            // 2.6 迁移旧项目资源到核心项目目录（资源从项目根移到核心项目内部）
+            MigrateResourcesToCoreDir(projectDir, coreDir, Log);
+
+            // 2.7 修复旧项目的 .csproj 资源路径（..\Stories\** → Stories\**）
             EnsureCsprojResourcePaths(projectDir, Log);
 
-            // 2.7 解密源目录中可能已加密的文件（上一次构建可能意外加密了源文件）
+            // 2.8 解密源目录中可能已加密的文件（上一次构建可能意外加密了源文件）
             // 源文件必须始终是明文——dotnet publish 从源目录复制文件到输出目录，加密只在输出目录原地执行
-            DecryptSourceFilesIfNeeded(projectDir, project.ProjectPath, Log);
+            // 资源现在在核心项目目录内
+            DecryptSourceFilesIfNeeded(coreDir, project.ProjectPath, Log);
 
             // 3. 生成 GeneratedKeys.cs（必须在 publish 前，因为要编译进程序集）
             byte[]? key = null;
@@ -115,12 +120,12 @@ public class PublishService : IPublishService
                 var keyCode = KeyInjector.GenerateKeyFile(namespaceName, key, project.Encryption.KeyShardCount);
 
                 // 清理旧的 GeneratedKeys.cs（可能在平台项目目录中）
-                foreach (var oldFile in Directory.GetFiles(projectDir, "GeneratedKeys.cs", SearchOption.AllDirectories))
+                foreach (var oldFile in Directory.GetFiles(projectDir, ProjectConstants.GeneratedKeysFileName, SearchOption.AllDirectories))
                 {
                     try { File.Delete(oldFile); } catch { }
                 }
 
-                var keyFilePath = Path.Combine(securityDir, "GeneratedKeys.cs");
+                var keyFilePath = Path.Combine(securityDir, ProjectConstants.GeneratedKeysFileName);
                 await FileHelper.WriteAllTextAsync(keyFilePath, keyCode);
                 Log($"密钥代码已生成: {Path.GetRelativePath(projectDir, keyFilePath)}");
 
@@ -143,7 +148,7 @@ public class PublishService : IPublishService
                 {
                     Log($"警告: 整目录删除失败 ({ex.Message})，尝试逐个清理资源目录...");
                     // Fallback：逐个删除资源子目录，确保 dotnet publish 能复制新鲜源文件
-                    var resourceDirNames = new[] { "Stories", "Media", "Images", "Audio", "Video", "Live2D", "Mods", "Lang" };
+                    var resourceDirNames = ProjectConstants.ResourceDirNames;
                     foreach (var dirName in resourceDirNames)
                     {
                         var resourceDir = Path.Combine(outputPath, dirName);
@@ -170,7 +175,7 @@ public class PublishService : IPublishService
 
             publishArgs += $" -o \"{outputPath}\"";
             // 排除调试符号（反编译防护）
-            publishArgs += " -p:DebugType=none -p:DebugSymbols=false";
+            publishArgs += $" -p:{ProjectConstants.MsbuildDebugTypeNone} -p:{ProjectConstants.MsbuildDebugSymbolsFalse}";
 
             Log($"执行: dotnet {publishArgs}");
 
@@ -199,8 +204,7 @@ public class PublishService : IPublishService
                 var encryptedCount = 0;
 
                 // 扫描输出目录下所有资源子目录（排除已知非资源目录）
-                var excludeDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                    { "runtimes", "ref", "refs", "bin", "obj" };
+                var excludeDirs = new HashSet<string>(ProjectConstants.EncryptExcludeDirs, StringComparer.OrdinalIgnoreCase);
                 foreach (var subDir in Directory.GetDirectories(outputPath))
                 {
                     var dirName = Path.GetFileName(subDir);
@@ -214,7 +218,7 @@ public class PublishService : IPublishService
                 // 生成清单
                 if (encConfig.GenerateManifest && manifest.Files.Count > 0)
                 {
-                    var manifestPath = Path.Combine(outputPath, "manifest.lfmanifest");
+                    var manifestPath = Path.Combine(outputPath, ProjectConstants.ManifestFileName);
                     var manifestJson = SerializeManifest(manifest);
 
                     if (encConfig.EncryptManifest)
@@ -236,7 +240,7 @@ public class PublishService : IPublishService
             result.OutputPath = outputPath;
             Log($"构建成功！输出路径: {outputPath}");
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
             result.Success = false;
             result.ErrorMessage = ex.Message;
@@ -398,7 +402,7 @@ public class PublishService : IPublishService
         try
         {
             // SDK 输出目录下的 DLL/ 子目录（由 .csproj 的 <None Include="DLL\*.dll" CopyToOutputDirectory="PreserveNewest" /> 复制）
-            var sdkDllDir = Path.Combine(AppContext.BaseDirectory, "DLL");
+            var sdkDllDir = Path.Combine(AppContext.BaseDirectory, ProjectConstants.DllDir);
             if (!Directory.Exists(sdkDllDir))
             {
                 log($"警告: SDK DLL 目录不存在: {sdkDllDir}，跳过引擎 DLL 更新");
@@ -406,13 +410,13 @@ public class PublishService : IPublishService
             }
 
             // 用户项目的 DLL 目录（项目根/DLL/——.csproj HintPath 指向此处）
-            var projectDllDir = Path.Combine(projectRootDir, "DLL");
+            var projectDllDir = Path.Combine(projectRootDir, ProjectConstants.DllDir);
             if (!Directory.Exists(projectDllDir))
                 Directory.CreateDirectory(projectDllDir);
 
             // Phase 58: SDK 与引擎核心分离，只更新 3 个 DLL
             // LingFanEngine.dll 由模板提供（模板 DLL/ 目录在引擎编译时自动同步）
-            var engineDlls = new[] { "LingFanEngine.Abstractions.dll", "LingFanEngine.DslCore.dll", "Pidgin.dll" };
+            var engineDlls = ProjectConstants.SdkDistributedDlls;
             var updated = 0;
             var missing = 0;
             foreach (var dllName in engineDlls)
@@ -431,9 +435,9 @@ public class PublishService : IPublishService
             }
 
             // 检查 LingFanEngine.dll 是否存在于用户项目（由模板提供）
-            var engineCorePath = Path.Combine(projectDllDir, "LingFanEngine.dll");
+            var engineCorePath = Path.Combine(projectDllDir, ProjectConstants.EngineCoreDll);
             if (!File.Exists(engineCorePath))
-                log($"  警告: LingFanEngine.dll 不存在于项目 DLL/ 目录——请从模板复制或重新创建项目");
+                log($"  警告: {ProjectConstants.EngineCoreDll} 不存在于项目 {ProjectConstants.DllDir}/ 目录——请从模板复制或重新创建项目");
 
             log($"引擎 DLL 更新完成: {updated} 个成功, {missing} 个缺失");
         }
@@ -472,10 +476,12 @@ public class PublishService : IPublishService
     /// <para>上一次构建可能意外加密了源文件（旧版 bug 或手动操作）。
     /// 源文件必须始终是明文——dotnet publish 从源目录复制到输出目录，
     /// 加密只在输出目录原地执行。</para>
-    /// <para>此方法扫描项目根目录下的资源子目录，检测 LFEN 加密文件并解密。
+    /// <para>此方法扫描核心项目目录下的资源子目录，检测 LFEN 加密文件并解密。
     /// 解密需要密钥——从 KeyManager 加载，如果密钥不存在则跳过。</para>
     /// </summary>
-    private static void DecryptSourceFilesIfNeeded(string projectDir, string projectPath, Action<string> log)
+    /// <param name="coreDir">核心项目目录（资源所在位置）</param>
+    /// <param name="projectPath">.lfproj 文件路径（用于加载密钥）</param>
+    private static void DecryptSourceFilesIfNeeded(string coreDir, string projectPath, Action<string> log)
     {
         try
         {
@@ -483,12 +489,12 @@ public class PublishService : IPublishService
             var key = KeyManager.LoadKey(projectPath);
             if (key == null) return; // 无密钥 = 源文件从未被加密，无需处理
 
-            var resourceDirs = new[] { "Stories", "Media", "Images", "Audio", "Video", "Live2D", "Mods", "Lang" };
+            var resourceDirs = ProjectConstants.ResourceDirNames;
             var decryptedCount = 0;
 
             foreach (var dirName in resourceDirs)
             {
-                var dirPath = Path.Combine(projectDir, dirName);
+                var dirPath = Path.Combine(coreDir, dirName);
                 if (!Directory.Exists(dirPath)) continue;
 
                 var files = Directory.GetFiles(dirPath, "*.*", SearchOption.AllDirectories);
@@ -503,11 +509,11 @@ public class PublishService : IPublishService
                         var plain = AesEncryptor.Decrypt(data, key);
                         File.WriteAllBytes(file, plain);
                         decryptedCount++;
-                        log($"  已解密源文件: {Path.GetRelativePath(projectDir, file)}");
+                        log($"  已解密源文件: {Path.GetRelativePath(coreDir, file)}");
                     }
                     catch (Exception ex)
                     {
-                        log($"  ⚠ 无法解密源文件: {Path.GetRelativePath(projectDir, file)} — {ex.Message}");
+                        log($"  ⚠ 无法解密源文件: {Path.GetRelativePath(coreDir, file)} — {ex.Message}");
                     }
                 }
             }
@@ -523,9 +529,10 @@ public class PublishService : IPublishService
 
     /// <summary>
     /// 修复旧项目的 .csproj 资源路径。
-    /// <para>旧模板中 Images/Audio/Video 使用 ..\..\..\..\Resources\ 路径（指向引擎仓库），
-    /// 新模板统一改为 ..\（指向项目根目录）。</para>
-    /// <para>此方法扫描核心 .csproj 文件，将旧路径替换为新路径。</para>
+    /// <para>旧模板 v1: ..\..\..\..\Resources\Images\** （指向引擎仓库）</para>
+    /// <para>旧模板 v2: ..\Stories\** LinkBase="Stories\" （指向项目根目录）</para>
+    /// <para>新模板 v3: Stories\** （直接引用，资源在核心项目目录内）</para>
+    /// <para>此方法扫描 .csproj 文件，将旧路径替换为新路径。</para>
     /// </summary>
     private static void EnsureCsprojResourcePaths(string projectDir, Action<string> log)
     {
@@ -544,24 +551,47 @@ public class PublishService : IPublishService
                 var content = File.ReadAllText(csproj);
                 var changed = false;
 
-                // 旧路径模式：..\..\..\..\Resources\Images\** → 新路径：..\Images\**
-                var oldPatterns = new[]
+                // v1 旧路径：..\..\..\..\Resources\Images\** → v3 新路径：Images\**
+                var resourceDirs = ProjectConstants.ResourceDirNames;
+                foreach (var dir in resourceDirs)
                 {
-                    ("..\\..\\..\\..\\Resources\\Images\\", "..\\Images\\"),
-                    ("..\\..\\..\\..\\Resources\\Audio\\", "..\\Audio\\"),
-                    ("..\\..\\..\\..\\Resources\\Video\\", "..\\Video\\"),
-                    ("../../../../Resources/Images/", "../Images/"),
-                    ("../../../../Resources/Audio/", "../Audio/"),
-                    ("../../../../Resources/Video/", "../Video/"),
-                };
+                    // v1: ..\..\..\..\Resources\{dir}\** → {dir}\**
+                    var v1Back = $"..\\..\\..\\..\\Resources\\{dir}\\";
+                    var v1Fwd = $"../../../../Resources/{dir}/";
+                    // v2: ..\{dir}\** → {dir}\**
+                    var v2Back = $"..\\{dir}\\";
+                    var v2Fwd = $"../{dir}/";
+                    // v3: {dir}\**
+                    var v3 = $"{dir}\\";
 
-                foreach (var (oldPath, newPath) in oldPatterns)
-                {
-                    if (content.Contains(oldPath))
+                    if (content.Contains(v1Back))
                     {
-                        content = content.Replace(oldPath, newPath);
+                        content = content.Replace(v1Back, v3);
                         changed = true;
                     }
+                    if (content.Contains(v1Fwd))
+                    {
+                        content = content.Replace(v1Fwd, v3.Replace('\\', '/'));
+                        changed = true;
+                    }
+                    if (content.Contains(v2Back))
+                    {
+                        content = content.Replace(v2Back, v3);
+                        changed = true;
+                    }
+                    if (content.Contains(v2Fwd))
+                    {
+                        content = content.Replace(v2Fwd, v3.Replace('\\', '/'));
+                        changed = true;
+                    }
+                }
+
+                // 移除 LinkBase 属性（v3 不需要）
+                if (content.Contains("LinkBase="))
+                {
+                    content = System.Text.RegularExpressions.Regex.Replace(content,
+                        @"\s+LinkBase=""[^""]*""", "");
+                    changed = true;
                 }
 
                 if (changed)
@@ -578,6 +608,81 @@ public class PublishService : IPublishService
         catch (Exception ex)
         {
             log($"  警告: 修复 .csproj 资源路径失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 将旧项目根目录下的资源目录迁移到核心项目目录内。
+    /// <para>旧模板将资源放在项目根目录（与 .lfproj 同级），
+    /// 新模板将资源放在核心项目目录内（与 .csproj 同级）。</para>
+    /// <para>此方法检查项目根目录下是否存在资源目录，
+    /// 如果存在且核心项目目录内没有同名目录，则移动过去。</para>
+    /// </summary>
+    /// <param name="projectDir">项目根目录（.lfproj 所在目录）</param>
+    /// <param name="coreDir">核心项目目录（.csproj 所在目录）</param>
+    private static void MigrateResourcesToCoreDir(string projectDir, string coreDir, Action<string> log)
+    {
+        try
+        {
+            // 如果核心项目目录与项目根目录相同，无需迁移
+            if (string.Equals(projectDir, coreDir, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            var resourceDirs = ProjectConstants.ResourceDirNames;
+            var migrated = 0;
+
+            foreach (var dirName in resourceDirs)
+            {
+                var srcPath = Path.Combine(projectDir, dirName);
+                var destPath = Path.Combine(coreDir, dirName);
+
+                // 源目录不存在 → 跳过
+                if (!Directory.Exists(srcPath)) continue;
+
+                // 目标目录已存在 → 不覆盖（可能已有新模板的文件）
+                if (Directory.Exists(destPath))
+                {
+                    // 合并：将源目录中的文件复制到目标目录（不覆盖已存在的）
+                    CopyDirectoryMerge(srcPath, destPath, overwrite: false);
+                    Directory.Delete(srcPath, recursive: true);
+                    log($"  已合并迁移: {dirName}/ → 核心项目目录");
+                    migrated++;
+                }
+                else
+                {
+                    Directory.Move(srcPath, destPath);
+                    log($"  已迁移: {dirName}/ → 核心项目目录");
+                    migrated++;
+                }
+            }
+
+            if (migrated > 0)
+                log($"  资源目录迁移完成: {migrated} 个目录已移至核心项目目录内");
+        }
+        catch (Exception ex)
+        {
+            log($"  警告: 资源目录迁移失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>递归合并目录（源 → 目标），不覆盖已存在的文件</summary>
+    private static void CopyDirectoryMerge(string sourceDir, string destDir, bool overwrite)
+    {
+        Directory.CreateDirectory(destDir);
+
+        foreach (var file in Directory.GetFiles(sourceDir))
+        {
+            var fileName = Path.GetFileName(file);
+            var destPath = Path.Combine(destDir, fileName);
+            if (!File.Exists(destPath) || overwrite)
+                File.Copy(file, destPath, overwrite: true);
+        }
+
+        foreach (var subDir in Directory.GetDirectories(sourceDir))
+        {
+            var subDirName = Path.GetFileName(subDir);
+            var destSubDir = Path.Combine(destDir, subDirName);
+            CopyDirectoryMerge(subDir, destSubDir, overwrite);
         }
     }
 
@@ -605,13 +710,13 @@ public class PublishService : IPublishService
                 var content = File.ReadAllText(csFile);
 
                 // 必须包含 AddLingFanEngine 调用
-                if (!content.Contains("AddLingFanEngine")) continue;
+                if (!content.Contains(ProjectConstants.AddLingFanEngineMethod)) continue;
 
                 // 已注册 GeneratedKeyProvider → 无需处理
-                if (content.Contains("GeneratedKeyProvider")) continue;
+                if (content.Contains(ProjectConstants.GeneratedKeyProviderClass)) continue;
 
                 // 注入注册行：在 AddLingFanEngine 之前插入
-                var idx = content.IndexOf("AddLingFanEngine");
+                var idx = content.IndexOf(ProjectConstants.AddLingFanEngineMethod);
                 if (idx < 0) continue;
 
                 // 向前查找所属行的缩进
@@ -630,8 +735,8 @@ public class PublishService : IPublishService
                 var usingsToAdd = new List<string>();
                 if (!content.Contains($"using {securityNamespace};"))
                     usingsToAdd.Add($"using {securityNamespace};");
-                if (!content.Contains("using LingFanEngine.Abstractions.Interfaces.Core;"))
-                    usingsToAdd.Add("using LingFanEngine.Abstractions.Interfaces.Core;");
+                if (!content.Contains($"using {ProjectConstants.EncryptionKeyProviderNamespace};"))
+                    usingsToAdd.Add($"using {ProjectConstants.EncryptionKeyProviderNamespace};");
 
                 if (usingsToAdd.Count > 0)
                 {
@@ -644,7 +749,7 @@ public class PublishService : IPublishService
                         var insertBlock = string.Join("\n", usingsToAdd) + "\n";
                         content = content[..(lineEnd + 1)] + insertBlock + content[(lineEnd + 1)..];
                         // 重新定位 AddLingFanEngine
-                        idx = content.IndexOf("AddLingFanEngine");
+                        idx = content.IndexOf(ProjectConstants.AddLingFanEngineMethod);
                     }
                 }
 

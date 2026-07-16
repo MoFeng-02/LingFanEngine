@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using LingFanEngine.SDK.Constants;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Services.Abstractions;
 
@@ -11,15 +12,15 @@ namespace LingFanEngine.SDK.Services.Implementations;
 /// <summary>资源管理服务实现</summary>
 public class AssetManager : IAssetManager
 {
-    private static readonly string[] s_imageExts = [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"];
-    private static readonly string[] s_audioExts = [".mp3", ".ogg", ".wav", ".flac", ".m4a"];
-    private static readonly string[] s_videoExts = [".mp4", ".webm", ".avi", ".mkv"];
+    private static readonly string[] s_imageExts = ProjectConstants.ImageExtensions;
+    private static readonly string[] s_audioExts = ProjectConstants.AudioExtensions;
+    private static readonly string[] s_videoExts = ProjectConstants.VideoExtensions;
 
     /// <inheritdoc/>
     public Task<List<AssetEntry>> ScanAssetsAsync(string projectDir)
     {
         var entries = new List<AssetEntry>();
-        var assetDirs = new[] { "Stories", "Media", "Assets" };
+        var assetDirs = ProjectConstants.AssetScanDirs;
 
         foreach (var subDir in assetDirs)
         {
@@ -102,8 +103,8 @@ public class AssetManager : IAssetManager
         if (s_imageExts.Contains(ext)) return AssetType.Image;
         if (s_audioExts.Contains(ext)) return AssetType.Audio;
         if (s_videoExts.Contains(ext)) return AssetType.Video;
-        if (ext == ".story") return AssetType.Story;
-        if (ext == ".json") return AssetType.Json;
+        if (ext == ProjectConstants.StoryExt) return AssetType.Story;
+        if (ext == ProjectConstants.JsonExt) return AssetType.Json;
         return AssetType.Other;
     }
 }

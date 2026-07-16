@@ -10,6 +10,12 @@
 		<PackageTags>game-engine;visual-novel;narrative;avalonia;dotnet</PackageTags>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageIcon>Icons/LingFanIcon_64x64.png</PackageIcon>
+
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
+		<DebugType>None</DebugType>
+		<DebugSymbols>false</DebugSymbols>
 	</PropertyGroup>
 
 	<ItemGroup>

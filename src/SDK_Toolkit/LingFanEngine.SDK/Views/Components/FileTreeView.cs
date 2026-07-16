@@ -11,6 +11,7 @@ using Avalonia.Controls.Templates;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using LingFanEngine.SDK.Constants;
 
 namespace LingFanEngine.SDK.Views.Components;
 
@@ -313,8 +314,8 @@ public class FileTreeView : UserControl
                 var fileName = nameBox.Text?.Trim();
                 if (!string.IsNullOrEmpty(fileName))
                 {
-                    if (!fileName.EndsWith(".story", StringComparison.OrdinalIgnoreCase))
-                        fileName += ".story";
+                    if (!fileName.EndsWith(ProjectConstants.StoryExt, StringComparison.OrdinalIgnoreCase))
+                        fileName += ProjectConstants.StoryExt;
                     CreateFileRequested?.Invoke(Path.Combine(directory, fileName));
                 }
                 dialog.Close();
@@ -344,8 +345,8 @@ public class FileTreeView : UserControl
             if (!string.IsNullOrEmpty(fileName))
             {
                 // 自动补全 .story 扩展名
-                if (!fileName.EndsWith(".story", StringComparison.OrdinalIgnoreCase))
-                    fileName += ".story";
+                if (!fileName.EndsWith(ProjectConstants.StoryExt, StringComparison.OrdinalIgnoreCase))
+                    fileName += ProjectConstants.StoryExt;
                 CreateFileRequested?.Invoke(Path.Combine(directory, fileName));
             }
             dialog.Close();
