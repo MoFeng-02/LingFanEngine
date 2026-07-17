@@ -53,6 +53,8 @@ namespace LingFanEngine.Abstractions.Serialization;
 [JsonSerializable(typeof(List<AchievementEntry>))]
 [JsonSerializable(typeof(ChapterEntry))]
 [JsonSerializable(typeof(List<ChapterEntry>))]
+[JsonSerializable(typeof(List<TimeEventEntity>))]
+[JsonSerializable(typeof(TimeEventSaveState))]
 [JsonSerializable(typeof(System.Text.Json.JsonElement))]
 [JsonSourceGenerationOptions(
     WriteIndented = false,

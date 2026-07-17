@@ -155,6 +155,33 @@ public class LingFanDslEngine : IScriptEngine
                     continue;
                 }
 
+                // set_time_event 块（回调驱动——子块编译为独立 ICommand[]）
+                if (stmt is SetTimeEventStmt ste)
+                {
+                    // 编译子块到独立命令列表
+                    var childCommands = new List<ICommand>();
+                    var childLabels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                    var childPendingJumps = new List<(int CmdIndex, string TargetLabel)>();
+                    int nextIdx = CompileBody(parsed, idx + 1, pl.Indent, childCommands, childLabels, childPendingJumps);
+                    ResolvePendingJumps(childCommands, childLabels, childPendingJumps);
+
+                    commands.Add(new SetTimeEventCommand
+                    {
+                        Id = ste.Id,
+                        Hour = ste.Hour,
+                        Minute = ste.Minute,
+                        Day = ste.Day,
+                        DaysOfWeek = ste.DaysOfWeek,
+                        IsOneShot = ste.IsOneShot,
+                        Commands = childCommands.AsReadOnly(),
+                        Condition = ste.Condition,
+                        Description = ste.Description
+                    });
+
+                    idx = nextIdx;
+                    continue;
+                }
+
                 // 普通语句
                 var cmd = StatementToCommand(stmt, labels, pendingJumps, commands.Count);
                 if (cmd != null)
@@ -1349,6 +1376,7 @@ Duration = t.Duration ?? 0.5
             TimeEventStmt te => new TimeEventCommand
             {
                 TriggerDay = te.TriggerDay,
+                DaysOfWeek = te.DaysOfWeek,
                 TriggerHour = te.TriggerHour,
                 TriggerMinute = te.TriggerMinute,
                 Target = te.Target,
@@ -1359,6 +1387,8 @@ Duration = t.Duration ?? 0.5
 
             TimePauseStmt => new TimePauseCommand(),
             TimeResumeStmt => new TimeResumeCommand(),
+            SkipTimeStmt st => new SkipTimeCommand { Minutes = st.Minutes },
+            UnregisterTimeEventStmt ut => new UnregisterTimeEventCommand { Id = ut.Id },
 
             NotifyStmt n => new NotifyCommand
             {

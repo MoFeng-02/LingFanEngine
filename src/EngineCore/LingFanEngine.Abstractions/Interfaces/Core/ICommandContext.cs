@@ -47,6 +47,9 @@ public interface ICommandContext
     /// <summary>事件调度器（时间事件）</summary>
     IEventScheduler? EventScheduler { get; }
 
+    /// <summary>游戏时间服务</summary>
+    IGameTimeService? TimeService { get; }
+
     /// <summary>存档服务</summary>
     ISaveService? SaveService { get; }
 
@@ -74,6 +77,12 @@ public interface ICommandContext
 
     /// <summary>应用存档数据到状态容器</summary>
     void ApplySaveData(SaveData data);
+
+    /// <summary>
+    /// 应用存档数据到状态容器
+    /// </summary>
+    /// <param name="continueGame">true=继续游戏（精确恢复），false=锚点读取（从头执行）</param>
+    void ApplySaveData(SaveData data, bool continueGame);
 
     /// <summary>报告异常（触发 OnException 事件）</summary>
     void ReportException(Exception ex, string source);

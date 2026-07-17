@@ -1,3 +1,4 @@
+using LingFanEngine.Abstractions.Entities.Events;
 using LingFanEngine.Abstractions.Models;
 
 namespace LingFanEngine.Abstractions.Interfaces.Core;
@@ -226,11 +227,79 @@ string? sideImage = null);
         int? triggerMinute = null, bool isOneShot = true,
         string? condition = null, string? description = null);
 
+    /// <summary>
+    /// 注册每日重复时间事件（每天指定时间触发）
+    /// <para>等价于 RegisterTimeEvent(target, 0, hour, minute, isOneShot=false, ...)。</para>
+    /// </summary>
+    /// <param name="target">触发时导航到的场景/label</param>
+    /// <param name="triggerHour">触发的小时</param>
+    /// <param name="triggerMinute">触发的分钟（null=任意分钟）</param>
+    /// <param name="condition">条件表达式（可选）</param>
+    /// <param name="description">事件描述</param>
+    void RegisterDailyEvent(string target, int triggerHour, int? triggerMinute = null,
+        string? condition = null, string? description = null);
+
+    /// <summary>
+    /// 注册按星期触发的时间事件
+    /// <para>在指定的星期几（可多选）的指定时间触发。游戏第 1 天 = Monday，7 天一循环。</para>
+    /// </summary>
+    /// <param name="target">触发时导航到的场景/label</param>
+    /// <param name="daysOfWeek">触发的星期几（如 DayOfWeek.Monday, DayOfWeek.Thursday）</param>
+    /// <param name="triggerHour">触发的小时</param>
+    /// <param name="triggerMinute">触发的分钟（null=任意分钟）</param>
+    /// <param name="isOneShot">是否只触发一次（true=下次匹配触发后移除，false=每周重复）</param>
+    /// <param name="condition">条件表达式（可选）</param>
+    /// <param name="description">事件描述</param>
+    void RegisterWeeklyEvent(string target, DayOfWeek[] daysOfWeek, int triggerHour,
+        int? triggerMinute = null, bool isOneShot = false,
+        string? condition = null, string? description = null);
+
+    /// <summary>
+    /// 注册回调驱动的时间事件
+    /// <para>时间到达时执行 callback，而非导航到场景。</para>
+    /// <para>事件持久存活——不自动清理，只能通过 UnregisterEvent 手动删除或单次触发后自动移除。</para>
+    /// <para>ID 用于去重和存档持久化——同一 ID 不会重复注册。</para>
+    /// </summary>
+    /// <param name="id">事件 ID（强制手写，用于去重和存档）</param>
+    /// <param name="hour">触发小时（0-23）</param>
+    /// <param name="callback">回调逻辑（可调用 Ctrl.SayAsync 等异步方法）</param>
+    /// <param name="once">是否单次触发（默认 false=重复）</param>
+    /// <param name="weekdays">周几集合（null 表示每天）</param>
+    /// <param name="minute">触发分钟（null=整点触发，0-59 指定具体分钟）</param>
+    /// <param name="day">天数约束（once=true: 绝对第 day 天触发；once=false: 每隔 day 天触发；null=不限制）</param>
+    void SetTimeEventAsync(
+        string id,
+        int hour,
+        Func<Task> callback,
+        bool once = false,
+        HashSet<DayOfWeek>? weekdays = null,
+        int? minute = null,
+        int? day = null);
+
+    /// <summary>
+    /// 按 ID 注销已注册的时间事件
+    /// <para>事件移除后不再触发。对已触发的单次事件调用此方法无效果（已自动移除）。</para>
+    /// </summary>
+    /// <param name="id">事件 ID</param>
+    void UnregisterEvent(string id);
+
     /// <summary>暂停游戏时间推进</summary>
     void PauseGameTime();
 
     /// <summary>恢复游戏时间推进</summary>
     void ResumeGameTime();
+
+    /// <summary>
+    /// 批量跳过游戏时间（逐分钟 Tick，确保中间时间事件被检查）
+    /// </summary>
+    /// <param name="minutes">要跳过的分钟数</param>
+    void SkipTime(int minutes);
+
+    /// <summary>
+    /// 重置游戏时间到配置的起始值，并清空所有已注册时间事件
+    /// <para>用于新开游戏或显式重新开始时间。</para>
+    /// </summary>
+    void ResetGameTime();
 
     // ========== 视频 ==========
 

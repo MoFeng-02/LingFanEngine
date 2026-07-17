@@ -65,6 +65,13 @@ public class ResetGameStateHandler : ICommandHandler<ResetGameStateCommand>, IDe
         // 8. 重置交互状态
         ctx.ResetInteractionState();
 
+        // 9. Phase 60: 重置游戏时间 + 清空时间事件（小说世界模式）
+        if (ctx.Options.EnableTimeSystem)
+        {
+            ctx.TimeService?.Reset();
+            ctx.EventScheduler?.ClearEvents();
+        }
+
         System.Diagnostics.Debug.WriteLine("[ResetGameStateHandler] 游戏状态已完全重置");
     }
 }

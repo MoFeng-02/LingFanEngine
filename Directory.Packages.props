@@ -8,9 +8,14 @@
     <PackageVersion Include="LibVLCSharp" Version="3.10.0" />
     <PackageVersion Include="LibVLCSharp.Avalonia" Version="3.10.0" />
     <PackageVersion Include="MediaPlayer.Controls" Version="12.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
     <PackageVersion Include="NAudio" Version="2.3.0" />
+    <PackageVersion Include="Serilog" Version="4.4.0" />
+    <PackageVersion Include="Serilog.Extensions.Logging" Version="10.0.0" />
+    <PackageVersion Include="Serilog.Settings.Configuration" Version="10.0.1" />
+    <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
     <PackageVersion Include="System.Text.Json" Version="10.0.0" />
     <!-- Avalonia packages -->
     <PackageVersion Include="Avalonia" Version="12.1.0" />
@@ -26,8 +31,8 @@
     <PackageVersion Include="MFToolkit.Abstractions" Version="1.0.20" />
     <PackageVersion Include="MFToolkit.AutoGenerator" Version="1.0.20" />
     <PackageVersion Include="MFToolkit.Routing" Version="1.1.1" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
     <PackageVersion Include="ThisAssembly" Version="2.1.2" />
     <PackageVersion Include="VideoLAN.LibVLC.Android" Version="3.6.5" />
     <PackageVersion Include="VideoLAN.LibVLC.iOS" Version="3.6.1" />
@@ -38,7 +43,7 @@
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="FluentAssertions" Version="8.10.0" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
   </ItemGroup>
 </Project>

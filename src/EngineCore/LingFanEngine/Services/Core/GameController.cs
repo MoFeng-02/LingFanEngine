@@ -1,5 +1,7 @@
 using LingFanEngine.Abstractions;
+using LingFanEngine.Abstractions.Entities.Events;
 using LingFanEngine.Abstractions.Interfaces.Core;
+using LingFanEngine.Abstractions.Interfaces.Events;
 using LingFanEngine.Abstractions.Models;
 using LingFanEngine.Services.Scripting;
 
@@ -27,6 +29,7 @@ public class GameController : IGameController
     private readonly ICommandPipeline _pipeline;
     private readonly IStateContainer _state;
     private readonly IAsyncWaitService _waitService;
+    private readonly IEventScheduler? _eventScheduler;
 
     /// <summary>
     /// C# 场景回放代次（AsyncLocal——随 async 调用链流动）
@@ -38,12 +41,14 @@ public class GameController : IGameController
 
 public GameController(ICommandPipeline pipeline, IStateContainer state,
     LingFanEngine.Abstractions.EngineOptions.LingFanEngineOptions? options = null,
-    IAsyncWaitService? waitService = null)
+    IAsyncWaitService? waitService = null,
+    IEventScheduler? eventScheduler = null)
 {
 _pipeline = pipeline;
 _state = state;
 _options = options ?? new();
 _waitService = waitService!;
+_eventScheduler = eventScheduler;
 }
 
     // ========== 导航 ==========
@@ -696,10 +701,79 @@ public void RegisterTimeEvent(string target, int triggerDay, int? triggerHour = 
     });
 
 /// <inheritdoc/>
+public void RegisterDailyEvent(string target, int triggerHour, int? triggerMinute = null,
+    string? condition = null, string? description = null) =>
+    _pipeline.SendAsync(new TimeEventCommand
+    {
+        Target = target,
+        TriggerDay = 0, // 0 = 每日
+        TriggerHour = triggerHour,
+        TriggerMinute = triggerMinute,
+        IsOneShot = false, // 每日重复
+        Condition = condition,
+        Description = description
+    });
+
+/// <inheritdoc/>
+public void RegisterWeeklyEvent(string target, DayOfWeek[] daysOfWeek, int triggerHour,
+    int? triggerMinute = null, bool isOneShot = false,
+    string? condition = null, string? description = null) =>
+    _pipeline.SendAsync(new TimeEventCommand
+    {
+        Target = target,
+        TriggerDay = 0, // 使用 DaysOfWeek 而非 TriggerDay
+        DaysOfWeek = daysOfWeek,
+        TriggerHour = triggerHour,
+        TriggerMinute = triggerMinute,
+        IsOneShot = isOneShot,
+        Condition = condition,
+        Description = description
+    });
+
+/// <inheritdoc/>
+public void SetTimeEventAsync(
+    string id,
+    int hour,
+    Func<Task> callback,
+    bool once = false,
+    HashSet<DayOfWeek>? weekdays = null,
+    int? minute = null,
+    int? day = null)
+{
+    if (_eventScheduler == null)
+    {
+        System.Diagnostics.Debug.WriteLine(
+            "[GameController] IEventScheduler 不可用，无法注册时间事件");
+        return;
+    }
+
+    _eventScheduler.RegisterEvent(new TimeEventRegistration
+    {
+        Id = id,
+        Hour = hour,
+        Minute = minute,
+        Day = day,
+        Callback = callback,
+        IsOneShot = once,
+        DaysOfWeek = weekdays?.ToArray()
+    });
+}
+
+/// <inheritdoc/>
+public void UnregisterEvent(string id) =>
+    _pipeline.SendAsync(new UnregisterTimeEventCommand { Id = id });
+
+/// <inheritdoc/>
 public void PauseGameTime() => _pipeline.SendAsync(new TimePauseCommand());
 
 /// <inheritdoc/>
 public void ResumeGameTime() => _pipeline.SendAsync(new TimeResumeCommand());
+
+/// <inheritdoc/>
+public void SkipTime(int minutes) => _pipeline.SendAsync(new SkipTimeCommand { Minutes = minutes });
+
+/// <inheritdoc/>
+public void ResetGameTime() => _pipeline.SendAsync(new ResetGameStateCommand());
 
 // ========== 视频 ==========
 

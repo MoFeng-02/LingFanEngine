@@ -272,7 +272,7 @@ public class GameLoop : IGameLoop
         var stopwatch = Stopwatch.StartNew();
         var accumulatedTime = 0.0;
         var lastFrameTime = 0.0;
-        const double timeTickInterval = 1.0;
+        var timeTickInterval = _options.SecondsPerGameMinute;
 
         // Windows 系统定时器默认分辨率 ~15.6ms，Task.Delay 的最小睡眠也是一个滴答。
         // 对 120 FPS（8.33ms/帧）使用 Task.Delay 会超睡到 15.6ms，把实际帧率拖回 ~60 FPS。
@@ -318,14 +318,21 @@ public class GameLoop : IGameLoop
                 _playbackService.Process(frameDelta, _state);
 
                 // 累计时间，推进游戏时间（仅在启用时间系统时）
-                if (_options.EnableTimeSystem)
+                if (_options.EnableTimeSystem && !_time.IsPaused)
                 {
-                    accumulatedTime += _pipeline.TimeScale * frameDelta;
+                    // _pipeline.TimeScale 影响全局（skip 模式加速一切）
+                    // _time.TimeScale 仅影响游戏时间（可运行时调整，不影响命令执行速度）
+                    accumulatedTime += _pipeline.TimeScale * _time.TimeScale * frameDelta;
                     while (accumulatedTime >= timeTickInterval)
                     {
                         _time.Tick();
                         accumulatedTime -= timeTickInterval;
                     }
+                }
+                else if (_time.IsPaused)
+                {
+                    // 暂停期间清零，恢复后从当前帧重新积累（不补暂停期间的时间）
+                    accumulatedTime = 0;
                 }
 
                 // 性能指标收集（每帧更新到状态容器，SceneView 读取显示）
@@ -480,8 +487,11 @@ public class GameLoop : IGameLoop
                 case ICommandHandler<CutsceneCommand> h: _dispatcher.Register(h); break;
                 // Phase 38: 时间事件与通知
                 case ICommandHandler<TimeEventCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<SetTimeEventCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<UnregisterTimeEventCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<TimePauseCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<TimeResumeCommand> h: _dispatcher.Register(h); break;
+                case ICommandHandler<SkipTimeCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<NotifyCommand> h: _dispatcher.Register(h); break;
                 // Phase 44-47: DSL 2.0 新命令处理器
                 case ICommandHandler<ArrayPushCommand> h: _dispatcher.Register(h); break;
@@ -674,6 +684,7 @@ public class GameLoop : IGameLoop
         public IAudioManager? AudioManager => loop._audioManager;
         public IVideoManager? VideoManager => loop._videoManager;
         public IEventScheduler? EventScheduler => loop._eventScheduler;
+        public IGameTimeService? TimeService => loop._time;
         public ISaveService? SaveService => loop._saveService;
         public LingFanEngineOptions Options => loop._options;
         public Func<byte[]?>? CaptureThumbnail => loop._sceneRenderer == null ? null : () => loop._sceneRenderer.CaptureThumbnail();
@@ -689,6 +700,7 @@ public class GameLoop : IGameLoop
         public void ClearLocalVariables() => loop.ClearLocalVariables();
         public Abstractions.Models.SaveData? BuildSaveData() => loop._saveDataService.BuildSaveData();
         public void ApplySaveData(Abstractions.Models.SaveData data) => loop._saveDataService.ApplySaveData(data);
+        public void ApplySaveData(Abstractions.Models.SaveData data, bool continueGame) => loop._saveDataService.ApplySaveData(data, continueGame);
         public void ReportException(Exception ex, string source) => loop.OnException?.Invoke(ex, source);
     }
 

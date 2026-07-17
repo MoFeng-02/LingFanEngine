@@ -413,13 +413,23 @@ public sealed partial class ShowElementStmt : DslStatement
 
 /// <summary>
 /// 时间事件注册语句——注册游戏时间驱动的自动触发事件
-/// <para>语法：time_event day=1 hour=12 minute=30 target="noon_event" once=true condition="{sunny}" desc="中午事件"</para>
+/// <para>语法：</para>
+/// <para>  指定天数：time_event day=5 hour=18 target="bounty_expired" desc="悬赏截止"</para>
+/// <para>  每日重复：time_event hour=9 target="npc_daily" once=false desc="NPC每日事件"</para>
+/// <para>  每周重复：time_event weekday="Mon,Thu" hour=6 target="shop_restock" once=false desc="商店补货"</para>
+/// <para>  单次星期：time_event weekday="Mon" hour=12 target="special_event" once=true desc="特殊事件"</para>
 /// <para>需要 EnableTimeSystem=true 才生效。</para>
 /// </summary>
 public sealed partial class TimeEventStmt : DslStatement
 {
-    /// <summary>触发的游戏天数（从第0天开始）</summary>
+    /// <summary>触发的游戏天数（与 CurrentDay 同基准，默认 1-based）。设为 0 表示不按天数过滤。</summary>
     public int TriggerDay { get; init; }
+
+    /// <summary>
+    /// 触发的星期几（null 或空 = 不按星期过滤，优先于 TriggerDay）
+    /// <para>支持缩写 Mon/Tue/Wed/Thu/Fri/Sat/Sun 或全称 Monday/Tuesday 等，逗号分隔多选。</para>
+    /// </summary>
+    public DayOfWeek[]? DaysOfWeek { get; init; }
 
     /// <summary>触发的小时（null=任意小时）</summary>
     public int? TriggerHour { get; init; }
@@ -441,6 +451,55 @@ public sealed partial class TimeEventStmt : DslStatement
 }
 
 /// <summary>
+/// 回调驱动时间事件注册语句——注册在指定时间执行的代码块
+/// <para>语法：</para>
+/// <para>  每日重复：set_time_event "noon_bell" 12 once=false</para>
+/// <para>      say "钟声敲响了。"</para>
+/// <para>  end</para>
+/// <para>  周一单次：set_time_event "market" 8 once=true weekdays="Mon"</para>
+/// <para>      say "集市开市了。"</para>
+/// <para>  end</para>
+/// <para>  第3天单次：set_time_event "intro" 12 minute=5 day=3 once=true</para>
+/// <para>      say "第3天的事件触发了。"</para>
+/// <para>  end</para>
+/// <para>  每7天重复：set_time_event "rent" 9 day=7 once=false</para>
+/// <para>      say "每7天的租金事件。"</para>
+/// <para>  end</para>
+/// <para>需要 EnableTimeSystem=true 才生效。</para>
+/// </summary>
+public sealed partial class SetTimeEventStmt : DslStatement
+{
+    /// <summary>事件 ID（强制手写，用于去重和存档）</summary>
+    public required string Id { get; init; }
+
+    /// <summary>触发小时（0-23）</summary>
+    public int Hour { get; init; }
+
+    /// <summary>触发分钟（null=整点触发，即 minute=0 时匹配）</summary>
+    public int? Minute { get; init; }
+
+    /// <summary>
+    /// 天数约束（null=不限制天数）
+    /// <para>当 IsOneShot=true 时：表示在第 Day 天触发（绝对天数，对应 CurrentDay）</para>
+    /// <para>当 IsOneShot=false 时：表示每隔 Day 天触发一次（间隔天数，从游戏开始算起）</para>
+    /// <para>与 DaysOfWeek 正交——同时指定时两者都需满足。</para>
+    /// </summary>
+    public int? Day { get; init; }
+
+    /// <summary>星期几（null=每天，支持缩写 Mon/Tue/... 或全称，逗号分隔多选）</summary>
+    public DayOfWeek[]? DaysOfWeek { get; init; }
+
+    /// <summary>是否单次触发（默认 false=重复）</summary>
+    public bool IsOneShot { get; init; } = false;
+
+    /// <summary>条件表达式（可选）</summary>
+    public string? Condition { get; init; }
+
+    /// <summary>事件描述（可选）</summary>
+    public string? Description { get; init; }
+}
+
+/// <summary>
 /// 暂停游戏时间语句
 /// <para>语法：time_pause</para>
 /// </summary>
@@ -451,6 +510,28 @@ public sealed partial class TimePauseStmt : DslStatement { }
 /// <para>语法：time_resume</para>
 /// </summary>
 public sealed partial class TimeResumeStmt : DslStatement { }
+
+/// <summary>
+/// 批量跳过游戏时间语句
+/// <para>语法：skip_time N</para>
+/// <para>逐分钟 Tick，确保中间所有时间事件被检查。需要 EnableTimeSystem=true。</para>
+/// </summary>
+public sealed partial class SkipTimeStmt : DslStatement
+{
+    /// <summary>要跳过的分钟数</summary>
+    public int Minutes { get; init; }
+}
+
+/// <summary>
+/// 注销时间事件语句——手动删除已注册的时间事件
+/// <para>语法：unregister_time_event "id"</para>
+/// <para>需要 EnableTimeSystem=true 才生效。</para>
+/// </summary>
+public sealed partial class UnregisterTimeEventStmt : DslStatement
+{
+    /// <summary>要注销的事件 ID</summary>
+    public required string Id { get; init; }
+}
 
 /// <summary>
 /// 通知语句——显示 Toast 通知

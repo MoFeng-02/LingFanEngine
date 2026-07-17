@@ -1,4 +1,5 @@
 using LingFanEngine.Abstractions.Entities.Enums;
+using LingFanEngine.Abstractions.Entities.Events;
 using LingFanEngine.Abstractions.Models.Saves;
 
 namespace LingFanEngine.Abstractions.Models;
@@ -61,5 +62,19 @@ public class SaveData
     /// <para>仅 Game 场景允许存档；Menu/UI 场景不应出现在存档中。</para>
     /// </summary>
     public SceneType SceneType { get; set; } = SceneType.Game;
+
+    /// <summary>
+    /// 时间事件列表快照（仅 EnableTimeSystem=true 时有值）
+    /// <para>存档时从 IEventScheduler 获取已注册事件列表。</para>
+    /// <para>读档时恢复到 EventScheduler，确保时间事件不丢失。</para>
+    /// </summary>
+    public List<TimeEventEntity>? TimeEvents { get; set; }
+
+    /// <summary>
+    /// 回调驱动时间事件存档状态（Phase 61）
+    /// <para>持久化已注册事件 ID 和已触发单次事件 ID。</para>
+    /// <para>回调本身在场景初始化时重新注册（Func&lt;Task&gt; 不可序列化）。</para>
+    /// </summary>
+    public TimeEventSaveState? TimeEventState { get; set; }
 }
 

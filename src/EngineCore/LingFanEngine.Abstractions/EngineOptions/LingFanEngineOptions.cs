@@ -166,8 +166,38 @@ public class LingFanEngineOptions
     /// <summary>
     /// 是否启用游戏时间系统（启用后 __game_time_* 状态会随存档持久化）。默认 false。
     /// <para>关闭时开发者可用普通变量（如 time_of_day="morning"）自行管理时间状态。</para>
+    /// <para>启用后进入"小说世界模式"：时间自动推进、时间事件触发、禁用逐句回溯。</para>
     /// </summary>
     public bool EnableTimeSystem { get; set; }
+
+    /// <summary>
+    /// 多少现实秒推进 1 游戏分钟。默认 1.0（1 现实秒 = 1 游戏分钟）。
+    /// <para>仅在 EnableTimeSystem=true 时生效。</para>
+    /// <para>0.5 = 2 倍速（30 现实秒 = 1 游戏天），2.0 = 半速（48 现实分钟 = 1 游戏天）。</para>
+    /// <para>默认规则：1 现实秒 = 1 游戏分钟 → 60 秒 = 1 小时 → 24 现实分钟 = 1 游戏天。</para>
+    /// </summary>
+    public double SecondsPerGameMinute { get; set; } = 1.0;
+
+    /// <summary>
+    /// 游戏起始天数（显示值）。默认 1。
+    /// <para>仅在 EnableTimeSystem=true 时生效。</para>
+    /// <para>CurrentDay = TimeStartDay + (TotalMinutes / 1440)。</para>
+    /// <para>设为 1 则从"第 1 天"开始，设为 0 则从"第 0 天"开始。</para>
+    /// </summary>
+    public int TimeStartDay { get; set; } = 1;
+
+    /// <summary>
+    /// 游戏起始小时（0~23）。默认 0。
+    /// <para>仅在 EnableTimeSystem=true 时生效。</para>
+    /// <para>游戏开始时 TotalMinutes = TimeStartHour * 60 + TimeStartMinute。</para>
+    /// </summary>
+    public int TimeStartHour { get; set; } = 0;
+
+    /// <summary>
+    /// 游戏起始分钟（0~59）。默认 0。
+    /// <para>仅在 EnableTimeSystem=true 时生效。</para>
+    /// </summary>
+    public int TimeStartMinute { get; set; } = 0;
 
     /// <summary>默认打字机速度（字符/秒），DialogBox 初始化时读取。默认 30。</summary>
     public double DefaultTextSpeed { get; set; } = 30;

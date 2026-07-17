@@ -596,6 +596,28 @@ private static readonly Parser<char, DslStatement> _nvl =
     private static readonly Parser<char, DslStatement> _timeResume =
         String("time_resume").ThenReturn((DslStatement)new TimeResumeStmt());
 
+    /// <summary>skip_time N</summary>
+    private static readonly Parser<char, DslStatement> _skipTime =
+        from _1 in String("skip_time").Before(_ws)
+        from minutes in Number.Before(_ws)
+        select (DslStatement)new SkipTimeStmt { Minutes = (int)minutes };
+
+    /// <summary>
+    /// set_time_event "id" HOUR [minute=N] [day=N] [once=true|false] [weekdays="Mon,Tue"] [condition="{expr}"] [desc="描述"]
+    /// </summary>
+    private static readonly Parser<char, DslStatement> _setTimeEvent =
+        from _1 in String("set_time_event").Before(_ws)
+        from id in QuotedString.Before(_ws)
+        from hour in Number.Before(_ws)
+        from props in _propPair.Many()
+        select ParseSetTimeEvent(id, (int)hour, props);
+
+    /// <summary>unregister_time_event "id"</summary>
+    private static readonly Parser<char, DslStatement> _unregisterTimeEvent =
+        from _1 in String("unregister_time_event").Before(_ws)
+        from id in QuotedString.Before(_ws)
+        select (DslStatement)new UnregisterTimeEventStmt { Id = id };
+
     /// <summary>notify "text" [type=warning] [duration=5.0]</summary>
     private static readonly Parser<char, DslStatement> _notify =
         from _1 in String("notify").Before(_ws)
@@ -615,6 +637,7 @@ private static readonly Parser<char, DslStatement> _nvl =
     private static DslStatement ParseTimeEvent(IEnumerable<(string key, string value)> props)
     {
         int day = 0;
+        DayOfWeek[]? daysOfWeek = null;
         int? hour = null;
         int? minute = null;
         string target = "";
@@ -628,6 +651,9 @@ private static readonly Parser<char, DslStatement> _nvl =
             {
                 case "day":
                     int.TryParse(value, out day);
+                    break;
+                case "weekday":
+                    daysOfWeek = ParseDaysOfWeek(value);
                     break;
                 case "hour":
                     if (int.TryParse(value, out var h)) hour = h;
@@ -654,9 +680,92 @@ private static readonly Parser<char, DslStatement> _nvl =
         return new TimeEventStmt
         {
             TriggerDay = day,
+            DaysOfWeek = daysOfWeek,
             TriggerHour = hour,
             TriggerMinute = minute,
             Target = target,
+            IsOneShot = once,
+            Condition = condition,
+            Description = desc
+        };
+    }
+
+    /// <summary>
+    /// 解析星期几字符串为 DayOfWeek 数组
+    /// <para>支持缩写 Mon/Tue/Wed/Thu/Fri/Sat/Sun 或全称 Monday/Tuesday 等，逗号分隔多选。</para>
+    /// </summary>
+    private static DayOfWeek[]? ParseDaysOfWeek(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+
+        var parts = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var result = new List<DayOfWeek>(parts.Length);
+
+        foreach (var part in parts)
+        {
+            var dow = part.ToLowerInvariant() switch
+            {
+                "mon" or "monday" => DayOfWeek.Monday,
+                "tue" or "tuesday" => DayOfWeek.Tuesday,
+                "wed" or "wednesday" => DayOfWeek.Wednesday,
+                "thu" or "thursday" => DayOfWeek.Thursday,
+                "fri" or "friday" => DayOfWeek.Friday,
+                "sat" or "saturday" => DayOfWeek.Saturday,
+                "sun" or "sunday" => DayOfWeek.Sunday,
+                _ => throw new FormatException($"无法识别的星期几: '{part}'。支持 Mon/Tue/Wed/Thu/Fri/Sat/Sun 或全称。")
+            };
+            if (!result.Contains(dow))
+                result.Add(dow);
+        }
+
+        return result.Count > 0 ? result.ToArray() : null;
+    }
+
+    /// <summary>
+    /// 解析 set_time_event 属性列表为 SetTimeEventStmt
+    /// </summary>
+    private static DslStatement ParseSetTimeEvent(string id, int hour, IEnumerable<(string key, string value)> props)
+    {
+        int? minute = null;
+        int? day = null;
+        DayOfWeek[]? daysOfWeek = null;
+        bool once = false;
+        string? condition = null;
+        string? desc = null;
+
+        foreach (var (key, value) in props)
+        {
+            switch (key)
+            {
+                case "minute":
+                    if (int.TryParse(value, out var m)) minute = m;
+                    break;
+                case "day":
+                    if (int.TryParse(value, out var d)) day = d;
+                    break;
+                case "weekdays":
+                case "weekday":
+                    daysOfWeek = ParseDaysOfWeek(value);
+                    break;
+                case "once":
+                    once = string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+                    break;
+                case "condition":
+                    condition = value.Trim().Trim('{', '}');
+                    break;
+                case "desc":
+                    desc = value;
+                    break;
+            }
+        }
+
+        return new SetTimeEventStmt
+        {
+            Id = id,
+            Hour = hour,
+            Minute = minute,
+            Day = day,
+            DaysOfWeek = daysOfWeek,
             IsOneShot = once,
             Condition = condition,
             Description = desc
@@ -1222,6 +1331,9 @@ private static readonly Parser<char, DslStatement> _nvl =
         // stop_ambient 必须在 ambient 之前（长关键字优先）
         _stopAmbient,
         _ambient,
+        // set_time_event / unregister_time_event 必须在 set 之前（长关键字优先）
+        _setTimeEvent,
+        _unregisterTimeEvent,
         // 单关键字
         _define,
         _scene,
@@ -1256,6 +1368,7 @@ private static readonly Parser<char, DslStatement> _nvl =
         _timeEvent,
         _timePause,
         _timeResume,
+        _skipTime,
         _notify,
         // Phase 44: 叙事增强
         _switch,

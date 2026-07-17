@@ -1,4 +1,5 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System.Collections.Concurrent;
+﻿﻿using System.Collections.Concurrent;
+using LingFanEngine.Abstractions.Entities.Events;
 using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Services.Core;
@@ -841,6 +842,9 @@ public readonly record struct TimeEventCommand : ICommand
     /// <summary>触发的游戏天数</summary>
     public int TriggerDay { get; init; }
 
+    /// <summary>触发的星期几（null=不按星期过滤，优先于 TriggerDay）</summary>
+    public DayOfWeek[]? DaysOfWeek { get; init; }
+
     /// <summary>触发的小时（null=任意小时）</summary>
     public int? TriggerHour { get; init; }
 
@@ -863,6 +867,66 @@ public readonly record struct TimeEventCommand : ICommand
 }
 
 /// <summary>
+/// 回调驱动时间事件注册命令
+/// <para>由 DSL set_time_event 语句编译生成。</para>
+/// <para>子块编译为独立 ICommand[]，触发时由 DslExecutor 执行。</para>
+/// </summary>
+public readonly record struct SetTimeEventCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+
+    /// <summary>事件 ID（强制手写）</summary>
+    public required string Id { get; init; }
+
+    /// <summary>触发小时（0-23）</summary>
+    public int Hour { get; init; }
+
+    /// <summary>触发分钟（null=整点触发）</summary>
+    public int? Minute { get; init; }
+
+    /// <summary>
+    /// 天数约束（null=不限制）
+    /// <para>IsOneShot=true: 绝对天数（CurrentDay == Day）</para>
+    /// <para>IsOneShot=false: 间隔天数（每 Day 天触发一次）</para>
+    /// </summary>
+    public int? Day { get; init; }
+
+    /// <summary>星期几（null=每天）</summary>
+    public DayOfWeek[]? DaysOfWeek { get; init; }
+
+    /// <summary>是否单次触发</summary>
+    public bool IsOneShot { get; init; } = false;
+
+    /// <summary>子块编译的命令列表</summary>
+    public IReadOnlyList<ICommand>? Commands { get; init; }
+
+    /// <summary>条件表达式（可选）</summary>
+    public string? Condition { get; init; }
+
+    /// <summary>事件描述</summary>
+    public string? Description { get; init; }
+
+    public SetTimeEventCommand() { }
+
+    /// <summary>
+    /// 转换为 TimeEventRegistration（供 SetTimeEventHandler 和读档重注册使用）
+    /// </summary>
+    public TimeEventRegistration ToRegistration() => new()
+    {
+        Id = Id,
+        Hour = Hour,
+        Minute = Minute,
+        Day = Day,
+        DaysOfWeek = DaysOfWeek,
+        IsOneShot = IsOneShot,
+        Commands = Commands,
+        Condition = Condition,
+        Description = Description
+    };
+}
+
+/// <summary>
 /// 暂停游戏时间命令
 /// </summary>
 public readonly record struct TimePauseCommand : ICommand
@@ -882,6 +946,38 @@ public readonly record struct TimeResumeCommand : ICommand
     public CommandPriority Priority { get; init; } = CommandPriority.Normal;
 
     public TimeResumeCommand() { }
+}
+
+/// <summary>
+/// 批量跳过游戏时间命令
+/// <para>DSL skip_time 编译结果。逐分钟 Tick，确保中间时间事件被检查。</para>
+/// <para>需要 EnableTimeSystem=true。</para>
+/// </summary>
+public readonly record struct SkipTimeCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+
+    /// <summary>要跳过的分钟数</summary>
+    public int Minutes { get; init; }
+
+    public SkipTimeCommand() { }
+}
+
+/// <summary>
+/// 注销时间事件命令——手动删除已注册的时间事件
+/// <para>DSL unregister_time_event "id" 编译结果。</para>
+/// <para>需要 EnableTimeSystem=true + IEventScheduler 可用。</para>
+/// </summary>
+public readonly record struct UnregisterTimeEventCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+
+    /// <summary>要注销的事件 ID</summary>
+    public required string Id { get; init; }
+
+    public UnregisterTimeEventCommand() { }
 }
 
 /// <summary>

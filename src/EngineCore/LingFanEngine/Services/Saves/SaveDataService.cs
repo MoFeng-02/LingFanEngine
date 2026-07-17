@@ -4,6 +4,7 @@ using LingFanEngine.Abstractions.EngineOptions;
 using LingFanEngine.Abstractions.Entities.Enums;
 using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
+using LingFanEngine.Abstractions.Interfaces.Events;
 using LingFanEngine.Abstractions.Interfaces.Saves;
 using LingFanEngine.Abstractions.Interfaces.Scripting;
 using LingFanEngine.Abstractions.Models;
@@ -29,6 +30,7 @@ public class SaveDataService : ISaveDataService
     private readonly ISceneRegistry? _sceneRegistry;
     private readonly IStoryRegistry? _storyRegistry;
     private readonly IDslExecutor? _dslExecutor;
+    private readonly IEventScheduler? _eventScheduler;
 
     /// <summary>截图回调（由 GameLoop 在 SetSceneView 时设置）</summary>
     public Func<byte[]?>? CaptureThumbnail { get; set; }
@@ -60,7 +62,8 @@ public class SaveDataService : ISaveDataService
         ISceneStack? sceneStack = null,
         ISceneRegistry? sceneRegistry = null,
         IStoryRegistry? storyRegistry = null,
-        IDslExecutor? dslExecutor = null)
+        IDslExecutor? dslExecutor = null,
+        IEventScheduler? eventScheduler = null)
     {
         _state = state;
         _jsonConverter = jsonConverter;
@@ -70,6 +73,7 @@ public class SaveDataService : ISaveDataService
         _sceneRegistry = sceneRegistry;
         _storyRegistry = storyRegistry;
         _dslExecutor = dslExecutor;
+        _eventScheduler = eventScheduler;
     }
 
     /// <inheritdoc/>
@@ -160,11 +164,21 @@ public class SaveDataService : ISaveDataService
             SceneType = SceneType.Game,
         };
 
+        // Phase 60-61: 时间事件持久化（仅小说世界模式）
+        if (_options.EnableTimeSystem && _eventScheduler != null)
+        {
+            data.TimeEvents = _eventScheduler.GetRegisteredEvents().ToList();
+            data.TimeEventState = _eventScheduler.GetSaveState();
+        }
+
         return data;
     }
 
     /// <inheritdoc/>
-    public void ApplySaveData(SaveData data)
+    public void ApplySaveData(SaveData data) => ApplySaveData(data, continueGame: true);
+
+    /// <inheritdoc/>
+    public void ApplySaveData(SaveData data, bool continueGame)
     {
         // P1-#13: 存档版本迁移检查
         if (!string.IsNullOrEmpty(data.GameVersion) && data.GameVersion != _options.GameVersion)
@@ -281,6 +295,19 @@ public class SaveDataService : ISaveDataService
         // 4a. 清除对话历史（存档不保存历史，读档后应从空开始）
         _state.Set(StateKeys.History.Entries, new List<DialogHistoryEntry>());
 
+        // 4b. Phase 60-61: 恢复时间事件状态（仅小说世界模式）
+        // 回调驱动事件：恢复 firedOneShotIds，场景初始化时重新注册回调
+        // 导航驱动事件（兼容旧 API）：直接恢复注册
+        if (_options.EnableTimeSystem && _eventScheduler != null)
+        {
+            _eventScheduler.ApplySaveState(data.TimeEventState);
+            if (data.TimeEvents != null)
+            {
+                _eventScheduler.RegisterEvents(data.TimeEvents);
+                Debug.WriteLine($"[SaveDataService] 恢复 {data.TimeEvents.Count} 个导航驱动时间事件");
+            }
+        }
+
         // 5. 重新进入场景（恢复场景逻辑执行）
         var sceneName = data.SceneName ?? "";
         _state.Set(StateKeys.Scene.CurrentName, sceneName);
@@ -315,12 +342,39 @@ public class SaveDataService : ISaveDataService
                 if (cmds != null && lbls != null)
                 {
                     _dslExecutor.LoadCommands(cmds, lbls);
-                    var savedIndex = data.DslCurrentIndex >= 0 ? data.DslCurrentIndex : 0;
+                    // Phase 60: continueGame=false（锚点读取）时从头执行场景
+                    var savedIndex = !continueGame ? 0 : (data.DslCurrentIndex >= 0 ? data.DslCurrentIndex : 0);
 
                     // 回放场景构建命令重建场景状态（场景元素 + 运行时元素 + 背景）
                     // 统一使用 SceneReplayHelper 处理 ShowElementCommand/ShowHideCommand/BgSwitchCommand/SpriteCommand
                     var replayCount = SceneReplayHelper.ReplaySceneState(cmds, savedIndex, _state);
                     Debug.WriteLine($"[SaveDataService] 回放场景: {replayCount} 个场景元素");
+
+                    // Phase 61: continueGame=true 时，重注册 [0, savedIndex) 区间的 SetTimeEventCommand
+                    // SceneReplayHelper 只处理视觉命令，不处理事件注册命令。
+                    // 如果不重注册，存档点之前的 set_time_event 注册的回调事件将丢失。
+                    // continueGame=false 时 savedIndex=0，DSL 从头执行会自然重注册，无需此处处理。
+                    // Phase 62: 只重注册存档时实际已注册的事件（检查 TimeEventState.RegisteredIds），
+                    //           避免错误注册条件分支中从未执行过的 set_time_event。
+                    if (continueGame && savedIndex > 0 && _options.EnableTimeSystem && _eventScheduler != null)
+                    {
+                        var registeredIds = data.TimeEventState?.RegisteredIds;
+                        int reregistered = 0;
+                        for (int i = 0; i < savedIndex && i < cmds.Count; i++)
+                        {
+                            if (cmds[i] is SetTimeEventCommand steCmd)
+                            {
+                                // 只重注册存档时确实已注册的事件
+                                if (registeredIds == null || registeredIds.Contains(steCmd.Id))
+                                {
+                                    _eventScheduler.RegisterEvent(steCmd.ToRegistration());
+                                    reregistered++;
+                                }
+                            }
+                        }
+                        if (reregistered > 0)
+                            Debug.WriteLine($"[SaveDataService] 重注册 {reregistered} 个回调驱动时间事件");
+                    }
 
                     _state.Set(StateKeys.Dsl.CurrentIndex, savedIndex);
                     _dslExecutor.Start();

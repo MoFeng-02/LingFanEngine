@@ -68,7 +68,7 @@ public static class DslKeywords
         // 调试
         "debug",
         // 时间事件
-        "time_event", "time_pause", "time_resume",
+        "time_event", "time_pause", "time_resume", "skip_time", "set_time_event", "unregister_time_event",
         // 通知
         "notify",
         // Live2D
@@ -114,8 +114,8 @@ public static class DslKeywords
         "clear", "exit",
         // scene 头属性键
         "type", "layout",
-        // time_event 参数
-        "day", "hour", "minute", "target", "desc",
+        // time_event / set_time_event 参数
+        "day", "hour", "minute", "target", "desc", "weekdays", "weekday", "condition",
         // notify 参数
         "duration",
         // popup 参数

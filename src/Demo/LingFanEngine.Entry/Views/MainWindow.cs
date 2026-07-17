@@ -182,6 +182,10 @@ public partial class MainWindow : Window
     {
         if (_state == null || _gameController == null) return;
 
+        // Phase 60: 小说世界模式禁用滚轮回溯/前进
+        var options = _services.GetService<LingFanEngineOptions>();
+        if (options?.EnableTimeSystem == true) return;
+
         // 仅 Game 场景支持滚轮回溯
         if ((SceneType)_state.Get<int>(StateKeys.Scene.CurrentType) != SceneType.Game)
             return;

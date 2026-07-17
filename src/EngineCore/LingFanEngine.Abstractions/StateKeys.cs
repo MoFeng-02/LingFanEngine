@@ -265,6 +265,7 @@ public const string Menu = "menu";
 public const string Input = "input";
 public const string Dialog = "dialog";
 public const string Pause = "pause";
+public const string CallScreen = "call_screen";
         }
     }
 
@@ -410,6 +411,9 @@ public const string AmbientPath = "__ambient_path";
 
         /// <summary>时间缩放系数 (float)，1.0 = 正常</summary>
         public const string Scale = "__game_time_scale";
+
+        /// <summary>当前游戏天数 (int)——由 EventScheduler 在 OnTimeAdvanced 时更新，供条件表达式引用</summary>
+        public const string CurrentDay = "__current_day";
     }
 
     // ==================== 控件级动画 ====================

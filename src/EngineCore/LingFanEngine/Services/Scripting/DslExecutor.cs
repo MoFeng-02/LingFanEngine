@@ -1,8 +1,10 @@
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Entities.Enums;
+using LingFanEngine.Abstractions.Entities.Events;
 using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.EngineOptions;
 using LingFanEngine.Abstractions.Interfaces.Core;
+using LingFanEngine.Abstractions.Interfaces.Events;
 using LingFanEngine.Abstractions.Interfaces.Scripting;
 using LingFanEngine.Abstractions.Models;
 using LingFanEngine.Services.Core;
@@ -24,6 +26,7 @@ public class DslExecutor : IDslExecutor
     private readonly ICommandPipeline _pipeline;
     private readonly LingFanEngineOptions _options;
     private readonly IAsyncWaitService _waitService;
+    private readonly IEventScheduler? _eventScheduler;
     private IStoryRegistry? _storyRegistry;
 
     /// <summary>异步执行取消令牌（线程安全——使用 Interlocked.Exchange 原子替换）</summary>
@@ -52,13 +55,15 @@ public class DslExecutor : IDslExecutor
     public Func<string, Task>? OnCSharpSceneReplay { get; set; }
 
     public DslExecutor(IStateContainer state, ICommandPipeline pipeline, LingFanEngineOptions? options = null,
-        IAsyncWaitService? waitService = null)
+        IAsyncWaitService? waitService = null,
+        IEventScheduler? eventScheduler = null)
     {
         _state = state;
         _pipeline = pipeline;
         _options = options ?? new LingFanEngineOptions();
         // waitService 可为 null（仅测试场景——测试不执行 RunAsync 中的交互等待方法）
         _waitService = waitService!;
+        _eventScheduler = eventScheduler;
     }
 
     /// <inheritdoc/>
@@ -179,6 +184,10 @@ public class DslExecutor : IDslExecutor
         {
             while (!ct.IsCancellationRequested)
             {
+                // 处理待处理的时间事件回调（在主脚本命令之间执行）
+                await ProcessPendingTimeEvents(ct);
+                if (ct.IsCancellationRequested) return;
+
                 var currentIndex = _state.Get<int>(StateKeys.Dsl.CurrentIndex);
 
                 if (currentIndex >= commands.Count)
@@ -543,9 +552,9 @@ public class DslExecutor : IDslExecutor
                                 _state.Set<object?>(StateKeys.Screen.Params, null);
 
                             if (!_state.Get<bool>(StateKeys.Rollback.IsReplay))
-                                CreateCheckpoint(currentIndex, "call_screen");
+                                CreateCheckpoint(currentIndex, StateKeys.Dsl.WaitingTypes.CallScreen);
 
-                            _state.Set(StateKeys.Dsl.WaitingType, "call_screen");
+                            _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.CallScreen);
                             _state.Set<object?>(StateKeys.Screen.Result, null);
                             _ = _pipeline.SendAsync(new NavigateCommand { Path = cs.SceneName });
                             await WaitForScreenResult(ct);
@@ -612,6 +621,179 @@ public class DslExecutor : IDslExecutor
         {
             System.Diagnostics.Debug.WriteLine($"[DslExecutor] RunAsync error: {ex}");
             _state.Set(StateKeys.Dsl.Executing, false);
+        }
+    }
+
+    // ========== 时间事件回调执行 ==========
+
+    /// <summary>
+    /// 处理待处理的时间事件（在主脚本命令之间执行）
+    /// <para>DslExecutor 在 RunAsync 循环顶部调用此方法。</para>
+    /// <para>对每个事件：C# 回调直接 await，DSL 命令逐条执行（含交互等待）。</para>
+    /// </summary>
+    private async Task ProcessPendingTimeEvents(CancellationToken ct)
+    {
+        if (_eventScheduler == null) return;
+
+        while (_eventScheduler.TryDequeuePendingEvent(out var evt) && evt != null)
+        {
+            if (ct.IsCancellationRequested) return;
+
+            // 检查条件表达式
+            if (!string.IsNullOrWhiteSpace(evt.Condition))
+            {
+                try
+                {
+                    if (!DslExpressionEvaluator.EvaluateBool(evt.Condition, _state))
+                        continue;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[DslExecutor] 时间事件条件求值失败 [{evt.Id}]: {ex.Message}");
+                    continue;
+                }
+            }
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[DslExecutor] 执行时间事件 [{evt.Id}] - {evt.Description ?? "(无描述)"}");
+
+            try
+            {
+                if (evt.Callback != null)
+                {
+                    // C# 回调
+                    await evt.Callback();
+                }
+                else if (evt.Commands != null && evt.Commands.Count > 0)
+                {
+                    // DSL 命令——逐条执行（含交互等待）
+                    foreach (var cmd in evt.Commands)
+                    {
+                        if (ct.IsCancellationRequested) return;
+                        await ExecuteTimeEventCommandAsync(cmd, ct);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DslExecutor] 时间事件执行异常 [{evt.Id}]: {ex.Message}");
+            }
+
+            // 标记单次事件已触发
+            if (evt.IsOneShot)
+            {
+                _eventScheduler.MarkFired(evt.Id);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 执行时间事件中的单条命令（复用 DslExecutor 的交互等待逻辑）
+    /// </summary>
+    private async Task ExecuteTimeEventCommandAsync(ICommand cmd, CancellationToken ct)
+    {
+        switch (cmd)
+        {
+            case ShowDialogCommand:
+                _ = _pipeline.SendAsync(cmd);
+                _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Dialog);
+                await WaitForDialogComplete(ct);
+                _state.Set(StateKeys.Dsl.WaitingType, "");
+                _state.Set(StateKeys.Dialog.Clickable, false);
+                _state.Set(StateKeys.Dialog.Noskip, false);
+                break;
+
+            case WaitCommand wait:
+                if (wait.IsSkipable)
+                {
+                    _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.WaitSkipable);
+                    _state.Set(StateKeys.Dialog.Text, "");
+                    _state.Set(StateKeys.Dialog.Speaker, "");
+                    _state.Set(StateKeys.Dialog.Clickable, false);
+                    _state.Set(StateKeys.Dialog.Complete, false);
+
+                    using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    var delayTask = Task.Delay(TimeSpan.FromSeconds(wait.Seconds), waitCts.Token);
+                    var clickTask = WaitForDialogComplete(waitCts.Token);
+                    await Task.WhenAny(delayTask, clickTask);
+                    waitCts.Cancel();
+
+                    _state.Set(StateKeys.Dialog.Complete, false);
+                    _state.Set(StateKeys.Dsl.WaitingType, "");
+                }
+                else
+                {
+                    try { await Task.Delay(TimeSpan.FromSeconds(wait.Seconds), ct); }
+                    catch (OperationCanceledException) { return; }
+                }
+                break;
+
+            case HardPauseCommand:
+                _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Pause);
+                _state.Set(StateKeys.Dialog.Text, "");
+                _state.Set(StateKeys.Dialog.Speaker, "");
+                _state.Set(StateKeys.Dialog.Clickable, false);
+                _state.Set(StateKeys.Dialog.Complete, false);
+                await WaitForDialogComplete(ct);
+                _state.Set(StateKeys.Dsl.WaitingType, "");
+                break;
+
+            case TransitionCommand:
+                _ = _pipeline.SendAsync(cmd);
+                await WaitForTransitionComplete(ct);
+                break;
+
+            case MenuCommand menu:
+                _state.Set(StateKeys.Menu.Prompt, menu.Prompt);
+                _state.Set<object>(StateKeys.Menu.Options, menu.Options.Select(o => o.Text).ToArray());
+                _state.Set(StateKeys.Menu.Selected, -1);
+                _state.Set(StateKeys.Menu.DslTargets, string.Join(",", menu.Options.Select(o => o.TargetLabel)));
+                _state.Set(StateKeys.Menu.DslTexts, string.Join(",", menu.Options.Select(o => o.Text)));
+                _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Menu);
+                _ = await WaitForMenuSelection(ct);
+                _state.Set(StateKeys.Dsl.WaitingType, "");
+                _state.Set(StateKeys.Menu.Prompt, "");
+                _state.Set<object>(StateKeys.Menu.Options, Array.Empty<string>());
+                _state.Set(StateKeys.Menu.Selected, -1);
+                _state.Set(StateKeys.Menu.DslTargets, "");
+                _state.Set(StateKeys.Menu.DslTexts, "");
+                break;
+
+            case InputCommand input:
+                _state.Set(StateKeys.Input.Prompt, input.Prompt);
+                _state.Set(StateKeys.Input.DslStore, input.StoreKey);
+                _state.Set<object>(StateKeys.Input.Options, input.Options ?? Array.Empty<string>());
+                _state.Set<object?>(StateKeys.Input.Result, null);
+                _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Input);
+                _ = await WaitForInput(ct);
+                _state.Set(StateKeys.Dsl.WaitingType, "");
+                _state.Set(StateKeys.Input.Prompt, "");
+                _state.Set(StateKeys.Input.DslStore, "");
+                _state.Set<object>(StateKeys.Input.Options, Array.Empty<string>());
+                break;
+
+            case CallScreenCommand cs:
+                if (cs.Params != null)
+                    _state.Set(StateKeys.Screen.Params, cs.Params);
+                else
+                    _state.Set<object?>(StateKeys.Screen.Params, null);
+                _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.CallScreen);
+                _state.Set<object?>(StateKeys.Screen.Result, null);
+                _ = _pipeline.SendAsync(new NavigateCommand { Path = cs.SceneName });
+                await WaitForScreenResult(ct);
+                _state.Set(StateKeys.Dsl.WaitingType, "");
+                break;
+
+            default:
+                // 非交互命令——直接发送到管道
+                _ = _pipeline.SendAsync(cmd);
+                break;
         }
     }
 
@@ -910,6 +1092,9 @@ public class DslExecutor : IDslExecutor
     /// </summary>
     public void CreateSceneCheckpoint(string sceneName)
     {
+        // Phase 60: 小说世界模式禁用 C# 场景检查点
+        if (_options.EnableTimeSystem) return;
+
         var currentType = _state.Get<int>(StateKeys.Scene.CurrentType);
         if ((SceneType)currentType != SceneType.Game) return;
 
@@ -945,6 +1130,9 @@ public class DslExecutor : IDslExecutor
 
     private void CreateCheckpoint(int commandIndex, string interactionType = StateKeys.Dsl.WaitingTypes.Dialog)
     {
+        // Phase 60: 小说世界模式禁用逐句回溯——时间锚点存档是唯一的"历史"
+        if (_options.EnableTimeSystem) return;
+
         // Phase 24: block_rollback——如果当前命令索引 >= 阻止标记，跳过检查点创建
         var blockedUntil = _state.Get<int>(StateKeys.Rollback.BlockedUntil);
         if (blockedUntil >= 0 && commandIndex >= blockedUntil)

@@ -12,7 +12,7 @@ public interface IGameTimeService
     long TotalMinutes { get; }
 
     /// <summary>
-    /// 当前游戏天数（基于 TotalMinutes / 1440）
+    /// 当前游戏天数（从 TimeStartDay 开始，默认 Day 1）
     /// </summary>
     int CurrentDay { get; }
 
@@ -25,6 +25,11 @@ public interface IGameTimeService
     /// 当前游戏分钟（0~59）
     /// </summary>
     int CurrentMinute { get; }
+
+    /// <summary>
+    /// 当前星期几（游戏第 1 天 = Monday，7 天一循环）
+    /// </summary>
+    DayOfWeek DayOfWeek { get; }
 
     /// <summary>
     /// 是否暂停
@@ -50,6 +55,18 @@ public interface IGameTimeService
     /// 推进一游戏分钟（由主循环调用）
     /// </summary>
     void Tick();
+
+    /// <summary>
+    /// 批量跳过指定分钟数（逐分钟 Tick，确保中间时间事件被检查）
+    /// </summary>
+    /// <param name="minutes">要跳过的分钟数</param>
+    void SkipTime(int minutes);
+
+    /// <summary>
+    /// 重置游戏时间到配置的起始值（TotalMinutes/Paused/TimeScale 全部恢复初始状态）
+    /// <para>用于新开游戏或显式重新开始时间。</para>
+    /// </summary>
+    void Reset();
 
     /// <summary>
     /// 时间推进事件：每 Tick 后触发
@@ -81,4 +98,10 @@ public class GameTimeEventArgs : EventArgs
     /// 当前分钟
     /// </summary>
     public int CurrentMinute { get; init; }
+
+    /// <summary>
+    /// 当前星期几（System.DayOfWeek，基于游戏天数循环 7 天一周）
+    /// <para>游戏第 1 天 = Monday，第 7 天 = Sunday，第 8 天 = Monday...</para>
+    /// </summary>
+    public DayOfWeek DayOfWeek { get; init; }
 }

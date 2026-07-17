@@ -83,13 +83,15 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<IStateContainer>(),
             sp.GetRequiredService<ICommandPipeline>(),
             sp.GetRequiredService<LingFanEngineOptions>(),
-            sp.GetRequiredService<IAsyncWaitService>()));
+            sp.GetRequiredService<IAsyncWaitService>(),
+            sp.GetService<IEventScheduler>()));
         services.AddSingleton<IPreferencesService, PreferencesService>();
         services.AddSingleton<IGameController>(sp => new GameController(
             sp.GetRequiredService<ICommandPipeline>(),
             sp.GetRequiredService<IStateContainer>(),
             sp.GetRequiredService<LingFanEngineOptions>(),
-            sp.GetRequiredService<IAsyncWaitService>()));
+            sp.GetRequiredService<IAsyncWaitService>(),
+            sp.GetService<IEventScheduler>()));
 services.AddSingleton<IEventAggregator, EventAggregator>();
 services.AddSingleton<II18nService>(sp => new I18nService(
     sp.GetRequiredService<IStateContainer>(),
@@ -168,6 +170,7 @@ services.TryAddSingleton<IEngineLogger, DebugEngineLogger>();
         services.AddSingleton<IDefaultCommandHandler, TimeEventHandler>();
         services.AddSingleton<IDefaultCommandHandler, TimePauseHandler>();
         services.AddSingleton<IDefaultCommandHandler, TimeResumeHandler>();
+        services.AddSingleton<IDefaultCommandHandler, SkipTimeHandler>();
         services.AddSingleton<IDefaultCommandHandler, NotifyHandler>();
 
         // Phase 44-47: DSL 2.0 新命令处理器
@@ -208,7 +211,8 @@ services.TryAddSingleton<IEngineLogger, DebugEngineLogger>();
             sp.GetService<ISceneStack>(),
             sp.GetService<ISceneRegistry>(),
             sp.GetService<IStoryRegistry>(),
-            sp.GetService<IDslExecutor>()));
+            sp.GetService<IDslExecutor>(),
+            sp.GetService<IEventScheduler>()));
 
         // 注册 GameLoop 并应用目标帧率
         services.AddSingleton<IGameLoop>(sp =>

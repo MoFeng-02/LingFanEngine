@@ -1,5 +1,6 @@
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Entities.Enums;
+using LingFanEngine.Abstractions.Entities.Events;
 using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
 
@@ -36,6 +37,12 @@ public abstract class StoryScript
     /// </summary>
     /// <returns></returns>
     public virtual Dictionary<string, object?> InDefines() => [];
+
+    /// <summary>
+    /// 时间注册事件，场景所有
+    /// </summary>
+    /// <returns></returns>
+    public virtual IReadOnlyList<TimeEventRegistration> InTimeEvents() => [];
 
     /// <summary>设置场景背景 + 标题（清空之前所有元素）</summary>
     protected void SetScene(string backgroundPath, string? title = null,
