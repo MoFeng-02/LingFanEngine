@@ -277,11 +277,36 @@ string? sideImage = null);
         int? day = null);
 
     /// <summary>
-    /// 按 ID 注销已注册的时间事件
+    /// 按 ID 注销已注册的时间事件（正常注销模式）
     /// <para>事件移除后不再触发。对已触发的单次事件调用此方法无效果（已自动移除）。</para>
+    /// <para>正常注销后，Run() 重执行时会重新注册（场景只是挂载器，事件靠场景重执行恢复）。</para>
     /// </summary>
     /// <param name="id">事件 ID</param>
     void UnregisterEvent(string id);
+
+    /// <summary>
+    /// 按 ID 注销已注册的时间事件（指定模式）
+    /// <para>Phase 63 新增——支持三模式注销。</para>
+    /// <para>Normal=正常注销（DSL 事件由 Run() 重执行恢复，C# 声明式事件由 restore_time_event 或读档恢复）</para>
+    /// <para>Permanent=永久销毁（永不注册，即使代码再次执行 set_time_event，不可恢复）</para>
+    /// <para>Temporary=暂时销毁（不重注册，但可通过 RestoreEvent 恢复）</para>
+    /// </summary>
+    /// <param name="id">事件 ID</param>
+    /// <param name="permanent">true=永久销毁</param>
+    /// <param name="temporary">true=暂时销毁（可恢复）</param>
+    void UnregisterEvent(string id, bool permanent = false, bool temporary = false);
+
+    /// <summary>
+    /// 恢复已注销的事件
+    /// <para>Phase 63 新增——从全局注册表查回定义重新注册。</para>
+    /// <para>支持两种恢复场景：</para>
+    /// <para>1. Temporary 模式注销的事件：清除标记后重新注册</para>
+    /// <para>2. Normal 模式注销的 C# 声明式事件：直接重新注册（不加标记）</para>
+    /// <para>Permanent 模式注销的事件不可恢复。</para>
+    /// <para>动态注册的事件（Run() 中 SetTimeEventAsync）不在全局注册表中，需 Run() 重执行恢复。</para>
+    /// </summary>
+    /// <param name="id">事件 ID</param>
+    void RestoreEvent(string id);
 
     /// <summary>暂停游戏时间推进</summary>
     void PauseGameTime();

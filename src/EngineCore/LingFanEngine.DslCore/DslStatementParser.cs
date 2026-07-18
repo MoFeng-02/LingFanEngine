@@ -1,4 +1,5 @@
 using System.Globalization;
+using LingFanEngine.Abstractions.Interfaces.Events;
 using Pidgin;
 using static Pidgin.Parser;
 using static Pidgin.Parser<char>;
@@ -612,11 +613,24 @@ private static readonly Parser<char, DslStatement> _nvl =
         from props in _propPair.Many()
         select ParseSetTimeEvent(id, (int)hour, props);
 
-    /// <summary>unregister_time_event "id"</summary>
+    /// <summary>unregister_time_event "id" [permanent|temporary]</summary>
     private static readonly Parser<char, DslStatement> _unregisterTimeEvent =
         from _1 in String("unregister_time_event").Before(_ws)
         from id in QuotedString.Before(_ws)
-        select (DslStatement)new UnregisterTimeEventStmt { Id = id };
+        from mode in Try(String("permanent").Before(_ws)).Or(Try(String("temporary").Before(_ws))).Optional()
+        select (DslStatement)new UnregisterTimeEventStmt
+        {
+            Id = id,
+            Mode = mode.HasValue
+                ? (mode.Value == "permanent" ? UnregisterMode.Permanent : UnregisterMode.Temporary)
+                : UnregisterMode.Normal
+        };
+
+    /// <summary>restore_time_event "id"</summary>
+    private static readonly Parser<char, DslStatement> _restoreTimeEvent =
+        from _1 in String("restore_time_event").Before(_ws)
+        from id in QuotedString.Before(_ws)
+        select (DslStatement)new RestoreTimeEventStmt { Id = id };
 
     /// <summary>notify "text" [type=warning] [duration=5.0]</summary>
     private static readonly Parser<char, DslStatement> _notify =
@@ -1331,9 +1345,10 @@ private static readonly Parser<char, DslStatement> _nvl =
         // stop_ambient 必须在 ambient 之前（长关键字优先）
         _stopAmbient,
         _ambient,
-        // set_time_event / unregister_time_event 必须在 set 之前（长关键字优先）
+        // set_time_event / unregister_time_event / restore_time_event 必须在 set 之前（长关键字优先）
         _setTimeEvent,
         _unregisterTimeEvent,
+        _restoreTimeEvent,
         // 单关键字
         _define,
         _scene,

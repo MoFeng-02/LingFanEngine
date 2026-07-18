@@ -31,6 +31,7 @@ public class SaveDataService : ISaveDataService
     private readonly IStoryRegistry? _storyRegistry;
     private readonly IDslExecutor? _dslExecutor;
     private readonly IEventScheduler? _eventScheduler;
+private readonly ITimeEventRegistry? _timeEventRegistry;
 
     /// <summary>截图回调（由 GameLoop 在 SetSceneView 时设置）</summary>
     public Func<byte[]?>? CaptureThumbnail { get; set; }
@@ -63,7 +64,8 @@ public class SaveDataService : ISaveDataService
         ISceneRegistry? sceneRegistry = null,
         IStoryRegistry? storyRegistry = null,
         IDslExecutor? dslExecutor = null,
-        IEventScheduler? eventScheduler = null)
+        IEventScheduler? eventScheduler = null,
+        ITimeEventRegistry? timeEventRegistry = null)
     {
         _state = state;
         _jsonConverter = jsonConverter;
@@ -74,6 +76,7 @@ public class SaveDataService : ISaveDataService
         _storyRegistry = storyRegistry;
         _dslExecutor = dslExecutor;
         _eventScheduler = eventScheduler;
+        _timeEventRegistry = timeEventRegistry;
     }
 
     /// <inheritdoc/>
@@ -315,6 +318,51 @@ public class SaveDataService : ISaveDataService
         _state.Set(StateKeys.Scene.Dirty, true);
         Debug.WriteLine($"[SaveDataService] After set scene+dirty: scene={sceneName}, Dirty=true, elements.count={_state.Get<List<UIElementEntity>>(StateKeys.Scene.Elements)?.Count ?? 0}");
 
+        // Phase 63: 统一重注册时间事件——在场景恢复之前执行（C# 和 DSL 场景通用）
+        // 设计理念：时间事件生命周期——事件独立于场景存在，场景只是挂载器。
+        // C# 声明式事件在 RegisterScriptEntry 时已通过 RegisterDeclaration 纳入全局注册表。
+        //
+        // continueGame=true：按 RegisteredIds 查表精确重注册（只恢复存档时已注册的）
+        // continueGame=false（锚点读取）：C# 声明式事件也需要恢复（C# 场景的 Run() 不会重新
+        //   调用 RegisterScriptEntry，声明式事件来自 InTimeEvents() 不是 Run() 中动态注册的）。
+        //   DSL 事件由场景从头执行 set_time_event 自然重注册，无需此处处理。
+        if (_options.EnableTimeSystem && _eventScheduler != null && _timeEventRegistry != null)
+        {
+            int reregistered = 0;
+
+            if (continueGame)
+            {
+                // 继续游戏：按 RegisteredIds 精确重注册
+                var registeredIds = data.TimeEventState?.RegisteredIds;
+                foreach (var id in registeredIds ?? Enumerable.Empty<string>())
+                {
+                    if (_eventScheduler.IsBlocked(id))
+                        continue;
+                    if (_timeEventRegistry.TryGetRegistration(id, out var registration))
+                    {
+                        _eventScheduler.RegisterEvent(registration);
+                        reregistered++;
+                    }
+                }
+            }
+            else
+            {
+                // 锚点读取：恢复所有 C# 声明式事件（DSL 事件由场景执行自然恢复）
+                // ApplySaveState 已从存档恢复 DestroyedIds/SuspendedIds/FiredOneShotIds，
+                // IsBlocked 检查会跳过这些事件——保持存档时的销毁/挂起/已触发状态。
+                foreach (var decl in _timeEventRegistry.GetAllDeclarations())
+                {
+                    if (_eventScheduler.IsBlocked(decl.Id))
+                        continue;
+                    if (_eventScheduler.RegisterEvent(decl))
+                        reregistered++;
+                }
+            }
+
+            if (reregistered > 0)
+                Debug.WriteLine($"[SaveDataService] 重注册 {reregistered} 个时间事件（全局注册表查表, continueGame={continueGame}）");
+        }
+
         // 5a. 尝试 C# StoryScript 场景（优先）
         var scriptEntry = TryGetScriptEntry?.Invoke(sceneName);
         if (scriptEntry != null)
@@ -349,32 +397,6 @@ public class SaveDataService : ISaveDataService
                     // 统一使用 SceneReplayHelper 处理 ShowElementCommand/ShowHideCommand/BgSwitchCommand/SpriteCommand
                     var replayCount = SceneReplayHelper.ReplaySceneState(cmds, savedIndex, _state);
                     Debug.WriteLine($"[SaveDataService] 回放场景: {replayCount} 个场景元素");
-
-                    // Phase 61: continueGame=true 时，重注册 [0, savedIndex) 区间的 SetTimeEventCommand
-                    // SceneReplayHelper 只处理视觉命令，不处理事件注册命令。
-                    // 如果不重注册，存档点之前的 set_time_event 注册的回调事件将丢失。
-                    // continueGame=false 时 savedIndex=0，DSL 从头执行会自然重注册，无需此处处理。
-                    // Phase 62: 只重注册存档时实际已注册的事件（检查 TimeEventState.RegisteredIds），
-                    //           避免错误注册条件分支中从未执行过的 set_time_event。
-                    if (continueGame && savedIndex > 0 && _options.EnableTimeSystem && _eventScheduler != null)
-                    {
-                        var registeredIds = data.TimeEventState?.RegisteredIds;
-                        int reregistered = 0;
-                        for (int i = 0; i < savedIndex && i < cmds.Count; i++)
-                        {
-                            if (cmds[i] is SetTimeEventCommand steCmd)
-                            {
-                                // 只重注册存档时确实已注册的事件
-                                if (registeredIds == null || registeredIds.Contains(steCmd.Id))
-                                {
-                                    _eventScheduler.RegisterEvent(steCmd.ToRegistration());
-                                    reregistered++;
-                                }
-                            }
-                        }
-                        if (reregistered > 0)
-                            Debug.WriteLine($"[SaveDataService] 重注册 {reregistered} 个回调驱动时间事件");
-                    }
 
                     _state.Set(StateKeys.Dsl.CurrentIndex, savedIndex);
                     _dslExecutor.Start();

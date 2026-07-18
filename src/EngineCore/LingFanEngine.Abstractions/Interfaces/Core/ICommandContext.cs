@@ -47,6 +47,9 @@ public interface ICommandContext
     /// <summary>事件调度器（时间事件）</summary>
     IEventScheduler? EventScheduler { get; }
 
+    /// <summary>DSL 全局时间事件注册表（Phase 63，用于 restore_time_event 查回定义）</summary>
+    ITimeEventRegistry? TimeEventRegistry { get; }
+
     /// <summary>游戏时间服务</summary>
     IGameTimeService? TimeService { get; }
 

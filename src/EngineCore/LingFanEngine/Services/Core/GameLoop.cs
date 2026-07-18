@@ -33,6 +33,7 @@ public class GameLoop : IGameLoop
     private readonly IAudioManager? _audioManager;
     private readonly IVideoManager? _videoManager;
     private readonly IEventScheduler? _eventScheduler;
+private readonly ITimeEventRegistry? _timeEventRegistry;
     private readonly IDslExecutor? _dslExecutor;
     private readonly IUIThreadDispatcher? _uiThreadDispatcher;
     private CancellationTokenSource? _stopCts;
@@ -81,6 +82,29 @@ public class GameLoop : IGameLoop
     public void RegisterScriptEntry(Abstractions.Scripting.SceneScriptEntry entry)
     {
         _scriptEntries[entry.SceneName] = entry;
+
+        // Phase 63: 自动注册声明式时间事件到全局注册表 + EventScheduler
+        // 设计理念：时间事件生命周期——事件一旦注册即独立，场景只是挂载器（出生地）
+        if (entry.TimeEvents != null && entry.TimeEvents.Count > 0)
+        {
+            // 1. 纳入全局注册表（供 restore_time_event 和读档重注册跨场景查找）
+            if (_timeEventRegistry != null)
+            {
+                foreach (var evt in entry.TimeEvents)
+                {
+                    _timeEventRegistry.RegisterDeclaration(evt);
+                }
+            }
+
+            // 2. 注册到 EventScheduler（如果时间系统启用）
+            if (_eventScheduler != null && _options.EnableTimeSystem)
+            {
+                foreach (var evt in entry.TimeEvents)
+                {
+                    _eventScheduler.RegisterEvent(evt);
+                }
+            }
+        }
     }
 
     /// <inheritdoc/>
@@ -141,6 +165,7 @@ public class GameLoop : IGameLoop
         IAudioManager? audioManager = null,
         IVideoManager? videoManager = null,
         IEventScheduler? eventScheduler = null,
+        ITimeEventRegistry? timeEventRegistry = null,
         IUIThreadDispatcher? uiThreadDispatcher = null)
     {
         _pipeline = pipeline;
@@ -159,6 +184,7 @@ public class GameLoop : IGameLoop
         _audioManager = audioManager;
         _videoManager = videoManager;
         _eventScheduler = eventScheduler;
+        _timeEventRegistry = timeEventRegistry;
         _uiThreadDispatcher = uiThreadDispatcher;
 
         _stateInitializer = stateInitializer;
@@ -489,6 +515,8 @@ public class GameLoop : IGameLoop
                 case ICommandHandler<TimeEventCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<SetTimeEventCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<UnregisterTimeEventCommand> h: _dispatcher.Register(h); break;
+                // Phase 63: 恢复时间事件
+                case ICommandHandler<RestoreTimeEventCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<TimePauseCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<TimeResumeCommand> h: _dispatcher.Register(h); break;
                 case ICommandHandler<SkipTimeCommand> h: _dispatcher.Register(h); break;
@@ -683,8 +711,9 @@ public class GameLoop : IGameLoop
         public ITransitionEngine? TransitionEngine => loop._transitionEngine;
         public IAudioManager? AudioManager => loop._audioManager;
         public IVideoManager? VideoManager => loop._videoManager;
-        public IEventScheduler? EventScheduler => loop._eventScheduler;
-        public IGameTimeService? TimeService => loop._time;
+public IEventScheduler? EventScheduler => loop._eventScheduler;
+public ITimeEventRegistry? TimeEventRegistry => loop._timeEventRegistry;
+public IGameTimeService? TimeService => loop._time;
         public ISaveService? SaveService => loop._saveService;
         public LingFanEngineOptions Options => loop._options;
         public Func<byte[]?>? CaptureThumbnail => loop._sceneRenderer == null ? null : () => loop._sceneRenderer.CaptureThumbnail();

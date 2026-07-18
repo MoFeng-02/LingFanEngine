@@ -2,7 +2,9 @@ using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Entities.Events;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Events;
+using LingFanEngine.Abstractions.Interfaces.Logging;
 using LingFanEngine.Abstractions.Models;
+using LingFanEngine.Services.Logging;
 using LingFanEngine.Services.Scripting;
 
 namespace LingFanEngine.Services.Core;
@@ -30,6 +32,7 @@ public class GameController : IGameController
     private readonly IStateContainer _state;
     private readonly IAsyncWaitService _waitService;
     private readonly IEventScheduler? _eventScheduler;
+    private readonly IEngineLogger _logger;
 
     /// <summary>
     /// C# 场景回放代次（AsyncLocal——随 async 调用链流动）
@@ -42,13 +45,15 @@ public class GameController : IGameController
 public GameController(ICommandPipeline pipeline, IStateContainer state,
     LingFanEngine.Abstractions.EngineOptions.LingFanEngineOptions? options = null,
     IAsyncWaitService? waitService = null,
-    IEventScheduler? eventScheduler = null)
+    IEventScheduler? eventScheduler = null,
+    IEngineLoggerFactory? loggerFactory = null)
 {
 _pipeline = pipeline;
 _state = state;
 _options = options ?? new();
 _waitService = waitService!;
 _eventScheduler = eventScheduler;
+_logger = loggerFactory?.Create("GameController") ?? NullEngineLogger.Instance;
 }
 
     // ========== 导航 ==========
@@ -127,7 +132,7 @@ Clickable = clickable, Noskip = noskip });
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            System.Diagnostics.Debug.WriteLine($"[GameController] PollUntilTrue({key}) 超时({_options.BlockingTimeoutSeconds}s)，强制推进");
+            _logger.LogWarning($"PollUntilTrue({key}) 超时({_options.BlockingTimeoutSeconds}s)，强制推进");
         }
         catch (OperationCanceledException)
         {
@@ -205,7 +210,7 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
         }
         catch (OperationCanceledException)
         {
-            System.Diagnostics.Debug.WriteLine($"[GameController] TransitionAsync 超时({_options.BlockingTimeoutSeconds}s)，强制清除 Active");
+            _logger.LogWarning($"TransitionAsync 超时({_options.BlockingTimeoutSeconds}s)，强制清除 Active");
             _state.Set(StateKeys.Transition.Active, false);
         }
 
@@ -742,8 +747,7 @@ public void SetTimeEventAsync(
 {
     if (_eventScheduler == null)
     {
-        System.Diagnostics.Debug.WriteLine(
-            "[GameController] IEventScheduler 不可用，无法注册时间事件");
+_logger.LogWarning("IEventScheduler 不可用，无法注册时间事件");
         return;
     }
 
@@ -762,6 +766,19 @@ public void SetTimeEventAsync(
 /// <inheritdoc/>
 public void UnregisterEvent(string id) =>
     _pipeline.SendAsync(new UnregisterTimeEventCommand { Id = id });
+
+/// <inheritdoc/>
+public void UnregisterEvent(string id, bool permanent = false, bool temporary = false)
+{
+    var mode = permanent ? UnregisterMode.Permanent
+              : temporary ? UnregisterMode.Temporary
+              : UnregisterMode.Normal;
+    _pipeline.SendAsync(new UnregisterTimeEventCommand { Id = id, Mode = mode });
+}
+
+/// <inheritdoc/>
+public void RestoreEvent(string id) =>
+    _pipeline.SendAsync(new RestoreTimeEventCommand { Id = id });
 
 /// <inheritdoc/>
 public void PauseGameTime() => _pipeline.SendAsync(new TimePauseCommand());
@@ -975,7 +992,7 @@ public void ResetGameTime() => _pipeline.SendAsync(new ResetGameStateCommand());
         }
         catch (OperationCanceledException)
         {
-            System.Diagnostics.Debug.WriteLine($"[GameController] CallScreenAsync 超时({_options.InteractionTimeoutSeconds}s)");
+            _logger.LogWarning($"CallScreenAsync 超时({_options.InteractionTimeoutSeconds}s)");
             _state.Set<object?>(StateKeys.Screen.Params, null);
             return null;
         }
@@ -995,6 +1012,6 @@ public void ResetGameTime() => _pipeline.SendAsync(new ResetGameStateCommand());
         if (dict == null || !dict.TryGetValue(key, out var val) || val == null) return default;
         if (val is T typed) return typed;
         try { return (T)System.Convert.ChangeType(val, typeof(T)); }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[GameController] GetScreenParam<{typeof(T).Name}> conversion failed for key '{key}': {ex.Message}"); return default; }
+        catch (Exception ex) { _logger.LogError($"GetScreenParam<{typeof(T).Name}> conversion failed for key '{key}'", ex); return default; }
     }
 }

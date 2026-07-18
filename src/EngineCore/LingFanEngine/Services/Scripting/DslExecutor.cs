@@ -5,9 +5,11 @@ using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.EngineOptions;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Events;
+using LingFanEngine.Abstractions.Interfaces.Logging;
 using LingFanEngine.Abstractions.Interfaces.Scripting;
 using LingFanEngine.Abstractions.Models;
 using LingFanEngine.Services.Core;
+using LingFanEngine.Services.Logging;
 
 namespace LingFanEngine.Services.Scripting;
 
@@ -27,6 +29,7 @@ public class DslExecutor : IDslExecutor
     private readonly LingFanEngineOptions _options;
     private readonly IAsyncWaitService _waitService;
     private readonly IEventScheduler? _eventScheduler;
+    private readonly IEngineLogger _logger;
     private IStoryRegistry? _storyRegistry;
 
     /// <summary>异步执行取消令牌（线程安全——使用 Interlocked.Exchange 原子替换）</summary>
@@ -56,7 +59,8 @@ public class DslExecutor : IDslExecutor
 
     public DslExecutor(IStateContainer state, ICommandPipeline pipeline, LingFanEngineOptions? options = null,
         IAsyncWaitService? waitService = null,
-        IEventScheduler? eventScheduler = null)
+        IEventScheduler? eventScheduler = null,
+        IEngineLoggerFactory? loggerFactory = null)
     {
         _state = state;
         _pipeline = pipeline;
@@ -64,6 +68,7 @@ public class DslExecutor : IDslExecutor
         // waitService 可为 null（仅测试场景——测试不执行 RunAsync 中的交互等待方法）
         _waitService = waitService!;
         _eventScheduler = eventScheduler;
+        _logger = loggerFactory?.Create("DslExecutor") ?? NullEngineLogger.Instance;
     }
 
     /// <inheritdoc/>
@@ -132,13 +137,13 @@ public class DslExecutor : IDslExecutor
                     _state.Set(StateKeys.Dsl.Executing, true);
                     _state.Set(StateKeys.Dsl.WaitingType, "");
                     BeginRunAsync();
-                    System.Diagnostics.Debug.WriteLine($"[DslExecutor] 自动加载 label [{label}] 来自 {filePath}");
+                    _logger.LogDebug($"自动加载 label [{label}] 来自 {filePath}");
                     return;
                 }
             }
         }
 
-        System.Diagnostics.Debug.WriteLine($"[DslExecutor] Label [{label}] 未找到");
+        _logger.LogWarning($"Label [{label}] 未找到");
     }
 
     /// <inheritdoc/>
@@ -619,7 +624,7 @@ public class DslExecutor : IDslExecutor
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[DslExecutor] RunAsync error: {ex}");
+            _logger.LogError("RunAsync error", ex);
             _state.Set(StateKeys.Dsl.Executing, false);
         }
     }
@@ -639,6 +644,13 @@ public class DslExecutor : IDslExecutor
         {
             if (ct.IsCancellationRequested) return;
 
+            // Phase 63 修复：防止已注销/已触发的单次事件执行
+            // 事件在入队后可能被 Temporary/Permanent 模式注销，或单次事件已触发。
+            // 通过 IsBlocked 检查跳过已销毁/已挂起/已触发的单次事件。
+            // Normal 模式注销不加标记，IsBlocked 返回 false，已入队的事件仍会执行（软注销语义）。
+            if (_eventScheduler.IsBlocked(evt.Id))
+                continue;
+
             // 检查条件表达式
             if (!string.IsNullOrWhiteSpace(evt.Condition))
             {
@@ -649,14 +661,12 @@ public class DslExecutor : IDslExecutor
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[DslExecutor] 时间事件条件求值失败 [{evt.Id}]: {ex.Message}");
+_logger.LogWarning($"时间事件条件求值失败 [{evt.Id}]: {ex.Message}");
                     continue;
                 }
             }
 
-            System.Diagnostics.Debug.WriteLine(
-                $"[DslExecutor] 执行时间事件 [{evt.Id}] - {evt.Description ?? "(无描述)"}");
+_logger.LogInfo($"执行时间事件 [{evt.Id}] - {evt.Description ?? "(无描述)"}");
 
             try
             {
@@ -681,8 +691,7 @@ public class DslExecutor : IDslExecutor
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[DslExecutor] 时间事件执行异常 [{evt.Id}]: {ex.Message}");
+_logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
             }
 
             // 标记单次事件已触发
@@ -820,7 +829,7 @@ public class DslExecutor : IDslExecutor
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForDialogComplete 超时(300s)，强制推进");
+            _logger.LogWarning("WaitForDialogComplete 超时(300s)，强制推进");
         }
         catch (OperationCanceledException)
         {
@@ -843,7 +852,7 @@ public class DslExecutor : IDslExecutor
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForTransitionComplete: 等待激活超时(5s)，跳过等待");
+            _logger.LogWarning("WaitForTransitionComplete: 等待激活超时(5s)，跳过等待");
             return;
         }
 
@@ -859,7 +868,7 @@ public class DslExecutor : IDslExecutor
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForTransitionComplete 超时(60s)，强制推进");
+            _logger.LogWarning("WaitForTransitionComplete 超时(60s)，强制推进");
         }
     }
 
@@ -882,7 +891,7 @@ public class DslExecutor : IDslExecutor
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForMenuSelection 超时(300s)，返回 -1");
+            _logger.LogWarning("WaitForMenuSelection 超时(300s)，返回 -1");
             return -1;
         }
 
@@ -912,7 +921,7 @@ public class DslExecutor : IDslExecutor
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForInput 超时(300s)，返回空字符串");
+            _logger.LogWarning("WaitForInput 超时(300s)，返回空字符串");
             return "";
         }
 
@@ -938,7 +947,7 @@ public class DslExecutor : IDslExecutor
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            System.Diagnostics.Debug.WriteLine("[DslExecutor] WaitForScreenResult 超时(300s)，强制推进");
+            _logger.LogWarning("WaitForScreenResult 超时(300s)，强制推进");
         }
     }
 

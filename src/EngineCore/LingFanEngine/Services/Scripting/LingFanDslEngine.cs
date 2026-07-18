@@ -1388,7 +1388,9 @@ Duration = t.Duration ?? 0.5
             TimePauseStmt => new TimePauseCommand(),
             TimeResumeStmt => new TimeResumeCommand(),
             SkipTimeStmt st => new SkipTimeCommand { Minutes = st.Minutes },
-            UnregisterTimeEventStmt ut => new UnregisterTimeEventCommand { Id = ut.Id },
+            UnregisterTimeEventStmt ut => new UnregisterTimeEventCommand { Id = ut.Id, Mode = ut.Mode },
+// Phase 63: 恢复时间事件
+RestoreTimeEventStmt rt => new RestoreTimeEventCommand { Id = rt.Id },
 
             NotifyStmt n => new NotifyCommand
             {

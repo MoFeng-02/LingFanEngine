@@ -40,8 +40,10 @@ public class GameTimeService : IGameTimeService
         // 初始 TotalMinutes = StartHour*60 + StartMinute（当天内偏移）
         if (!_state.ContainsKey(KeyTotalMinutes))
             _state.Set(KeyTotalMinutes, _initialMinutes);
+        // Phase 63：默认暂停——启用时间系统后时间不会自动运行，
+        // 需显式调用 ResumeGameTime() 启动，确保从正确起始时间开始世界运转
         if (!_state.ContainsKey(KeyPaused))
-            _state.Set(KeyPaused, false);
+            _state.Set(KeyPaused, true);
         if (!_state.ContainsKey(KeyTimeScale))
             _state.Set(KeyTimeScale, 1.0f);
     }
@@ -130,14 +132,14 @@ public class GameTimeService : IGameTimeService
     /// <summary>
     /// 重置游戏时间到配置的起始值
     /// <para>将 TotalMinutes 恢复为 TimeStartHour*60+TimeStartMinute，</para>
-    /// <para>解除暂停，重置 TimeScale 为 1.0。</para>
+    /// <para>重置为默认暂停状态（Phase 63：默认不自动启动），重置 TimeScale 为 1.0。</para>
     /// <para>用于新开游戏或显式重新开始时间。</para>
     /// </summary>
     public void Reset()
     {
         if (!_enabled) return;
         _state.Set(KeyTotalMinutes, _initialMinutes);
-        _state.Set(KeyPaused, false);
+        _state.Set(KeyPaused, true); // Phase 63：默认暂停
         _state.Set(KeyTimeScale, 1.0f);
     }
 }

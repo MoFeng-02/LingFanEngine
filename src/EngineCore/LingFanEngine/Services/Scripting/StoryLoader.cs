@@ -6,10 +6,12 @@ using LingFanEngine.Abstractions.Entities.Enums;
 using LingFanEngine.Abstractions.Entities.Scenes;
 using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
+using LingFanEngine.Abstractions.Interfaces.Logging;
 using LingFanEngine.Abstractions.Interfaces.Scripting;
 using LingFanEngine.Abstractions.Scripting;
 using LingFanEngine.DslCore;
 using LingFanEngine.Services.Resources;
+using LingFanEngine.Services.Logging;
 
 namespace LingFanEngine.Services.Scripting;
 
@@ -30,6 +32,7 @@ public class StoryLoader : IStoryLoader
     private readonly IDslExecutor? _dslExecutor;
     private readonly PackLoader? _packLoader;
     private readonly IEncryptedFileReader? _fileReader;
+    private readonly IEngineLogger _logger;
     private readonly Dictionary<string, List<StoryFile>> _loadedStories = new(StringComparer.OrdinalIgnoreCase);
     private string _currentLang = "zh-CN";
 
@@ -44,7 +47,8 @@ public class StoryLoader : IStoryLoader
     public StoryLoader(IScriptEngine dslEngine, ICommandPipeline pipeline, IStateContainer state,
         ISceneRegistry sceneRegistry,
         IDslExecutor? dslExecutor = null, PackLoader? packLoader = null,
-        IEncryptedFileReader? fileReader = null)
+        IEncryptedFileReader? fileReader = null,
+        IEngineLoggerFactory? loggerFactory = null)
     {
         _dslEngine = dslEngine;
         _pipeline = pipeline;
@@ -53,6 +57,7 @@ public class StoryLoader : IStoryLoader
         _dslExecutor = dslExecutor;
         _packLoader = packLoader;
         _fileReader = fileReader;
+        _logger = loggerFactory?.Create("StoryLoader") ?? NullEngineLogger.Instance;
     }
 
     /// <summary>
@@ -134,9 +139,9 @@ public class StoryLoader : IStoryLoader
                 {
                     content = await File.ReadAllTextAsync(resolvedPath, ct);
                 }
-                System.Diagnostics.Debug.WriteLine($"[StoryLoader] 读取文件: {resolvedPath}, 长度: {content?.Length ?? 0}");
+                _logger.LogDebug($"读取文件: {resolvedPath}, 长度: {content?.Length ?? 0}");
                 if (content != null && content.Length < 300)
-                    System.Diagnostics.Debug.WriteLine($"[StoryLoader]   >>> 内容疑似被截断: {content}");
+                    _logger.LogWarning($"内容疑似被截断: {content}");
             }
             else
             {
@@ -161,15 +166,15 @@ public class StoryLoader : IStoryLoader
         RegisterDefinesFromJson(story, content ?? "");
 
         // 从脚本中提取并注册 scene 块，剩余的脚本再编译为流程命令
-        System.Diagnostics.Debug.WriteLine($"[StoryLoader] story.Script 前 200 字: {story.Script[..Math.Min(200, story.Script.Length)]}");
+        _logger.LogDebug($"story.Script 前 200 字: {story.Script[..Math.Min(200, story.Script.Length)]}");
         var (sceneBlocks, flowScript, globalDefines) = ExtractSceneBlocks(story.Script);
-        System.Diagnostics.Debug.WriteLine($"[StoryLoader] ExtractSceneBlocks 返回 {sceneBlocks.Count} 个场景, 全局 defines: {globalDefines?.Count ?? 0}");
+        _logger.LogDebug($"ExtractSceneBlocks 返回 {sceneBlocks.Count} 个场景, 全局 defines: {globalDefines?.Count ?? 0}");
 
         // 注入全局 defines（顶格 define，加载时即生效，不编译为命令）
         InjectGlobalDefines(globalDefines);
         foreach (var (sceneName, elements, entryScript, defines, layoutMode, sceneType) in sceneBlocks)
         {
-            System.Diagnostics.Debug.WriteLine($"[StoryLoader]   >>> 场景 '{sceneName}' 元素数: {elements.Count}");
+            _logger.LogDebug($"场景 '{sceneName}' 元素数: {elements.Count}");
             var scene = new SceneEntity
             {
                 SceneName = sceneName,
@@ -180,24 +185,24 @@ public class StoryLoader : IStoryLoader
                 SceneType = sceneType
             };
             _sceneRegistry.RegisterScene(sceneName, scene);
-            System.Diagnostics.Debug.WriteLine($"[StoryLoader] 注册场景: {sceneName}, Elements={elements.Count}");
+            _logger.LogInfo($"注册场景: {sceneName}, Elements={elements.Count}");
 
             // scene 块内的流程命令（say/set/if 等）转为 flow script 中的 label 块
             // 这样它们会通过 DslExecutor.RunAsync 执行，正确等待交互命令
             if (!string.IsNullOrWhiteSpace(entryScript))
             {
                 flowScript += $"\nlabel {sceneName}:\n" + entryScript + "\n";
-                System.Diagnostics.Debug.WriteLine($"[StoryLoader]   >>> entry script 转为 label [{sceneName}]");
+                _logger.LogDebug($"entry script 转为 label [{sceneName}]");
             }
         }
 
         // Route 注册已移除
 
         // 验证注册状态
-        System.Diagnostics.Debug.WriteLine($"[StoryLoader] SceneRegistry 中注册的场景: {string.Join(", ", _sceneRegistry.RegisteredScenes)}");
+        _logger.LogDebug($"SceneRegistry 中注册的场景: {string.Join(", ", _sceneRegistry.RegisteredScenes)}");
 
         // 编译剩余流程脚本
-        System.Diagnostics.Debug.WriteLine($"  场景块: {sceneBlocks.Count} 个, 流程脚本: {flowScript.Length} 字符");
+        _logger.LogDebug($"  场景块: {sceneBlocks.Count} 个, 流程脚本: {flowScript.Length} 字符");
         var result = _dslEngine.Compile(flowScript);
         if (result.Success)
         {
@@ -596,7 +601,7 @@ public class StoryLoader : IStoryLoader
                 if (key == null || val == null) continue;
                 var parsed = JsonNodeToObject(val);
                 _state.Set(key, parsed);
-                System.Diagnostics.Debug.WriteLine($"[StoryLoader] define (JSON): {key} = {parsed}");
+                _logger.LogDebug($"define (JSON): {key} = {parsed}");
             }
         }
 
@@ -616,7 +621,7 @@ public class StoryLoader : IStoryLoader
             if (!_state.ContainsKey(key))
             {
                 _state.Set(key, val);
-                System.Diagnostics.Debug.WriteLine($"[StoryLoader] global define 注入: {key} = {val}");
+                _logger.LogDebug($"global define 注入: {key} = {val}");
             }
         }
     }
@@ -736,7 +741,7 @@ ExtractSceneBlocks(string script)
                     var layoutMode = sceneHeader.LayoutMode;
                     var sceneType = sceneHeader.SceneType;
 
-                    System.Diagnostics.Debug.WriteLine($"[ExtractSceneBlocks] 匹配 scene: \"{sceneNameVal}\" layout={layoutMode} type={sceneType}");
+                    _logger.LogDebug($"匹配 scene: \"{sceneNameVal}\" layout={layoutMode} type={sceneType}");
                     // 之前的 scene 块结束，保存
                     if (inSceneBlock && currentSceneName != null)
                     {
@@ -778,9 +783,9 @@ ExtractSceneBlocks(string script)
                     {
                         var entryScript = string.Join("\n", currentEntryScript);
                         scenes.Add((currentSceneName, currentElements, entryScript, currentDefines, currentLayoutMode, currentSceneType));
-                        System.Diagnostics.Debug.WriteLine($"[ExtractSceneBlocks] 保存 scene: {currentSceneName}, 元素数: {currentElements.Count}, entry: {currentEntryScript.Count} 行, defines: {currentDefines?.Count ?? 0}");
+                        _logger.LogDebug($"保存 scene: {currentSceneName}, 元素数: {currentElements.Count}, entry: {currentEntryScript.Count} 行, defines: {currentDefines?.Count ?? 0}");
                     }
-                    System.Diagnostics.Debug.WriteLine($"[ExtractSceneBlocks] 退出 scene 块 at 顶格行: [{line.Trim()}]");
+                    _logger.LogDebug($"退出 scene 块 at 顶格行: [{line.Trim()}]");
                     inSceneBlock = false;
                     currentSceneName = null;
                     currentElements = new List<UIElementEntity>();
@@ -798,7 +803,7 @@ ExtractSceneBlocks(string script)
                             var parsed = ParseDefineValue(exitDefineEntry.RawValue);
                             globalDefines ??= new Dictionary<string, object?>();
                             globalDefines[exitDefineEntry.Key] = parsed;
-                            System.Diagnostics.Debug.WriteLine($"[ExtractSceneBlocks] global define (scene exit): {exitDefineEntry.Key} = {parsed}");
+                            _logger.LogDebug($"global define (scene exit): {exitDefineEntry.Key} = {parsed}");
                             continue;
                         }
                     }
@@ -817,7 +822,7 @@ ExtractSceneBlocks(string script)
                         var parsed = ParseDefineValue(defineEntry.RawValue);
                         currentDefines ??= new Dictionary<string, object?>();
                         currentDefines[defineEntry.Key] = parsed;
-                        System.Diagnostics.Debug.WriteLine($"[ExtractSceneBlocks] scene define: {defineEntry.Key} = {parsed}");
+                        _logger.LogDebug($"scene define: {defineEntry.Key} = {parsed}");
                         continue;
                     }
                 }
@@ -840,7 +845,7 @@ ExtractSceneBlocks(string script)
                         var parsed = ParseDefineValue(defineEntry.RawValue);
                         globalDefines ??= new Dictionary<string, object?>();
                         globalDefines[defineEntry.Key] = parsed;
-                        System.Diagnostics.Debug.WriteLine($"[ExtractSceneBlocks] global define: {defineEntry.Key} = {parsed}");
+                        _logger.LogDebug($"global define: {defineEntry.Key} = {parsed}");
                         continue;
                     }
                 }

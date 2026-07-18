@@ -70,6 +70,22 @@ public class ResetGameStateHandler : ICommandHandler<ResetGameStateCommand>, IDe
         {
             ctx.TimeService?.Reset();
             ctx.EventScheduler?.ClearEvents();
+
+            // Phase 63 修复：ClearEvents 清空了所有事件（包括 C# 声明式事件），
+            // 需要从全局注册表恢复 C# 声明式事件（DSL 事件由场景执行 set_time_event 自然恢复）。
+            // ClearEvents 已清除 DestroyedIds/SuspendedIds，所以所有声明式事件都可以恢复。
+            if (ctx.EventScheduler != null && ctx.TimeEventRegistry != null)
+            {
+                int restored = 0;
+                foreach (var decl in ctx.TimeEventRegistry.GetAllDeclarations())
+                {
+                    if (ctx.EventScheduler.RegisterEvent(decl))
+                        restored++;
+                }
+                if (restored > 0)
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[ResetGameStateHandler] 恢复 {restored} 个 C# 声明式时间事件");
+            }
         }
 
         System.Diagnostics.Debug.WriteLine("[ResetGameStateHandler] 游戏状态已完全重置");

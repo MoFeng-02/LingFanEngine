@@ -37,7 +37,8 @@ public static class CSharpScripts
             SceneName = csTownIntro.SceneName,
             SceneType = csTownIntro.SceneType,
             Runner = () => csTownIntro.Run(),
-            Defines = csTownIntro.InDefines()
+            Defines = csTownIntro.InDefines(),
+            TimeEvents = csTownIntro.InTimeEvents()
         });
 
         // ===== 命令注册（DSL .story 中的 cmd="do_xxx" 依赖这些 C# 命令）=====

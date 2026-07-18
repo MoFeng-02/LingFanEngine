@@ -1,6 +1,7 @@
 //using LingFanEngine.Abstractions.Entities.UIs;
 
 using LingFanEngine.Abstractions.Entities.UIs;
+using LingFanEngine.Abstractions.Interfaces.Events;
 
 namespace LingFanEngine.DslCore;
 
@@ -524,12 +525,33 @@ public sealed partial class SkipTimeStmt : DslStatement
 
 /// <summary>
 /// 注销时间事件语句——手动删除已注册的时间事件
-/// <para>语法：unregister_time_event "id"</para>
+/// <para>语法：unregister_time_event "id" [permanent|temporary]</para>
 /// <para>需要 EnableTimeSystem=true 才生效。</para>
+/// <para>Phase 63 新增注销模式：permanent=永久销毁，temporary=暂时销毁（可恢复）。</para>
 /// </summary>
 public sealed partial class UnregisterTimeEventStmt : DslStatement
 {
     /// <summary>要注销的事件 ID</summary>
+    public required string Id { get; init; }
+
+    /// <summary>
+    /// 注销模式（Phase 63 新增）
+    /// <para>Normal=正常注销（默认），Permanent=永久销毁，Temporary=暂时销毁</para>
+    /// </summary>
+    public UnregisterMode Mode { get; init; } = UnregisterMode.Normal;
+}
+
+/// <summary>
+/// 恢复时间事件语句——恢复已注销的事件
+/// <para>语法：restore_time_event "id"</para>
+/// <para>Phase 63 新增——从全局注册表查回定义重新注册。</para>
+/// <para>支持恢复 Temporary 模式注销的事件（清除标记后重新注册）</para>
+/// <para>和 Normal 模式注销的 C# 声明式事件（直接重新注册）。</para>
+/// <para>Permanent 模式注销的事件不可恢复。</para>
+/// </summary>
+public sealed partial class RestoreTimeEventStmt : DslStatement
+{
+    /// <summary>要恢复的事件 ID</summary>
     public required string Id { get; init; }
 }
 

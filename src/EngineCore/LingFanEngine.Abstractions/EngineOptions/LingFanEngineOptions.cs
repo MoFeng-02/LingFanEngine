@@ -281,6 +281,15 @@ public class LingFanEngineOptions
     /// </summary>
     public int CutsceneActivationTimeoutSeconds { get; set; } = 5;
 
+    // ── 日志配置 ──
+
+    /// <summary>
+    /// 引擎日志配置。
+    /// <para>控制日志级别、输出目标（Sink）、文件保留策略等。</para>
+    /// <para>默认 Debug 编译启用 Debug 级别 + DebugTrace Sink，Release 编译启用 Info 级别。</para>
+    /// </summary>
+    public LoggingOptions Logging { get; } = new();
+
     // ── 自适应方法 ──
 
     /// <summary>

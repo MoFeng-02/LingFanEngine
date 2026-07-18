@@ -13,7 +13,8 @@ namespace LingFanEngine.Services.Events;
 /// <para>DslExecutor 在命令循环顶部调用 TryDequeuePendingEvent 出队并执行回调。</para>
 /// <para>支持 C# Func&lt;Task&gt; 回调和 DSL ICommand[] 两种形式。</para>
 /// <para>事件持久存活——不自动清理，只能通过 UnregisterEvent(id) 手动删除或单次触发后自动移除。</para>
-/// <para>支持 ID 去重和单次事件已触发标记，存档时持久化 ID 集合。</para>
+/// <para>Phase 63：三模式注销（Normal/Permanent/Temporary）+ RestoreEvent + IsBlocked + 四层注册检查。</para>
+/// <para>设计理念：时间事件生命周期——事件一旦注册即独立，场景只是挂载器。</para>
 /// </summary>
 public class EventScheduler : IEventScheduler
 {
@@ -25,9 +26,22 @@ public class EventScheduler : IEventScheduler
 
     private readonly IGameTimeService _timeService;
     private readonly IStateContainer _state;
+
+    /// <summary>当前活跃的事件</summary>
     private readonly ConcurrentDictionary<string, TimeEventRegistration> _events = new();
+
+    /// <summary>待执行的回调队列</summary>
     private readonly ConcurrentQueue<TimeEventRegistration> _pending = new();
+
+    /// <summary>已触发的单次事件 ID（防止重复触发）</summary>
     private readonly ConcurrentDictionary<string, byte> _firedOneShotIds = new();
+
+    /// <summary>永久销毁的事件 ID（永不注册，即使代码再次执行 set_time_event）</summary>
+    private readonly ConcurrentDictionary<string, byte> _destroyedIds = new();
+
+    /// <summary>暂时销毁的事件 ID（不重注册，但可通过 restore_time_event 恢复）</summary>
+    private readonly ConcurrentDictionary<string, byte> _suspendedIds = new();
+
     private bool _disposed;
 
     /// <summary>
@@ -43,9 +57,32 @@ public class EventScheduler : IEventScheduler
     // ========== 注册（回调驱动） ==========
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Phase 63 四层检查顺序（严格，不可调整）：
+    /// 1. Destroyed（永远不可能发生）→ 绝对优先，最强约束
+    /// 2. Suspended（暂时挂起）→ 次强约束
+    /// 3. FiredOneShot（已发生过）→ 语义约束
+    /// 4. TryAdd（已存在）→ 去重
+    /// </remarks>
     public bool RegisterEvent(TimeEventRegistration registration)
     {
-        // 单次事件已触发 → 跳过
+        // 1. 永久销毁 → 绝对优先，最强约束（"永远不可能发生"）
+        if (_destroyedIds.ContainsKey(registration.Id))
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[EventScheduler] 事件 [{registration.Id}] 已永久销毁，拒绝注册");
+            return false;
+        }
+
+        // 2. 暂时销毁 → 次强约束（"暂时挂起，等显式 restore"）
+        if (_suspendedIds.ContainsKey(registration.Id))
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[EventScheduler] 事件 [{registration.Id}] 已暂时销毁，拒绝注册（需先 restore）");
+            return false;
+        }
+
+        // 3. 单次事件已触发 → 语义约束（"这件事发生过了"）
         if (registration.IsOneShot && _firedOneShotIds.ContainsKey(registration.Id))
         {
             System.Diagnostics.Debug.WriteLine(
@@ -53,7 +90,7 @@ public class EventScheduler : IEventScheduler
             return false;
         }
 
-        // ID 已存在 → 跳过
+        // 4. ID 已存在 → 去重
         if (!_events.TryAdd(registration.Id, registration))
         {
             System.Diagnostics.Debug.WriteLine(
@@ -65,9 +102,46 @@ public class EventScheduler : IEventScheduler
     }
 
     /// <inheritdoc/>
-    public bool UnregisterEvent(string id)
+    public bool UnregisterEvent(string id) => UnregisterEvent(id, UnregisterMode.Normal);
+
+    /// <inheritdoc/>
+    public bool UnregisterEvent(string id, UnregisterMode mode)
     {
-        return _events.TryRemove(id, out _);
+        var removed = _events.TryRemove(id, out _);
+
+        switch (mode)
+        {
+            case UnregisterMode.Permanent:
+                _destroyedIds.TryAdd(id, 0);
+                // Permanent 模式：标记成功即返回 true（即使事件不在 _events 中）
+                return true;
+            case UnregisterMode.Temporary:
+                _suspendedIds.TryAdd(id, 0);
+                // Temporary 模式：标记成功即返回 true（即使事件不在 _events 中）
+                return true;
+            case UnregisterMode.Normal:
+            default:
+                // 正常注销：只从 _events 移除，不加任何标记
+                // DSL 事件：Run() 重执行 set_time_event 时自然恢复
+                // C# 声明式事件：不会随 Run() 重执行恢复（InTimeEvents 不在 Run() 中），
+                //   但可通过 restore_time_event 或读档恢复（全局注册表仍保留定义）
+                // C# 动态事件：Run() 重执行 SetTimeEventAsync 时自然恢复
+                return removed;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool RestoreEvent(string id)
+    {
+        return _suspendedIds.TryRemove(id, out _);
+    }
+
+    /// <inheritdoc/>
+    public bool IsBlocked(string id)
+    {
+        return _destroyedIds.ContainsKey(id)
+            || _suspendedIds.ContainsKey(id)
+            || _firedOneShotIds.ContainsKey(id);
     }
 
     // ========== 兼容旧 API（导航驱动） ==========
@@ -113,6 +187,8 @@ public class EventScheduler : IEventScheduler
         _events.Clear();
         while (_pending.TryDequeue(out _)) { }
         _firedOneShotIds.Clear();
+        _destroyedIds.Clear();
+        _suspendedIds.Clear();
     }
 
     // ========== 出队（DslExecutor 调用） ==========
@@ -124,11 +200,25 @@ public class EventScheduler : IEventScheduler
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Phase 63 审计修复（双重修复）：
+    /// 1. 先检查 IsOneShot 再移除——防止重复事件被错误移除（原实现 TryRemove 先执行会导致重复事件永久丢失）
+    /// 2. 先加入 _firedOneShotIds 再移除 _events——消除竞态窗口
+    ///    原顺序（先移除再标记）在两者之间存在窗口，此时 RegisterEvent 的四层检查
+    ///    （Destroyed > Suspended > FiredOneShot > TryAdd）会因 FiredOneShot 尚未加入
+    ///    且 _events 已移除而通过检查，导致单次事件被重新注册——违背"只触发一次"语义。
+    ///    修复后顺序：先 TryAdd 标记 → 再 TryRemove 移除，窗口内 RegisterEvent 会被
+    ///    第三层 FiredOneShot 检查阻止。
+    /// </remarks>
     public void MarkFired(string eventId)
     {
-        if (_events.TryRemove(eventId, out var reg) && reg.IsOneShot)
+        // 先检查是否为单次事件
+        if (_events.TryGetValue(eventId, out var reg) && reg.IsOneShot)
         {
+            // 先标记已触发——阻止竞态窗口内的 RegisterEvent 通过四层检查
             _firedOneShotIds.TryAdd(eventId, 0);
+            // 再从活跃事件中移除
+            _events.TryRemove(eventId, out _);
         }
     }
 
@@ -175,7 +265,9 @@ public class EventScheduler : IEventScheduler
         return new TimeEventSaveState
         {
             RegisteredIds = [.. _events.Keys],
-            FiredOneShotIds = [.. _firedOneShotIds.Keys]
+            FiredOneShotIds = [.. _firedOneShotIds.Keys],
+            DestroyedIds = [.. _destroyedIds.Keys],
+            SuspendedIds = [.. _suspendedIds.Keys]
         };
     }
 
@@ -185,11 +277,17 @@ public class EventScheduler : IEventScheduler
         _events.Clear();
         while (_pending.TryDequeue(out _)) { }
         _firedOneShotIds.Clear();
+        _destroyedIds.Clear();
+        _suspendedIds.Clear();
 
         if (state != null)
         {
             foreach (var id in state.FiredOneShotIds)
                 _firedOneShotIds.TryAdd(id, 0);
+            foreach (var id in state.DestroyedIds)
+                _destroyedIds.TryAdd(id, 0);
+            foreach (var id in state.SuspendedIds)
+                _suspendedIds.TryAdd(id, 0);
             // RegisteredIds 不直接恢复——场景初始化时重新注册回调
             // 未重新注册的 ID 自然不在 _events 中，即被当作垃圾丢弃
         }
@@ -219,7 +317,9 @@ public class EventScheduler : IEventScheduler
             .Where(e => !e.Day.HasValue || (
                 e.IsOneShot
                     ? currentDay == e.Day.Value            // 单次：指定第 N 天
-                    : e.Day.Value > 0 && daysSinceStart % e.Day.Value == 0  // 重复：每 N 天
+                    // 重复：每 N 天——第 0 天（游戏开始当天）不触发，
+                    // 因为"每 N 天"意味着经过 N 天后才第一次触发
+                    : e.Day.Value > 0 && daysSinceStart > 0 && daysSinceStart % e.Day.Value == 0
             ))
             // 星期匹配
             .Where(e => e.DaysOfWeek == null || e.DaysOfWeek.Length == 0 ||

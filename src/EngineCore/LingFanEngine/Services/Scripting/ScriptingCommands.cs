@@ -2,6 +2,7 @@
 using LingFanEngine.Abstractions.Entities.Events;
 using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
+using LingFanEngine.Abstractions.Interfaces.Events;
 using LingFanEngine.Services.Core;
 
 namespace LingFanEngine.Services.Scripting;
@@ -966,8 +967,9 @@ public readonly record struct SkipTimeCommand : ICommand
 
 /// <summary>
 /// 注销时间事件命令——手动删除已注册的时间事件
-/// <para>DSL unregister_time_event "id" 编译结果。</para>
+/// <para>DSL unregister_time_event "id" [permanent|temporary] 编译结果。</para>
 /// <para>需要 EnableTimeSystem=true + IEventScheduler 可用。</para>
+/// <para>Phase 63 新增 Mode 字段——支持三模式注销。</para>
 /// </summary>
 public readonly record struct UnregisterTimeEventCommand : ICommand
 {
@@ -977,7 +979,32 @@ public readonly record struct UnregisterTimeEventCommand : ICommand
     /// <summary>要注销的事件 ID</summary>
     public required string Id { get; init; }
 
+    /// <summary>
+    /// 注销模式（Phase 63 新增）
+    /// <para>Normal=正常注销，Permanent=永久销毁，Temporary=暂时销毁</para>
+    /// </summary>
+    public UnregisterMode Mode { get; init; } = UnregisterMode.Normal;
+
     public UnregisterTimeEventCommand() { }
+}
+
+/// <summary>
+/// 恢复时间事件命令——恢复已注销的事件
+/// <para>DSL restore_time_event "id" 编译结果。</para>
+/// <para>Phase 63 新增——从全局注册表查回定义重新注册。</para>
+/// <para>支持恢复 Temporary 模式注销的事件（清除标记后重新注册）</para>
+/// <para>和 Normal 模式注销的 C# 声明式事件（直接重新注册）。</para>
+/// <para>Permanent 模式注销的事件不可恢复。</para>
+/// </summary>
+public readonly record struct RestoreTimeEventCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+
+    /// <summary>要恢复的事件 ID</summary>
+    public required string Id { get; init; }
+
+    public RestoreTimeEventCommand() { }
 }
 
 /// <summary>

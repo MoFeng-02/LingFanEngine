@@ -1,6 +1,7 @@
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Entry;
 using LingFanEngine.Abstractions.Interfaces.Events;
+using LingFanEngine.Abstractions.Interfaces.Logging;
 using LingFanEngine.Abstractions.Interfaces.Scripting;
 using LingFanEngine.Abstractions.Interfaces.Media;
 using LingFanEngine.Abstractions.Interfaces.Saves;
@@ -8,6 +9,8 @@ using LingFanEngine.Services.Core;
 using LingFanEngine.Services.Core.Handlers;
 using LingFanEngine.Services.Dlc;
 using LingFanEngine.Services.Entry;
+using LingFanEngine.Services.Logging;
+using LingFanEngine.Services.Logging.Context;
 using LingFanEngine.Services.Events;
 using LingFanEngine.Services.Media;
 using LingFanEngine.Services.Platform;
@@ -47,6 +50,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAsyncWaitService>(sp => new AsyncWaitService(sp.GetRequiredService<IStateContainer>()));
         // RouterService 已移除，场景切换基于 SceneRegistry + SceneStack
         services.AddSingleton<IEventScheduler, EventScheduler>();
+// Phase 63：DSL 全局时间事件注册表（启动时扫描 .story 文件提取时间事件）
+// 注入 IEncryptedFileReader 支持加密 .story 文件读取
+services.AddSingleton<ITimeEventRegistry>(sp => new TimeEventRegistry(
+    sp.GetService<IEncryptedFileReader>()));
         services.AddSingleton(sp => new DlcScanner(sp.GetRequiredService<LingFanEngineOptions>().ModsDirectory));
         services.AddSingleton<PluginLoader>();
         services.AddSingleton<DlcLoader>();
@@ -69,7 +76,8 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<ISceneRegistry>(),
             sp.GetService<IDslExecutor>(),
             sp.GetService<PackLoader>(),
-            sp.GetService<IEncryptedFileReader>()));
+            sp.GetService<IEncryptedFileReader>(),
+            sp.GetService<IEngineLoggerFactory>()));
         services.AddSingleton<IStoryRegistry>(sp =>
         {
             var sceneRegistry = sp.GetRequiredService<ISceneRegistry>();
@@ -84,21 +92,32 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<ICommandPipeline>(),
             sp.GetRequiredService<LingFanEngineOptions>(),
             sp.GetRequiredService<IAsyncWaitService>(),
-            sp.GetService<IEventScheduler>()));
+            sp.GetService<IEventScheduler>(),
+            sp.GetService<IEngineLoggerFactory>()));
         services.AddSingleton<IPreferencesService, PreferencesService>();
         services.AddSingleton<IGameController>(sp => new GameController(
             sp.GetRequiredService<ICommandPipeline>(),
             sp.GetRequiredService<IStateContainer>(),
             sp.GetRequiredService<LingFanEngineOptions>(),
             sp.GetRequiredService<IAsyncWaitService>(),
-            sp.GetService<IEventScheduler>()));
+            sp.GetService<IEventScheduler>(),
+            sp.GetService<IEngineLoggerFactory>()));
 services.AddSingleton<IEventAggregator, EventAggregator>();
 services.AddSingleton<II18nService>(sp => new I18nService(
     sp.GetRequiredService<IStateContainer>(),
     sp.GetService<IEncryptedFileReader>()));
 
-// 注册日志服务（游戏可替换为自定义实现）
-services.TryAddSingleton<IEngineLogger, DebugEngineLogger>();
+// 注册日志服务——日志上下文访问器 + 日志工厂（游戏可替换为自定义实现）
+services.TryAddSingleton<IEngineLogContextAccessor, EngineLogContextAccessor>();
+services.TryAddSingleton<IEngineLoggerFactory>(sp =>
+{
+    var options = sp.GetRequiredService<LingFanEngineOptions>();
+    var contextAccessor = sp.GetRequiredService<IEngineLogContextAccessor>();
+    return new EngineLoggerFactory(options, contextAccessor, sp);
+});
+// 默认引擎日志（分类 "Engine"）——供未指定分类的服务使用
+services.TryAddSingleton<IEngineLogger>(sp =>
+    sp.GetRequiredService<IEngineLoggerFactory>().Create("Engine"));
 
         // 注册资源包加载器
         services.AddSingleton<PackLoader>();
@@ -203,16 +222,17 @@ services.TryAddSingleton<IEngineLogger, DebugEngineLogger>();
             sp.GetRequiredService<IStateContainer>(),
             sp.GetService<IEncryptedFileReader>()));
         services.AddSingleton<Views.IAnimationApplier, Views.AnimationApplier>();
-        services.AddSingleton<ISaveDataService>(sp => new SaveDataService(
-            sp.GetRequiredService<IStateContainer>(),
-            sp.GetRequiredService<IJsonValueConverter>(),
-            sp.GetRequiredService<LingFanEngineOptions>(),
-            sp.GetService<ISaveService>(),
-            sp.GetService<ISceneStack>(),
-            sp.GetService<ISceneRegistry>(),
-            sp.GetService<IStoryRegistry>(),
-            sp.GetService<IDslExecutor>(),
-            sp.GetService<IEventScheduler>()));
+services.AddSingleton<ISaveDataService>(sp => new SaveDataService(
+sp.GetRequiredService<IStateContainer>(),
+sp.GetRequiredService<IJsonValueConverter>(),
+sp.GetRequiredService<LingFanEngineOptions>(),
+sp.GetService<ISaveService>(),
+sp.GetService<ISceneStack>(),
+sp.GetService<ISceneRegistry>(),
+sp.GetService<IStoryRegistry>(),
+sp.GetService<IDslExecutor>(),
+sp.GetService<IEventScheduler>(),
+sp.GetService<ITimeEventRegistry>()));
 
         // 注册 GameLoop 并应用目标帧率
         services.AddSingleton<IGameLoop>(sp =>
@@ -233,6 +253,7 @@ services.TryAddSingleton<IEngineLogger, DebugEngineLogger>();
             var audio = sp.GetService<IAudioManager>();
             var video = sp.GetService<IVideoManager>();
             var eventScheduler = sp.GetService<IEventScheduler>();
+            var timeEventRegistry = sp.GetService<ITimeEventRegistry>();
             var uiDispatcher = sp.GetService<IUIThreadDispatcher>();
             var loop = new GameLoop(
                 pipeline, state, time,
@@ -243,13 +264,32 @@ services.TryAddSingleton<IEngineLogger, DebugEngineLogger>();
                 sp.GetRequiredService<IPlaybackService>(),
                 sp.GetRequiredService<ISaveDataService>(),
                 save, sceneReg, options,
-                sceneStack, storyReg, dslExec, transition, audio, video, eventScheduler, uiDispatcher);
+                sceneStack, storyReg, dslExec, transition, audio, video, eventScheduler, timeEventRegistry, uiDispatcher);
             loop.TargetFps = options.GetTargetFps();
             // StoryRegistry 扫描副作用（需在 GameLoop 构造后执行）
             storyReg?.Scan();
             // DSL 执行器关联 StoryRegistry
             if (dslExec != null && storyReg != null)
                 dslExec.SetStoryRegistry(storyReg);
+            // Phase 63: 初始化全局时间事件注册表——扫描并编译所有含 set_time_event 的 .story 文件
+            // 必须在 storyReg.Scan() 之后执行（依赖已扫描的文件列表）
+            if (timeEventRegistry != null && storyReg != null && options.EnableTimeSystem)
+            {
+                var scriptEngine = sp.GetService<IScriptEngine>();
+                if (scriptEngine != null)
+                {
+                    try
+                    {
+                        timeEventRegistry.InitializeAsync(storyReg, scriptEngine)
+                            .GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[ServiceCollectionExtensions] TimeEventRegistry 初始化失败: {ex.Message}");
+                    }
+                }
+            }
             return loop;
         });
 
