@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using LingFanEngine.Abstractions.Entities.Scenes;
 using LingFanEngine.Abstractions.Entities.UIs;
@@ -20,13 +21,13 @@ public class StoryRegistry : IStoryRegistry
     private readonly StoryLoader _storyLoader;
     private readonly string _storyRoot;
     private readonly IEncryptedFileReader? _fileReader;
-    private readonly Dictionary<string, string> _sceneToFile = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, string> _labelToFile = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _loadedScenes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _sceneToFile = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _labelToFile = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, byte> _loadedScenes = new(StringComparer.OrdinalIgnoreCase);
     // 编译后的命令和标签索引，供 DslExecutor 使用
-    private readonly Dictionary<string, IReadOnlyList<ICommand>> _compiledCommands = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, IReadOnlyDictionary<string, int>> _compiledLabels = new(StringComparer.OrdinalIgnoreCase);
-    private bool _scanned;
+    private readonly ConcurrentDictionary<string, IReadOnlyList<ICommand>> _compiledCommands = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, int>> _compiledLabels = new(StringComparer.OrdinalIgnoreCase);
+    private volatile bool _scanned;
 
     /// <summary>
     /// 已注册的场景数
@@ -145,7 +146,7 @@ public class StoryRegistry : IStoryRegistry
     /// </summary>
     public bool LoadScene(string sceneName)
     {
-        if (_loadedScenes.Contains(sceneName))
+        if (_loadedScenes.ContainsKey(sceneName))
             return true; // 已加载
 
         if (!_sceneToFile.TryGetValue(sceneName, out var filePath))
@@ -166,8 +167,8 @@ public class StoryRegistry : IStoryRegistry
             }
 
             // 已加载的场景标记
-            if (!_loadedScenes.Contains(sceneName))
-                _loadedScenes.Add(sceneName);
+            if (!_loadedScenes.ContainsKey(sceneName))
+                _loadedScenes.TryAdd(sceneName, 0);
             return true;
         }
         catch (Exception ex)
@@ -262,7 +263,7 @@ public class StoryRegistry : IStoryRegistry
         var flowBuilder = new System.Text.StringBuilder(flowScript);
         foreach (var (name, elements, entryScript, defines, layoutMode, sceneType) in sceneBlocks)
         {
-            if (_loadedScenes.Contains(name)) continue;
+            if (_loadedScenes.ContainsKey(name)) continue;
 
             // 将 entryScript 追加到 flowScript 中作为 label <sceneName>:
             // 这样 NavigateHandler 可以通过场景同名 label 启动 DslExecutor
@@ -283,7 +284,7 @@ public class StoryRegistry : IStoryRegistry
                 LayoutMode = layoutMode,
                 SceneType = sceneType
             });
-            _loadedScenes.Add(name);
+            _loadedScenes.TryAdd(name, 0);
             System.Diagnostics.Debug.WriteLine($"[StoryRegistry] 注册场景: {name}, 元素数={elements.Count}, entry={(string.IsNullOrWhiteSpace(entryScript) ? 0 : entryScript.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length)} 行, defines={defines?.Count ?? 0}");
         }
 
@@ -366,7 +367,7 @@ public class StoryRegistry : IStoryRegistry
     /// </summary>
     public bool CanLoad(string sceneName)
     {
-        if (_loadedScenes.Contains(sceneName) || _sceneToFile.ContainsKey(sceneName))
+        if (_loadedScenes.ContainsKey(sceneName) || _sceneToFile.ContainsKey(sceneName))
             return true;
         return FindByFileName(sceneName) != null;
     }
@@ -389,11 +390,11 @@ public class StoryRegistry : IStoryRegistry
 
         // 2. 从已加载集合中移除这些场景
         foreach (var sceneName in affectedScenes)
-            _loadedScenes.Remove(sceneName);
+            _loadedScenes.TryRemove(sceneName, out _);
 
         // 3. 清除编译缓存
-        _compiledCommands.Remove(filePath);
-        _compiledLabels.Remove(filePath);
+        _compiledCommands.TryRemove(filePath, out _);
+        _compiledLabels.TryRemove(filePath, out _);
 
         // 4. 重新扫描文件更新 scene/label 映射
         RescanFile(filePath);
@@ -418,12 +419,12 @@ public class StoryRegistry : IStoryRegistry
         var keysToRemove = _sceneToFile.Where(kv => 
             string.Equals(kv.Value, filePath, StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Key).ToList();
         foreach (var key in keysToRemove)
-            _sceneToFile.Remove(key);
+            _sceneToFile.TryRemove(key, out _);
 
         var labelKeysToRemove = _labelToFile.Where(kv => 
             string.Equals(kv.Value, filePath, StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Key).ToList();
         foreach (var key in labelKeysToRemove)
-            _labelToFile.Remove(key);
+            _labelToFile.TryRemove(key, out _);
 
         // 重新扫描
         try

@@ -99,7 +99,7 @@ public class StoryEditorPage : UserControl, INavigationAware
             var scrollOffset = _editor.InnerEditor.VerticalOffset;
             _viewModel.SaveActiveTabState(caret.Line, caret.Column, scrollOffset);
         }
-        catch { }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex.Message); }
     }
 
     /// <summary>同步编辑器内容到当前活动标签页</summary>
@@ -194,7 +194,7 @@ public class StoryEditorPage : UserControl, INavigationAware
                         if (scrollOffset > 0)
                             _editor.InnerEditor.ScrollToVerticalOffset(scrollOffset);
                     }
-                    catch { }
+                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex.Message); }
                 }
             }
         };

@@ -55,12 +55,6 @@ public class BinarySaveService : ISaveService
     }
 
     /// <inheritdoc/>
-    private static readonly JsonSerializerOptions _jsonOptions = new()
-    {
-        UnknownTypeHandling = JsonUnknownTypeHandling.JsonElement,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
-
     public async Task<SaveData?> LoadAsync(string slotId)
     {
         var filePath = GetFilePath(slotId);

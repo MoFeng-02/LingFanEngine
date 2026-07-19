@@ -115,9 +115,9 @@ public partial class SettingsViewModel : ViewModelBase
                 EngineVersion = settings.EngineVersion;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // 加载失败——使用默认值
+            System.Diagnostics.Debug.WriteLine($"[SettingsViewModel] 加载失败: {ex.Message}");
         }
     }
 

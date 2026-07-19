@@ -308,24 +308,26 @@ public class EventScheduler : IEventScheduler
 
         _state.Set(StateKeys.GameTime.CurrentDay, currentDay);
 
-        var matched = _events.Values
+        var matched = new List<TimeEventRegistration>();
+        foreach (var e in _events.Values)
+        {
             // 小时匹配
-            .Where(e => e.Hour == hour)
+            if (e.Hour != hour) continue;
             // 分钟匹配：null=整点（minute==0 时触发），指定值=精确匹配
-            .Where(e => (e.Minute == null && minute == 0) || e.Minute == minute)
+            if (e.Minute is { } m ? m != minute : minute != 0) continue;
             // 天匹配：null=不限制，IsOneShot=true=绝对天数，IsOneShot=false=间隔天数
-            .Where(e => !e.Day.HasValue || (
-                e.IsOneShot
-                    ? currentDay == e.Day.Value            // 单次：指定第 N 天
-                    // 重复：每 N 天——第 0 天（游戏开始当天）不触发，
-                    // 因为"每 N 天"意味着经过 N 天后才第一次触发
-                    : e.Day.Value > 0 && daysSinceStart > 0 && daysSinceStart % e.Day.Value == 0
-            ))
+            if (e.Day is { } day)
+            {
+                if (e.IsOneShot ? currentDay != day
+                    : (day <= 0 || daysSinceStart <= 0 || daysSinceStart % day != 0))
+                    continue;
+            }
             // 星期匹配
-            .Where(e => e.DaysOfWeek == null || e.DaysOfWeek.Length == 0 ||
-                        Array.IndexOf(e.DaysOfWeek, dayOfWeek) >= 0)
-            .OrderByDescending(e => e.Priority)
-            .ToList();
+            if (e.DaysOfWeek is { Length: > 0 } days && Array.IndexOf(days, dayOfWeek) < 0)
+                continue;
+            matched.Add(e);
+        }
+        matched.Sort((a, b) => b.Priority.CompareTo(a.Priority));
 
         foreach (var evt in matched)
         {

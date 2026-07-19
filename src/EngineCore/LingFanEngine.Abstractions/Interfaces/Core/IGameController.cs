@@ -57,7 +57,7 @@ string? sideImage = null);
 
     // ========== 等待 ==========
     void Wait(double seconds);
-    Task WaitAsync(double seconds);
+    Task WaitAsync(double seconds, CancellationToken ct = default);
     /// <summary>可跳过的定时等待——用户点击可提前结束（对标 Ren'Py pause(delay)）</summary>
     Task SkipableWaitAsync(double seconds);
     /// <summary>等待用户点击（对标 Ren'Py pause()）</summary>

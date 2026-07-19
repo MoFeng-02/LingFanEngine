@@ -1,4 +1,6 @@
 using System.Text;
+using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using LingFanEngine.Abstractions;
@@ -33,13 +35,14 @@ public class StoryLoader : IStoryLoader
     private readonly PackLoader? _packLoader;
     private readonly IEncryptedFileReader? _fileReader;
     private readonly IEngineLogger _logger;
-    private readonly Dictionary<string, List<StoryFile>> _loadedStories = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>已加载故事——ConcurrentDictionary + ImmutableArray 无锁设计</summary>
+    private readonly ConcurrentDictionary<string, ImmutableArray<StoryFile>> _loadedStories = new(StringComparer.OrdinalIgnoreCase);
     private string _currentLang = "zh-CN";
 
     /// <summary>
     /// 已加载的故事数量
     /// </summary>
-    public int LoadedCount => _loadedStories.Values.Sum(list => list.Count);
+    public int LoadedCount => _loadedStories.Values.Sum(list => list.Length);
 
     /// <summary>
     /// 构造函数
@@ -215,19 +218,16 @@ public class StoryLoader : IStoryLoader
             return story;
         }
 
-        // 按 ID 分组存储（支持多语言版本）
-        if (!_loadedStories.TryGetValue(story.Id, out var list))
-        {
-            list = new List<StoryFile>();
-            _loadedStories[story.Id] = list;
-        }
-
-        // 替换同语言版本或追加
-        var existing = list.FindIndex(s => s.Lang == story.Lang);
-        if (existing >= 0)
-            list[existing] = story;
-        else
-            list.Add(story);
+        // 按 ID 分组存储（支持多语言版本）——无锁原子替换
+        _loadedStories.AddOrUpdate(
+            story.Id,
+            ImmutableArray.Create(story),
+            (_, existing) =>
+            {
+                // 替换同语言版本或追加
+                var idx = IndexOfLang(existing, story.Lang);
+                return idx >= 0 ? existing.SetItem(idx, story) : existing.Add(story);
+            });
 
         _state.Set($"{StateKeys.Story.LoadedPrefix}{story.Id}", true);
 
@@ -307,10 +307,12 @@ public class StoryLoader : IStoryLoader
     /// </summary>
     public IEnumerable<string> GetStoriesByDirectory(string directory)
     {
+        // ConcurrentDictionary 遍历是线程安全快照，无需加锁
         return _loadedStories
             .Where(kv => kv.Value.Any(s =>
                 string.Equals(s.Directory, directory, StringComparison.OrdinalIgnoreCase)))
-            .Select(kv => kv.Key);
+            .Select(kv => kv.Key)
+            .ToList();
     }
 
     /// <summary>
@@ -318,6 +320,7 @@ public class StoryLoader : IStoryLoader
     /// </summary>
     public IEnumerable<string> GetDirectories()
     {
+        // ConcurrentDictionary 遍历是线程安全快照，无需加锁
         return _loadedStories.Values
             .SelectMany(list => list.Select(s => s.Directory))
             .Where(d => d != null)
@@ -379,14 +382,16 @@ public class StoryLoader : IStoryLoader
     /// <returns>执行是否成功</returns>
     public async ValueTask<bool> ExecuteAsync(string storyId, CancellationToken ct = default)
     {
-        if (!_loadedStories.TryGetValue(storyId, out var list) || list.Count == 0)
+        // ImmutableArray 不可变快照，无需加锁
+        if (!_loadedStories.TryGetValue(storyId, out var list) || list.Length == 0)
         {
             _state.Set($"{StateKeys.Story.ErrorPrefix}{storyId}", $"Story not loaded: {storyId}");
             return false;
         }
 
         // 选择当前语言版本，若无则用第一个
-        var story = list.Find(s => s.Lang == _currentLang) ?? list[0];
+        var story = list.FirstOrDefault(s => s.Lang == _currentLang);
+        if (story == null) story = list[0];
 
         if (story.CompiledCommands is null || story.CompiledCommands.Count == 0)
         {
@@ -423,10 +428,11 @@ public class StoryLoader : IStoryLoader
     /// </summary>
     public StoryFile? GetStory(string storyId)
     {
-        if (!_loadedStories.TryGetValue(storyId, out var list) || list.Count == 0)
+        // ImmutableArray 不可变快照，无需加锁
+        if (!_loadedStories.TryGetValue(storyId, out var list) || list.Length == 0)
             return null;
 
-        return list.Find(s => s.Lang == _currentLang) ?? list[0];
+        return list.FirstOrDefault(s => s.Lang == _currentLang) ?? list[0];
     }
 
     /// <summary>
@@ -434,15 +440,33 @@ public class StoryLoader : IStoryLoader
     /// </summary>
     public IReadOnlyList<StoryFile> GetAllVersions(string storyId)
     {
+        // ImmutableArray 本身就是 IReadOnlyList，直接返回（不可变，调用方无法修改）
         return _loadedStories.TryGetValue(storyId, out var list)
-            ? list.AsReadOnly()
-            : Array.Empty<StoryFile>();
+            ? list
+            : ImmutableArray<StoryFile>.Empty;
+    }
+
+    /// <summary>
+    /// 在 ImmutableArray 中查找指定语言的索引（替代 List.FindIndex）
+    /// </summary>
+    private static int IndexOfLang(ImmutableArray<StoryFile> arr, string? lang)
+    {
+        for (int i = 0; i < arr.Length; i++)
+        {
+            if (arr[i].Lang == lang)
+                return i;
+        }
+        return -1;
     }
 
     /// <summary>
     /// 获取所有已加载的故事 ID
     /// </summary>
-    public IEnumerable<string> GetLoadedStoryIds() => _loadedStories.Keys;
+    public IEnumerable<string> GetLoadedStoryIds()
+    {
+        // ConcurrentDictionary.Keys 是快照视图，线程安全
+        return _loadedStories.Keys.ToArray();
+    }
 
     /// <summary>
     /// 清空所有已加载的故事

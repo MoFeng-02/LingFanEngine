@@ -1,4 +1,6 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿using LingFanEngine.Abstractions;
+﻿﻿using System.Collections.Concurrent;
+using System.Collections.Immutable;
+using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Media;
 
@@ -6,8 +8,9 @@ namespace LingFanEngine.Services.Media;
 
 /// <summary>
 /// 音频管理器
-/// <para>管理 BGM、SE、Voice 三个通道的音频播放。</para>
+/// <para>管理 BGM、SE、Voice、Ambient 四个通道的音频播放。</para>
 /// <para>使用环境检测选择后端：Windows 用 WASAPI，Linux 用 SDL2，macOS 用 AVFoundation。</para>
+/// <para>Phase 64：无锁设计——ConcurrentDictionary + ImmutableArray 原子替换。</para>
 /// </summary>
 public class AudioManager : IAudioManager
 {
@@ -15,17 +18,19 @@ public class AudioManager : IAudioManager
     private readonly IStateContainer _state;
     private readonly Func<IAudioPlayer> _playerFactory;
     private readonly IEncryptedFileReader? _fileReader;
-    private readonly object _audioLock = new();
+
+    /// <summary>BGM 播放器列表（不可变数组，原子替换）</summary>
+    private ImmutableArray<IAudioPlayer> _bgmPlayers = ImmutableArray<IAudioPlayer>.Empty;
+    /// <summary>SE 播放器列表（不可变数组，原子替换）</summary>
+    private ImmutableArray<IAudioPlayer> _sePlayers = ImmutableArray<IAudioPlayer>.Empty;
+    /// <summary>Voice 播放器（原子替换）</summary>
+    private IAudioPlayer? _voicePlayer;
+    /// <summary>Ambient 播放器（原子替换）</summary>
+    private IAudioPlayer? _ambientPlayer;
+
     /// <summary>全局 BGM 循环取消源（StopBgmAsync 时触发，让所有 BGM 循环退出）</summary>
     private CancellationTokenSource _loopCts = new();
-    // BGM 通道（多个播放器，支持重叠/混音）
-    private readonly List<IAudioPlayer> _bgmPlayers = [];
-    // 音效通道
-    private readonly List<IAudioPlayer> _sePlayers = [];
-    // 语音通道
-    private IAudioPlayer? _voicePlayer;
-    // 环境音通道（单循环播放器）
-    private IAudioPlayer? _ambientPlayer;
+    /// <summary>Ambient 循环取消源</summary>
     private CancellationTokenSource _ambientCts = new();
 
     /// <summary>
@@ -51,17 +56,26 @@ public class AudioManager : IAudioManager
     private void UpdateActivePlayerVolumes()
     {
         var effective = MasterMuted ? 0 : _masterVolume;
-        IAudioPlayer? voice;
-        IAudioPlayer? ambient;
-        lock (_audioLock)
+        // 拍快照——ImmutableArray 不可变，无需加锁
+        var bgm = _bgmPlayers;
+        var se = _sePlayers;
+        var voice = _voicePlayer;
+        var ambient = _ambientPlayer;
+
+        foreach (var p in bgm) FireAndForgetVolume(p, effective * BgmVolume);
+        foreach (var p in se) FireAndForgetVolume(p, effective * SeVolume);
+        if (voice != null) FireAndForgetVolume(voice, effective * VoiceVolume);
+        if (ambient != null) FireAndForgetVolume(ambient, effective * BgmVolume);
+    }
+
+    /// <summary>fire-and-forget SetVolumeAsync 带异常捕获</summary>
+    private static void FireAndForgetVolume(IAudioPlayer player, float volume)
+    {
+        _ = player.SetVolumeAsync(volume).AsTask().ContinueWith(t =>
         {
-            foreach (var p in _bgmPlayers) _ = p.SetVolumeAsync(effective * BgmVolume);
-            foreach (var p in _sePlayers) _ = p.SetVolumeAsync(effective * SeVolume);
-            voice = _voicePlayer;
-            ambient = _ambientPlayer;
-        }
-        if (voice != null) _ = voice.SetVolumeAsync(effective * VoiceVolume);
-        if (ambient != null) _ = ambient.SetVolumeAsync(effective * BgmVolume);
+            if (t.IsFaulted)
+                System.Diagnostics.Debug.WriteLine($"[Audio] SetVolumeAsync failed: {t.Exception?.GetBaseException().Message}");
+        }, TaskContinuationOptions.OnlyOnFaulted);
     }
 
     /// <summary>
@@ -127,18 +141,20 @@ public class AudioManager : IAudioManager
         {
             await player.LoadAsync(playPath);
             await player.SetVolumeAsync(volume);
-            lock (_audioLock) _bgmPlayers.Add(player);
+            // 原子添加到 BGM 列表
+            ImmutableInterlocked.Update(ref _bgmPlayers, arr => arr.Add(player));
+            // 拍快照——后续 StopBgmAsync 会替换 _loopCts，但当前 Token 不变
+            var cts = _loopCts.Token;
             _state.Set(StateKeys.Audio.BgmPath, filePath);
 
-            var cts = _loopCts;
             do
             {
-                await player.PlayAsync(cts.Token);
+                await player.PlayAsync(cts);
             }
             while (loop && !cts.IsCancellationRequested && IsPlayerActive(player));
 
-            lock (_audioLock) { _bgmPlayers.Remove(player); }
-            // player Dispose 由 finally 统一处理
+            // 原子移除
+            ImmutableInterlocked.Update(ref _bgmPlayers, arr => arr.Remove(player));
         }
         catch (Exception ex)
         {
@@ -146,7 +162,8 @@ public class AudioManager : IAudioManager
         }
         finally
         {
-            try { await player.DisposeAsync(); } catch { }
+            try { await player.DisposeAsync(); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Audio] BGM DisposeAsync failed: {ex.Message}"); }
             _fileReader?.ReleaseTempFile(playPath, isTemp);
         }
     }
@@ -165,16 +182,20 @@ public class AudioManager : IAudioManager
     /// </summary>
     public async Task StopBgmAsync()
     {
-        List<IAudioPlayer> players;
-        lock (_audioLock)
+        // 原子清空并取回旧快照（Update 在并发重试时会多次赋值 players，
+        // 但 StopBgmAsync 极少并发，未处理的 player 会在循环结束时自行 Dispose）
+        ImmutableArray<IAudioPlayer> players = default;
+        ImmutableInterlocked.Update(ref _bgmPlayers, arr =>
         {
-            players = [.. _bgmPlayers];
-            _bgmPlayers.Clear();
-        }
-        _loopCts.Cancel();
-        // P1-#19: Dispose 旧 CTS 防止资源泄漏，再创建新的
-        _loopCts.Dispose();
-        _loopCts = new CancellationTokenSource();
+            players = arr;
+            return ImmutableArray<IAudioPlayer>.Empty;
+        });
+
+        // 原子替换 _loopCts——先 Cancel 旧 Token 让所有循环退出，再 Dispose
+        var oldCts = Interlocked.Exchange(ref _loopCts, new CancellationTokenSource());
+        oldCts.Cancel();
+        oldCts.Dispose();
+
         foreach (var p in players) { await p.StopAsync(); await p.DisposeAsync(); }
         _state.Set(StateKeys.Audio.BgmPath, "");
     }
@@ -184,12 +205,12 @@ public class AudioManager : IAudioManager
     /// </summary>
     public async Task StopSeAsync()
     {
-        List<IAudioPlayer> players;
-        lock (_audioLock)
+        ImmutableArray<IAudioPlayer> players = default;
+        ImmutableInterlocked.Update(ref _sePlayers, arr =>
         {
-            players = [.. _sePlayers];
-            _sePlayers.Clear();
-        }
+            players = arr;
+            return ImmutableArray<IAudioPlayer>.Empty;
+        });
         foreach (var p in players) { await p.StopAsync(); await p.DisposeAsync(); }
     }
 
@@ -209,9 +230,9 @@ public class AudioManager : IAudioManager
         {
             await player.LoadAsync(playPath);
             await player.SetVolumeAsync(volume);
-            lock (_audioLock) _sePlayers.Add(player);
+            ImmutableInterlocked.Update(ref _sePlayers, arr => arr.Add(player));
             await player.PlayAsync();
-            lock (_audioLock) _sePlayers.Remove(player);
+            ImmutableInterlocked.Update(ref _sePlayers, arr => arr.Remove(player));
         }
         catch (Exception ex)
         {
@@ -219,7 +240,8 @@ public class AudioManager : IAudioManager
         }
         finally
         {
-            try { await player.DisposeAsync(); } catch { }
+            try { await player.DisposeAsync(); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Audio] SE DisposeAsync failed: {ex.Message}"); }
             _fileReader?.ReleaseTempFile(playPath, isTemp);
         }
     }
@@ -242,21 +264,35 @@ public class AudioManager : IAudioManager
         {
             await player.LoadAsync(playPath);
             await player.SetVolumeAsync(volume);
-            lock (_audioLock) _ambientPlayer = player;
-            _state.Set(StateKeys.Audio.AmbientPath, filePath);
 
-            _ambientCts.Cancel();
-            _ambientCts.Dispose();
-            _ambientCts = new CancellationTokenSource();
-            var cts = _ambientCts;
+            // 原子替换 _ambientPlayer（取回旧 player 供 StopAmbientAsync 处理）
+            var oldPlayer = Interlocked.Exchange(ref _ambientPlayer, player);
+
+            // 原子替换 _ambientCts
+            var oldCts = Interlocked.Exchange(ref _ambientCts, new CancellationTokenSource());
+            oldCts.Cancel();
+            oldCts.Dispose();
+
+            // 拍快照
+            var cts = _ambientCts.Token;
+            _state.Set(StateKeys.Audio.AmbientPath, filePath);
 
             do
             {
-                await player.PlayAsync(cts.Token);
+                await player.PlayAsync(cts);
             }
             while (loop && !cts.IsCancellationRequested);
 
-            lock (_audioLock) { if (_ambientPlayer == player) _ambientPlayer = null; }
+            // 清除引用（仅当仍是当前 player 时）
+            Interlocked.CompareExchange(ref _ambientPlayer, null, player);
+
+            // 释放旧 ambient player
+            if (oldPlayer != null)
+            {
+                try { await oldPlayer.StopAsync(); }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Audio] Ambient old StopAsync failed: {ex.Message}"); }
+                await oldPlayer.DisposeAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -264,7 +300,8 @@ public class AudioManager : IAudioManager
         }
         finally
         {
-            try { await player.DisposeAsync(); } catch { }
+            try { await player.DisposeAsync(); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Audio] Ambient DisposeAsync failed: {ex.Message}"); }
             _fileReader?.ReleaseTempFile(playPath, isTemp);
         }
     }
@@ -274,14 +311,18 @@ public class AudioManager : IAudioManager
     /// </summary>
     public async Task StopAmbientAsync()
     {
-        IAudioPlayer? player;
-        lock (_audioLock) { player = _ambientPlayer; _ambientPlayer = null; }
-        _ambientCts.Cancel();
-        _ambientCts.Dispose();
-        _ambientCts = new CancellationTokenSource();
+        // 原子取出并清空
+        var player = Interlocked.Exchange(ref _ambientPlayer, null);
+
+        // 原子替换 _ambientCts
+        var oldCts = Interlocked.Exchange(ref _ambientCts, new CancellationTokenSource());
+        oldCts.Cancel();
+        oldCts.Dispose();
+
         if (player != null)
         {
-            try { await player.StopAsync(); } catch { }
+            try { await player.StopAsync(); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Audio] StopAmbient StopAsync failed: {ex.Message}"); }
             await player.DisposeAsync();
         }
         _state.Set(StateKeys.Audio.AmbientPath, "");
@@ -292,16 +333,15 @@ public class AudioManager : IAudioManager
     /// </summary>
     public void PlayVoice(string filePath, float volume = 1.0f)
     {
-        IAudioPlayer? oldPlayer;
-        lock (_audioLock) { oldPlayer = _voicePlayer; _voicePlayer = null; }
+        var oldPlayer = Interlocked.Exchange(ref _voicePlayer, null);
         var player = CreatePlayer();
-        lock (_audioLock) _voicePlayer = player;
+        _voicePlayer = player;
         _ = StopAndPlayVoiceAsync(oldPlayer, player, filePath, EffectiveVolume(volume));
     }
 
     private async Task StopAndPlayVoiceAsync(IAudioPlayer? old, IAudioPlayer player, string filePath, float volume)
     {
-        if (old != null) { try { await old.StopAsync(); } catch { } await old.DisposeAsync(); }
+        if (old != null) { try { await old.StopAsync(); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Audio] Voice old StopAsync failed: {ex.Message}"); } await old.DisposeAsync(); }
         await LoadAndPlayVoiceAsync(player, filePath, volume);
     }
 
@@ -320,7 +360,8 @@ public class AudioManager : IAudioManager
         }
         finally
         {
-            try { await player.DisposeAsync(); } catch { }
+            try { await player.DisposeAsync(); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Audio] Voice DisposeAsync failed: {ex.Message}"); }
             _fileReader?.ReleaseTempFile(playPath, isTemp);
         }
     }
@@ -330,8 +371,7 @@ public class AudioManager : IAudioManager
     /// </summary>
     public void StopVoice()
     {
-        IAudioPlayer? player;
-        lock (_audioLock) { player = _voicePlayer; _voicePlayer = null; }
+        var player = Interlocked.Exchange(ref _voicePlayer, null);
         _ = StopAndDisposeAsync(player);
     }
 
@@ -339,7 +379,7 @@ public class AudioManager : IAudioManager
     {
         if (player == null) return;
         try { await player.StopAsync(); }
-        catch { }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Audio] StopAndDispose StopAsync failed: {ex.Message}"); }
         await player.DisposeAsync();
     }
 
@@ -348,15 +388,12 @@ public class AudioManager : IAudioManager
     /// </summary>
     public async Task PauseAllAsync()
     {
-        List<IAudioPlayer> bgmPlayers, sePlayers;
-        lock (_audioLock)
-        {
-            bgmPlayers = [.. _bgmPlayers];
-            sePlayers = [.. _sePlayers];
-        }
+        // 拍快照
+        var bgmPlayers = _bgmPlayers;
+        var sePlayers = _sePlayers;
+        var voice = _voicePlayer;
         foreach (var bgm in bgmPlayers) await bgm.PauseAsync();
-        IAudioPlayer? voice1; lock (_audioLock) voice1 = _voicePlayer;
-        if (voice1 != null) await voice1.PauseAsync();
+        if (voice != null) await voice.PauseAsync();
         foreach (var se in sePlayers) await se.PauseAsync();
     }
 
@@ -365,16 +402,22 @@ public class AudioManager : IAudioManager
     /// </summary>
     public async Task ResumeAllAsync()
     {
-        List<IAudioPlayer> bgmPlayers, sePlayers;
-        lock (_audioLock)
+        // 拍快照
+        var bgmPlayers = _bgmPlayers;
+        var sePlayers = _sePlayers;
+        var voice = _voicePlayer;
+        foreach (var bgm in bgmPlayers) _ = bgm.PlayAsync().ContinueWith(t =>
         {
-            bgmPlayers = [.. _bgmPlayers];
-            sePlayers = [.. _sePlayers];
-        }
-        IAudioPlayer? voice2; lock (_audioLock) voice2 = _voicePlayer;
-        foreach (var bgm in bgmPlayers) _ = bgm.PlayAsync();
-        if (voice2 != null) _ = voice2.PlayAsync();
-        foreach (var se in sePlayers) _ = se.PlayAsync();
+            if (t.IsFaulted) System.Diagnostics.Debug.WriteLine($"[Audio] ResumeAll BGM PlayAsync failed: {t.Exception?.GetBaseException().Message}");
+        }, TaskContinuationOptions.OnlyOnFaulted);
+        if (voice != null) _ = voice.PlayAsync().ContinueWith(t =>
+        {
+            if (t.IsFaulted) System.Diagnostics.Debug.WriteLine($"[Audio] ResumeAll Voice PlayAsync failed: {t.Exception?.GetBaseException().Message}");
+        }, TaskContinuationOptions.OnlyOnFaulted);
+        foreach (var se in sePlayers) _ = se.PlayAsync().ContinueWith(t =>
+        {
+            if (t.IsFaulted) System.Diagnostics.Debug.WriteLine($"[Audio] ResumeAll SE PlayAsync failed: {t.Exception?.GetBaseException().Message}");
+        }, TaskContinuationOptions.OnlyOnFaulted);
     }
 
     /// <summary>
@@ -385,24 +428,29 @@ public class AudioManager : IAudioManager
         await StopBgmAsync();
         await StopAmbientAsync();
         StopVoice();
-        List<IAudioPlayer> sePlayers;
-        lock (_audioLock)
+        ImmutableArray<IAudioPlayer> sePlayers = default;
+        ImmutableInterlocked.Update(ref _sePlayers, arr =>
         {
-            sePlayers = [.. _sePlayers];
-            _sePlayers.Clear();
-        }
+            sePlayers = arr;
+            return ImmutableArray<IAudioPlayer>.Empty;
+        });
         foreach (var se in sePlayers) { await se.StopAsync(); await se.DisposeAsync(); }
     }
 
     /// <inheritdoc/>
     public void Dispose()
     {
-        _ = StopAllAsync();
+        _ = StopAllAsync().ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+                System.Diagnostics.Debug.WriteLine($"[Audio] Dispose StopAllAsync failed: {t.Exception?.GetBaseException().Message}");
+        }, TaskContinuationOptions.OnlyOnFaulted);
     }
 
     private bool IsPlayerActive(IAudioPlayer player)
     {
-        lock (_audioLock) return _bgmPlayers.Contains(player);
+        // ImmutableArray.Contains 线程安全
+        return _bgmPlayers.Contains(player);
     }
 
     private IAudioPlayer CreatePlayer() => _playerFactory();

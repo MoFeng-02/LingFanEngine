@@ -169,8 +169,9 @@ public static class ExpressionParser
         {
             return num.ToString(format);
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[ExpressionParser] 格式化失败: {ex.Message}");
             return value;
         }
     }

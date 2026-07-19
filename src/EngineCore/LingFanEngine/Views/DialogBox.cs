@@ -49,7 +49,11 @@ public class DialogBox : UserControl, IDialogBox
                     Avalonia.Threading.Dispatcher.UIThread.Post(() => _bgImage.Source = bmp);
                 }
                 catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[DialogBox] BackgroundImage load failed: {value} — {ex.Message}"); }
-            });
+            }).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                    System.Diagnostics.Debug.WriteLine($"[DialogBox] BackgroundImage Task.Run faulted: {t.Exception?.GetBaseException().Message}");
+            }, TaskContinuationOptions.OnlyOnFaulted);
         }
     }
 
@@ -256,8 +260,9 @@ public class DialogBox : UserControl, IDialogBox
             _sideImage.Source = new Avalonia.Media.Imaging.Bitmap(sidePath);
             _sideImage.IsVisible = true;
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[DialogBox] SideImage 加载失败: {ex.Message}");
             _sideImage.IsVisible = false;
         }
     }

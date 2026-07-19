@@ -566,7 +566,7 @@ public class CodeEditorView : UserControl
             _textEditor.TextArea.Caret.Line = caretLine;
             _textEditor.TextArea.Caret.Column = caretColumn;
         }
-        catch { }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex.Message); }
         UpdateFoldings();
     }
 
@@ -717,7 +717,7 @@ public class CodeEditorView : UserControl
             // 最后 Show
             _completionWindow.Show();
         }
-        catch { }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex.Message); }
     }
 
     private static bool IsWordChar(char c) =>

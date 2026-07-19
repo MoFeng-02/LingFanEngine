@@ -145,8 +145,9 @@ public class DslAnalyzer : IDslAnalyzer
                 if (stmt != null)
                     statements.Add(stmt);
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[DslAnalyzer] 行解析失败: {ex.Message}");
                 // 解析失败的行跳过——诊断收集器会报告语法错误
             }
         }

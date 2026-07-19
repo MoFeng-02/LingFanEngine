@@ -120,7 +120,7 @@ private readonly ITimeEventRegistry? _timeEventRegistry;
         //    这避免了引用共享导致存档中混入错误场景元素的问题
         //    Phase 36: 只写 TypedState（V2 类型安全），State 留空（V1 兼容回退用）
         var typedState = new Dictionary<string, SaveEntry>();
-        var allState = new Dictionary<string, object?>(_state.GetSnapshot());
+        var allState = _state.GetSnapshot();
 
         foreach (var (k, v) in allState)
         {
@@ -377,7 +377,11 @@ private readonly ITimeEventRegistry? _timeEventRegistry;
 
             // 使用代次追踪模式启动 Runner——与 NavigateHandler.RunScriptEntryWithGeneration 一致
             // 确保回溯/前进时旧 Runner 能被 CSharpSceneReplayCancelledException 正确终止
-            _ = RunScriptEntryWithGeneration(scriptEntry, _state);
+            _ = RunScriptEntryWithGeneration(scriptEntry, _state).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                    Debug.WriteLine($"[SaveDataService] RunScriptEntry faulted: {t.Exception?.GetBaseException().Message}");
+            }, TaskContinuationOptions.OnlyOnFaulted);
             Debug.WriteLine($"[SaveDataService] ApplySaveData: 重新执行 StoryScript [{sceneName}]");
         }
         // 5b. 尝试 DSL 场景（从存档位置恢复执行）

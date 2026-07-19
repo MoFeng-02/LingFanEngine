@@ -139,7 +139,7 @@ internal sealed class InteractionBinder : IInteractionBinder
                 clickBtn.Click += (_, _) =>
                 {
                     _state.Set(StateKeys.Dialog.Complete, false);
-                    _pipeline.SendAsync(new NavigateCommand { Path = nav });
+                    FireAndForgetSend(new NavigateCommand { Path = nav });
                 };
             else if (cmd != null)
             {
@@ -148,7 +148,7 @@ internal sealed class InteractionBinder : IInteractionBinder
                 {
                     _state.Set(StateKeys.Dialog.Complete, false);
                     if (_cmdService != null)
-                        _ = _cmdService.ExecuteAsync(cmd, cmdValue);
+                        FireAndForgetExecute(cmd, cmdValue);
                 };
             }
         }
@@ -158,7 +158,7 @@ internal sealed class InteractionBinder : IInteractionBinder
                 control.PointerPressed += (_, _) =>
                 {
                     _state.Set(StateKeys.Dialog.Complete, false);
-                    _pipeline.SendAsync(new NavigateCommand { Path = nav });
+                    FireAndForgetSend(new NavigateCommand { Path = nav });
                 };
             else if (cmd != null)
             {
@@ -167,9 +167,29 @@ internal sealed class InteractionBinder : IInteractionBinder
                 {
                     _state.Set(StateKeys.Dialog.Complete, false);
                     if (_cmdService != null)
-                        _ = _cmdService.ExecuteAsync(cmd, cmdValue);
+                        FireAndForgetExecute(cmd, cmdValue);
                 };
             }
         }
+    }
+
+    /// <summary>fire-and-forget SendAsync 带异常捕获</summary>
+    private void FireAndForgetSend(ICommand cmd)
+    {
+        _ = _pipeline.SendAsync(cmd).AsTask().ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+                System.Diagnostics.Debug.WriteLine($"[InteractionBinder] SendAsync failed: {t.Exception?.GetBaseException().Message}");
+        }, TaskContinuationOptions.OnlyOnFaulted);
+    }
+
+    /// <summary>fire-and-forget ExecuteAsync 带异常捕获</summary>
+    private void FireAndForgetExecute(string cmd, string? cmdValue)
+    {
+        _ = _cmdService!.ExecuteAsync(cmd, cmdValue).ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+                System.Diagnostics.Debug.WriteLine($"[InteractionBinder] ExecuteAsync failed: {t.Exception?.GetBaseException().Message}");
+        }, TaskContinuationOptions.OnlyOnFaulted);
     }
 }

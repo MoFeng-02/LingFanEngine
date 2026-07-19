@@ -192,6 +192,6 @@ public class MainView : UserControl
         {
             await _services.DisposeAsync();
         }
-        catch { }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex.Message); }
     }
 }

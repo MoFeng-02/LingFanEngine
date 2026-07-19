@@ -122,7 +122,7 @@ public class PublishService : IPublishService
                 // 清理旧的 GeneratedKeys.cs（可能在平台项目目录中）
                 foreach (var oldFile in Directory.GetFiles(projectDir, ProjectConstants.GeneratedKeysFileName, SearchOption.AllDirectories))
                 {
-                    try { File.Delete(oldFile); } catch { }
+                    try { File.Delete(oldFile); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex.Message); }
                 }
 
                 var keyFilePath = Path.Combine(securityDir, ProjectConstants.GeneratedKeysFileName);
@@ -468,7 +468,7 @@ public class PublishService : IPublishService
                 catch { /* 忽略无权限访问的进程 */ }
             }
         }
-        catch { }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex.Message); }
     }
 
     /// <summary>

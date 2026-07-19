@@ -51,9 +51,9 @@ public static class ReferenceFinder
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // 忽略文件读取错误
+                System.Diagnostics.Debug.WriteLine($"[ReferenceFinder] 文件读取错误: {ex.Message}");
             }
         }
 

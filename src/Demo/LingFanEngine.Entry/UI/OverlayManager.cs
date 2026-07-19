@@ -27,7 +27,6 @@ public class OverlayManager : Grid
     public OverlayManager(IStateContainer state, ISaveService? saveService, IGameController? controller)
     {
         _state = state;
-
         // 创建各面板
         _saveLoadPanel = new SaveLoadPanel(state, saveService, controller);
         _settingsPanel = new SettingsPanel(state);

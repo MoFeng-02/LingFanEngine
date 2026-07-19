@@ -50,9 +50,9 @@ public class AvaloniaAssetAccessor : IAssetAccessor
                     return assetStream;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // AssetLoader 失败，回落文件系统
+            System.Diagnostics.Debug.WriteLine($"[AvaloniaAssetAccessor] AssetLoader 异常: {ex.Message}");
         }
 
         var resolvedDir = ResolveStoryDirectory(path);

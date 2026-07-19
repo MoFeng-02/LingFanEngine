@@ -35,10 +35,11 @@ internal sealed class FileSink : IEngineLogSink
             Directory.CreateDirectory(_directory);
             CleanOldFiles();
         }
-        catch
+        catch (Exception ex)
         {
             // 目录创建失败不抛异常——文件 Sink 降级为静默
             // 引擎主流程不受影响
+            System.Diagnostics.Debug.WriteLine($"[FileSink] 初始化失败: {ex.Message}");
         }
     }
 
@@ -54,9 +55,10 @@ internal sealed class FileSink : IEngineLogSink
                 _writer!.WriteLine(FormatFileEntry(entry));
                 _writer.Flush();
             }
-            catch
+            catch (Exception ex)
             {
                 // 写入失败不抛异常——降级为静默
+                System.Diagnostics.Debug.WriteLine($"[FileSink] 写入失败: {ex.Message}");
                 _writer?.Dispose();
                 _writer = null;
                 _currentDate = null;
@@ -108,8 +110,9 @@ internal sealed class FileSink : IEngineLogSink
             _currentDate = dateStr;
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[FileSink] StreamWriter 创建失败: {ex.Message}");
             _writer = null;
             _currentDate = null;
             return false;
@@ -131,15 +134,15 @@ internal sealed class FileSink : IEngineLogSink
                     if (File.GetLastWriteTime(file) < cutoff.DateTime)
                         File.Delete(file);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // 单个文件清理失败不影响其他文件
+                    System.Diagnostics.Debug.WriteLine($"[FileSink] 清理旧文件失败: {ex.Message}");
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // 清理失败不影响引擎启动
+            System.Diagnostics.Debug.WriteLine($"[FileSink] CleanOldFiles 异常: {ex.Message}");
         }
     }
 

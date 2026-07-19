@@ -7,7 +7,6 @@ using LingFanEngine.Abstractions.Interfaces.Media;
 using LingFanEngine.Abstractions.Interfaces.Saves;
 using LingFanEngine.Services.Core;
 using LingFanEngine.Services.Core.Handlers;
-using LingFanEngine.Services.Dlc;
 using LingFanEngine.Services.Entry;
 using LingFanEngine.Services.Logging;
 using LingFanEngine.Services.Logging.Context;
@@ -54,9 +53,6 @@ public static class ServiceCollectionExtensions
 // 注入 IEncryptedFileReader 支持加密 .story 文件读取
 services.AddSingleton<ITimeEventRegistry>(sp => new TimeEventRegistry(
     sp.GetService<IEncryptedFileReader>()));
-        services.AddSingleton(sp => new DlcScanner(sp.GetRequiredService<LingFanEngineOptions>().ModsDirectory));
-        services.AddSingleton<PluginLoader>();
-        services.AddSingleton<DlcLoader>();
         services.AddSingleton<HotReloadWatcher>();
         services.AddSingleton<ResourceManager>();
         services.AddSingleton<InputService>();
@@ -280,6 +276,7 @@ sp.GetService<ITimeEventRegistry>()));
                 {
                     try
                     {
+                        // DI 工厂在启动期执行，无 SynchronizationContext，GetAwaiter().GetResult() 不会死锁
                         timeEventRegistry.InitializeAsync(storyReg, scriptEngine)
                             .GetAwaiter().GetResult();
                     }

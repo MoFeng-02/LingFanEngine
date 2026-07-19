@@ -23,6 +23,7 @@ public class StoryHotReloadService : IDisposable
     private FileSystemWatcher? _watcher;
     private readonly Dictionary<string, DateTime> _lastReloadTimes = new(StringComparer.OrdinalIgnoreCase);
     private bool _started;
+    private CancellationTokenSource? _stopCts;
 
     public StoryHotReloadService(
         IStoryRegistry storyRegistry,
@@ -45,6 +46,7 @@ public class StoryHotReloadService : IDisposable
     {
         if (_started || !_options.EnableHotReload) return;
         _started = true;
+        _stopCts = new CancellationTokenSource();
 
         var storyRoot = ResolveStoryRoot();
         if (storyRoot == null)
@@ -88,6 +90,9 @@ public class StoryHotReloadService : IDisposable
             _watcher = null;
         }
         _started = false;
+        _stopCts?.Cancel();
+        _stopCts?.Dispose();
+        _stopCts = null;
     }
 
     /// <summary>
@@ -103,18 +108,20 @@ public class StoryHotReloadService : IDisposable
         _lastReloadTimes[e.FullPath] = now;
 
         // 延迟一小段时间，确保文件写入完成
-        Task.Run(async () =>
+        var token = _stopCts?.Token ?? CancellationToken.None;
+        _ = Task.Run(async () =>
         {
-            await Task.Delay(200);
             try
             {
+                await Task.Delay(200, token);
                 ReloadStoryFile(e.FullPath);
             }
+            catch (OperationCanceledException) { /* 正常停止 */ }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[StoryHotReload] 重载失败: {e.FullPath} -> {ex.Message}");
             }
-        });
+        }, token);
     }
 
     /// <summary>

@@ -249,7 +249,7 @@ public partial class StoryEditorViewModel : ViewModelBase, IQueryAttributable
                 tab.IsDirty = false;
                 savedCount++;
             }
-            catch { }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex.Message); }
         }
 
         // 如果当前活动标签也被保存了，同步状态

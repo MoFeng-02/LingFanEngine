@@ -60,8 +60,8 @@ _logger = loggerFactory?.Create("GameController") ?? NullEngineLogger.Instance;
 
     public void Navigate(string sceneName) =>
         _pipeline.SendAsync(new NavigateCommand { Path = sceneName });
-    public async Task NavigateAsync(string sceneName)
-    { await _pipeline.SendAsync(new NavigateCommand { Path = sceneName }); await Task.Yield(); }
+    public Task NavigateAsync(string sceneName) =>
+        _pipeline.SendAsync(new NavigateCommand { Path = sceneName }).AsTask();
 
     // ========== 对话 ==========
 
@@ -174,20 +174,14 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
     public void Set(string key, object? value) =>
         _pipeline.SendAsync(new SetVariableCommand { Key = key, Value = value });
 
-    public async Task SetAsync(string key, object? value)
-    {
-        await _pipeline.SendAsync(new SetVariableCommand { Key = key, Value = value });
-        await Task.Yield();
-    }
+    public Task SetAsync(string key, object? value) =>
+        _pipeline.SendAsync(new SetVariableCommand { Key = key, Value = value }).AsTask();
 
     public void Define(string key, object? value) =>
         _pipeline.SendAsync(new SetVariableCommand { Key = key, Value = value, IsDefine = true });
 
-    public async Task DefineAsync(string key, object? value)
-    {
-        await _pipeline.SendAsync(new SetVariableCommand { Key = key, Value = value, IsDefine = true });
-        await Task.Yield();
-    }
+    public Task DefineAsync(string key, object? value) =>
+        _pipeline.SendAsync(new SetVariableCommand { Key = key, Value = value, IsDefine = true }).AsTask();
 
     // ========== 过渡 ==========
 
@@ -223,8 +217,11 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
         _pipeline.SendAsync(new WaitCommand { Seconds = seconds });
 
     /// <summary>等待指定时长，不可跳过（对标 Ren'Py pause(delay, hard=True)）</summary>
-    public async Task WaitAsync(double seconds) =>
-        await Task.Delay((int)(seconds * 1000));
+    public async Task WaitAsync(double seconds, CancellationToken ct = default)
+    {
+        if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+        await Task.Delay(TimeSpan.FromSeconds(seconds), ct);
+    }
 
     /// <summary>
 /// 可跳过的定时等待——用户点击可提前结束（对标 Ren'Py pause(delay, hard=False)）
@@ -287,38 +284,32 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
     public void PlayBgm(string path, float volume = 0.8f, double fadeIn = 0, bool? autoStop = null) =>
         _pipeline.SendAsync(new PlayBgmCommand { Path = path, Volume = volume, FadeIn = fadeIn, AutoStop = autoStop });
 
-    public async Task PlayBgmAsync(string path, float volume = 0.8f, double fadeIn = 0, bool? autoStop = null)
-    {
-        await _pipeline.SendAsync(new PlayBgmCommand { Path = path, Volume = volume, FadeIn = fadeIn, AutoStop = autoStop });
-        await Task.Yield();
-    }
+    public Task PlayBgmAsync(string path, float volume = 0.8f, double fadeIn = 0, bool? autoStop = null) =>
+        _pipeline.SendAsync(new PlayBgmCommand { Path = path, Volume = volume, FadeIn = fadeIn, AutoStop = autoStop }).AsTask();
 
     public void StopBgm(double fadeOut = 0) =>
         _pipeline.SendAsync(new PlayBgmCommand { Path = "", Volume = 0, FadeOut = fadeOut });
 
-    public async Task StopBgmAsync(double fadeOut = 0)
-    {
-        await _pipeline.SendAsync(new PlayBgmCommand { Path = "", Volume = 0, FadeOut = fadeOut });
-        await Task.Yield();
-    }
+    public Task StopBgmAsync(double fadeOut = 0) =>
+        _pipeline.SendAsync(new PlayBgmCommand { Path = "", Volume = 0, FadeOut = fadeOut }).AsTask();
 
     // ========== 场景元素 ==========
 
     public void Show(string target, double x = 0, double y = 0) =>
         _pipeline.SendAsync(new ShowHideCommand { Target = target, X = x, Y = y, IsShow = true });
 
-    public async Task ShowAsync(string target, double x = 0, double y = 0)
-    { await _pipeline.SendAsync(new ShowHideCommand { Target = target, X = x, Y = y, IsShow = true }); await Task.Yield(); }
+    public Task ShowAsync(string target, double x = 0, double y = 0) =>
+        _pipeline.SendAsync(new ShowHideCommand { Target = target, X = x, Y = y, IsShow = true }).AsTask();
 
     public void Hide(string target) =>
         _pipeline.SendAsync(new ShowHideCommand { Target = target, IsShow = false });
-    public async Task HideAsync(string target)
-    { await _pipeline.SendAsync(new ShowHideCommand { Target = target, IsShow = false }); await Task.Yield(); }
+    public Task HideAsync(string target) =>
+        _pipeline.SendAsync(new ShowHideCommand { Target = target, IsShow = false }).AsTask();
 
     public void Background(string path) =>
         _pipeline.SendAsync(new ShowHideCommand { Target = path, X = 0, Y = 0, IsShow = true, IsBackground = true });
-    public async Task BackgroundAsync(string path)
-    { await _pipeline.SendAsync(new ShowHideCommand { Target = path, X = 0, Y = 0, IsShow = true, IsBackground = true }); await Task.Yield(); }
+    public Task BackgroundAsync(string path) =>
+        _pipeline.SendAsync(new ShowHideCommand { Target = path, X = 0, Y = 0, IsShow = true, IsBackground = true }).AsTask();
 
     // ========== 菜单 ==========
 
@@ -326,6 +317,12 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
     public async Task<int> ShowMenuAsync(string prompt, string[] options)
     {
         if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+        // 清除对话框状态——防止上一句 SayAsync 的文本残留在对话框中
+        _state.Set(StateKeys.Dialog.Text, "");
+        _state.Set(StateKeys.Dialog.Speaker, "");
+        _state.Set(StateKeys.Dialog.Clickable, false);
+        _state.Set(StateKeys.Dialog.Complete, false);
+
         _state.Set(StateKeys.Menu.Prompt, prompt);
         _state.Set<object>(StateKeys.Menu.Options, options);
         _state.Set(StateKeys.Menu.Selected, -1);
@@ -356,6 +353,12 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
     public async Task<string?> InputAsync(string prompt, string[]? options = null)
     {
         if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+        // 清除对话框状态——防止上一句 SayAsync 的文本残留在对话框中
+        _state.Set(StateKeys.Dialog.Text, "");
+        _state.Set(StateKeys.Dialog.Speaker, "");
+        _state.Set(StateKeys.Dialog.Clickable, false);
+        _state.Set(StateKeys.Dialog.Complete, false);
+
         _state.Set(StateKeys.Input.Prompt, prompt);
         _state.Set<object>(StateKeys.Input.Options, options ?? Array.Empty<string>());
         _state.Set<object?>(StateKeys.Input.Result, null);
@@ -386,14 +389,11 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
     public void PlaySe(string path, float volume = 0.6f) =>
         _pipeline.SendAsync(new PlaySeCommand { Path = path, Volume = volume });
 
-    public async Task PlaySeAsync(string path, float volume = 0.6f)
-    {
-        await _pipeline.SendAsync(new PlaySeCommand { Path = path, Volume = volume });
-        await Task.Yield();
-    }
+    public Task PlaySeAsync(string path, float volume = 0.6f) =>
+        _pipeline.SendAsync(new PlaySeCommand { Path = path, Volume = volume }).AsTask();
 
 public void StopSe() => _pipeline.SendAsync(new PlaySeCommand { Path = "", Volume = 0 });
-public async Task StopSeAsync() { await _pipeline.SendAsync(new PlaySeCommand { Path = "", Volume = 0 }); await Task.Yield(); }
+public Task StopSeAsync() => _pipeline.SendAsync(new PlaySeCommand { Path = "", Volume = 0 }).AsTask();
 
 // DSL 2.0: 环境音
 public void PlayAmbient(string path, float volume = 0.8f, bool loop = true) =>
@@ -405,57 +405,59 @@ public void StopAmbient() =>
 /// <summary>播放语音（独立通道）</summary>
     public void PlayVoice(string path, float volume = 1.0f, bool? autoStop = null) =>
         _pipeline.SendAsync(new PlayVoiceCommand { Path = path, Volume = volume, AutoStop = autoStop });
-    public async Task PlayVoiceAsync(string path, float volume = 1.0f, bool? autoStop = null)
-    { await _pipeline.SendAsync(new PlayVoiceCommand { Path = path, Volume = volume, AutoStop = autoStop }); await Task.Yield(); }
+    public Task PlayVoiceAsync(string path, float volume = 1.0f, bool? autoStop = null) =>
+        _pipeline.SendAsync(new PlayVoiceCommand { Path = path, Volume = volume, AutoStop = autoStop }).AsTask();
 
     public void StopVoice() => _pipeline.SendAsync(new PlayVoiceCommand { Path = "", Volume = 0 });
-    public async Task StopVoiceAsync() { await _pipeline.SendAsync(new PlayVoiceCommand { Path = "", Volume = 0 }); await Task.Yield(); }
+    public Task StopVoiceAsync() =>
+        _pipeline.SendAsync(new PlayVoiceCommand { Path = "", Volume = 0 }).AsTask();
 
     // ========== 堆栈 ==========
 
     public void Back() => _pipeline.SendAsync(new BackCommand());
-    public async Task BackAsync() { await _pipeline.SendAsync(new BackCommand()); await Task.Yield(); }
+    public Task BackAsync() => _pipeline.SendAsync(new BackCommand()).AsTask();
     public void Forward() => _pipeline.SendAsync(new ForwardCommand());
-    public async Task ForwardAsync() { await _pipeline.SendAsync(new ForwardCommand()); await Task.Yield(); }
+    public Task ForwardAsync() => _pipeline.SendAsync(new ForwardCommand()).AsTask();
 
     // ========== 回溯时间线（Ren'Py 风格）==========
     public void Rollback() => _pipeline.SendAsync(new RollbackCommand());
-    public async Task RollbackAsync() { await _pipeline.SendAsync(new RollbackCommand()); await Task.Yield(); }
+    public Task RollbackAsync() => _pipeline.SendAsync(new RollbackCommand()).AsTask();
     public void Rollforward() => _pipeline.SendAsync(new RollforwardCommand());
-    public async Task RollforwardAsync() { await _pipeline.SendAsync(new RollforwardCommand()); await Task.Yield(); }
+    public Task RollforwardAsync() => _pipeline.SendAsync(new RollforwardCommand()).AsTask();
     public void RollbackTo(int targetCheckpointIndex) => _pipeline.SendAsync(new RollbackToCommand { TargetCheckpointIndex = targetCheckpointIndex });
-    public async Task RollbackToAsync(int targetCheckpointIndex) { await _pipeline.SendAsync(new RollbackToCommand { TargetCheckpointIndex = targetCheckpointIndex }); await Task.Yield(); }
+    public Task RollbackToAsync(int targetCheckpointIndex) =>
+        _pipeline.SendAsync(new RollbackToCommand { TargetCheckpointIndex = targetCheckpointIndex }).AsTask();
 
     // ========== 存档 ==========
 
     public void Save(string slot) =>
         _pipeline.SendAsync(new SaveLoadCommand { SlotId = slot, IsSave = true });
-    public async Task SaveAsync(string slot)
-    { await _pipeline.SendAsync(new SaveLoadCommand { SlotId = slot, IsSave = true }); await Task.Yield(); }
+    public Task SaveAsync(string slot) =>
+        _pipeline.SendAsync(new SaveLoadCommand { SlotId = slot, IsSave = true }).AsTask();
 
     public void Load(string slot) =>
         _pipeline.SendAsync(new SaveLoadCommand { SlotId = slot, IsSave = false });
-    public async Task LoadAsync(string slot)
-    { await _pipeline.SendAsync(new SaveLoadCommand { SlotId = slot, IsSave = false }); await Task.Yield(); }
+    public Task LoadAsync(string slot) =>
+        _pipeline.SendAsync(new SaveLoadCommand { SlotId = slot, IsSave = false }).AsTask();
 
     /// <summary>清空场景堆栈（返回主菜单时调用）</summary>
     public void ClearStack() =>
         _pipeline.SendAsync(new ClearStackCommand());
-    public async Task ClearStackAsync()
-    { await _pipeline.SendAsync(new ClearStackCommand()); await Task.Yield(); }
+    public Task ClearStackAsync() =>
+        _pipeline.SendAsync(new ClearStackCommand()).AsTask();
 
     /// <summary>重置全部游戏状态（返回主菜单时手动调用）</summary>
     public void ResetGameState() =>
         _pipeline.SendAsync(new ResetGameStateCommand());
 
-    public async Task ResetGameStateAsync()
-    { await _pipeline.SendAsync(new ResetGameStateCommand()); await Task.Yield(); }
+    public Task ResetGameStateAsync() =>
+        _pipeline.SendAsync(new ResetGameStateCommand()).AsTask();
 
     /// <summary>深合并变量定义（补缺+修类型）</summary>
     public void MergeDefSets(Dictionary<string, object?> dict) =>
         _pipeline.SendAsync(new MergeDefinesCommand { Defines = dict });
-    public async Task MergeDefSetsAsync(Dictionary<string, object?> dict)
-    { await _pipeline.SendAsync(new MergeDefinesCommand { Defines = dict }); await Task.Yield(); }
+    public Task MergeDefSetsAsync(Dictionary<string, object?> dict) =>
+        _pipeline.SendAsync(new MergeDefinesCommand { Defines = dict }).AsTask();
 
     // ========== 屏幕震动 ==========
 
@@ -463,8 +465,8 @@ public void StopAmbient() =>
     public void Shake(double intensity = 10.0, double duration = 0.5) =>
         _pipeline.SendAsync(new ShakeCommand { Intensity = intensity, Duration = duration });
 
-    public async Task ShakeAsync(double intensity = 10.0, double duration = 0.5)
-    { await _pipeline.SendAsync(new ShakeCommand { Intensity = intensity, Duration = duration }); await Task.Yield(); }
+    public Task ShakeAsync(double intensity = 10.0, double duration = 0.5) =>
+        _pipeline.SendAsync(new ShakeCommand { Intensity = intensity, Duration = duration }).AsTask();
 
     // ========== 跳过/自动模式 ==========
 
@@ -472,15 +474,15 @@ public void StopAmbient() =>
     public void ToggleSkip() =>
         _pipeline.SendAsync(new ToggleSkipCommand());
 
-    public async Task ToggleSkipAsync()
-    { await _pipeline.SendAsync(new ToggleSkipCommand()); await Task.Yield(); }
+    public Task ToggleSkipAsync() =>
+        _pipeline.SendAsync(new ToggleSkipCommand()).AsTask();
 
     /// <summary>切换自动模式</summary>
     public void ToggleAuto() =>
         _pipeline.SendAsync(new ToggleAutoCommand());
 
-    public async Task ToggleAutoAsync()
-    { await _pipeline.SendAsync(new ToggleAutoCommand()); await Task.Yield(); }
+    public Task ToggleAutoAsync() =>
+        _pipeline.SendAsync(new ToggleAutoCommand()).AsTask();
 
     /// <summary>设置自动模式延迟（秒）</summary>
     public void SetAutoDelay(double delay) =>
@@ -556,17 +558,14 @@ public void StopAmbient() =>
         });
 
     /// <summary>解锁 CG（异步）</summary>
-    public async Task UnlockGalleryAsync(string id, string imagePath, string? title = null, string? sceneName = null)
-    {
-        await _pipeline.SendAsync(new UnlockGalleryCommand
+    public Task UnlockGalleryAsync(string id, string imagePath, string? title = null, string? sceneName = null) =>
+        _pipeline.SendAsync(new UnlockGalleryCommand
         {
             Id = id,
             ImagePath = imagePath,
             Title = title,
             SceneName = sceneName
-        });
-        await Task.Yield();
-    }
+        }).AsTask();
 
     /// <summary>检查 CG 是否已解锁</summary>
     public bool IsGalleryUnlocked(string id)
@@ -593,11 +592,8 @@ public void StopAmbient() =>
         _pipeline.SendAsync(new DebugLogCommand { Message = message, Level = level });
 
     /// <summary>记录调试日志（异步）</summary>
-    public async Task DebugLogAsync(string message, string level = "Info")
-    {
-        await _pipeline.SendAsync(new DebugLogCommand { Message = message, Level = level });
-        await Task.Yield();
-    }
+    public Task DebugLogAsync(string message, string level = "Info") =>
+        _pipeline.SendAsync(new DebugLogCommand { Message = message, Level = level }).AsTask();
 
     /// <summary>获取调试日志列表</summary>
     public List<DebugLogEntry> GetDebugLogs() =>
@@ -639,33 +635,24 @@ _pipeline.SendAsync(cmd);
         _pipeline.SendAsync(new NvlCommand { IsClear = false });
 
     /// <summary>进入 NVL 模式（异步）</summary>
-    public async Task EnterNvlAsync()
-    {
-        await _pipeline.SendAsync(new NvlCommand { IsClear = false });
-        await Task.Yield();
-    }
+    public Task EnterNvlAsync() =>
+        _pipeline.SendAsync(new NvlCommand { IsClear = false }).AsTask();
 
 /// <summary>清空 NVL 累积文本（不退出 NVL 模式）</summary>
 public void ClearNvl() =>
 _pipeline.SendAsync(new NvlCommand { IsClear = true });
 
 /// <summary>清空 NVL 累积文本（不退出 NVL 模式，异步）</summary>
-public async Task ClearNvlAsync()
-{
-await _pipeline.SendAsync(new NvlCommand { IsClear = true });
-await Task.Yield();
-}
+public Task ClearNvlAsync() =>
+_pipeline.SendAsync(new NvlCommand { IsClear = true }).AsTask();
 
 /// <summary>退出 NVL 模式并清空累积文本（恢复 ADV 模式）</summary>
 public void ExitNvl() =>
 _pipeline.SendAsync(new NvlCommand { IsExit = true });
 
 /// <summary>退出 NVL 模式并清空累积文本（恢复 ADV 模式，异步）</summary>
-public async Task ExitNvlAsync()
-{
-await _pipeline.SendAsync(new NvlCommand { IsExit = true });
-await Task.Yield();
-}
+public Task ExitNvlAsync() =>
+_pipeline.SendAsync(new NvlCommand { IsExit = true }).AsTask();
 
     /// <summary>NVL 模式是否激活</summary>
     public bool IsNvlActive =>
@@ -805,49 +792,46 @@ public void ResetGameTime() => _pipeline.SendAsync(new ResetGameStateCommand());
         });
 
     /// <inheritdoc/>
-    public async Task PlayVideoAsync(string path, float volume = 1.0f, bool loop = false, bool autoPlay = true)
-    {
-        await _pipeline.SendAsync(new PlayVideoCommand
+    public Task PlayVideoAsync(string path, float volume = 1.0f, bool loop = false, bool autoPlay = true) =>
+        _pipeline.SendAsync(new PlayVideoCommand
         {
             Path = path,
             Volume = volume,
             Loop = loop,
             AutoPlay = autoPlay
-        });
-        await Task.Yield();
-    }
+        }).AsTask();
 
     /// <inheritdoc/>
     public void StopVideo() =>
         _pipeline.SendAsync(new StopVideoCommand());
 
     /// <inheritdoc/>
-    public async Task StopVideoAsync()
-    { await _pipeline.SendAsync(new StopVideoCommand()); await Task.Yield(); }
+    public Task StopVideoAsync() =>
+        _pipeline.SendAsync(new StopVideoCommand()).AsTask();
 
     /// <inheritdoc/>
     public void PauseVideo() =>
         _pipeline.SendAsync(new PauseVideoCommand());
 
     /// <inheritdoc/>
-    public async Task PauseVideoAsync()
-    { await _pipeline.SendAsync(new PauseVideoCommand()); await Task.Yield(); }
+    public Task PauseVideoAsync() =>
+        _pipeline.SendAsync(new PauseVideoCommand()).AsTask();
 
     /// <inheritdoc/>
     public void ResumeVideo() =>
         _pipeline.SendAsync(new ResumeVideoCommand());
 
     /// <inheritdoc/>
-    public async Task ResumeVideoAsync()
-    { await _pipeline.SendAsync(new ResumeVideoCommand()); await Task.Yield(); }
+    public Task ResumeVideoAsync() =>
+        _pipeline.SendAsync(new ResumeVideoCommand()).AsTask();
 
     /// <inheritdoc/>
     public void SeekVideo(TimeSpan position) =>
         _pipeline.SendAsync(new SeekVideoCommand { Position = position.TotalSeconds });
 
     /// <inheritdoc/>
-    public async Task SeekVideoAsync(TimeSpan position)
-    { await _pipeline.SendAsync(new SeekVideoCommand { Position = position.TotalSeconds }); await Task.Yield(); }
+    public Task SeekVideoAsync(TimeSpan position) =>
+        _pipeline.SendAsync(new SeekVideoCommand { Position = position.TotalSeconds }).AsTask();
 
     // ========== 过场动画 ==========
 
@@ -967,6 +951,12 @@ public void ResetGameTime() => _pipeline.SendAsync(new ResetGameStateCommand());
         params (string Key, object? Value)[] parameters)
     {
         if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
+        // 清除对话框状态——防止上一句 SayAsync 的文本残留在对话框中
+        _state.Set(StateKeys.Dialog.Text, "");
+        _state.Set(StateKeys.Dialog.Speaker, "");
+        _state.Set(StateKeys.Dialog.Clickable, false);
+        _state.Set(StateKeys.Dialog.Complete, false);
+
         // 设置传入参数
         if (parameters.Length > 0)
         {
@@ -981,7 +971,7 @@ public void ResetGameTime() => _pipeline.SendAsync(new ResetGameStateCommand());
         }
 
         _state.Set<object?>(StateKeys.Screen.Result, null);
-        _ = _pipeline.SendAsync(new NavigateCommand { Path = sceneName });
+        await _pipeline.SendAsync(new NavigateCommand { Path = sceneName });
 
         try
         {

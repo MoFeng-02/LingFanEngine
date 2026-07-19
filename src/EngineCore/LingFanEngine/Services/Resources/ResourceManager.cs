@@ -54,12 +54,23 @@ public class ResourceManager : IDisposable
     /// <param name="packPath">加密包文件路径</param>
     /// <param name="key">AES 密钥（32 字节）</param>
     /// <param name="iv">AES 初始向量（16 字节）</param>
-    public void MountPack(string packPath, byte[] key, byte[] iv)
+    /// <summary>
+    /// 异步挂载加密资源包
+    /// </summary>
+    public async ValueTask MountPackAsync(string packPath, byte[] key, byte[]? iv = null,
+        CancellationToken ct = default)
     {
         var loader = new PackLoader();
-        loader.MountAsync(packPath, key, iv).GetAwaiter().GetResult();
+        await loader.MountAsync(packPath, key, iv, ct);
         _packLoader = loader;
     }
+
+    /// <summary>
+    /// 同步挂载加密资源包（兼容旧接口，内部异步执行）
+    /// </summary>
+    [Obsolete("请使用 MountPackAsync 异步版本")]
+    public void MountPack(string packPath, byte[] key, byte[] iv)
+        => MountPackAsync(packPath, key, iv).AsTask().GetAwaiter().GetResult();
 
     /// <summary>
     /// 获取缓存统计
@@ -164,8 +175,9 @@ public class ResourceManager : IDisposable
         {
             return null;
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[ResourceManager] LoadBytesAsync failed: {relativePath} — {ex.Message}");
             return null;
         }
         finally
@@ -224,10 +236,17 @@ public class ResourceManager : IDisposable
     {
         while (_cache.Count > _maxCacheSize || _currentCacheBytes > _maxCacheBytes)
         {
-            // 找最早访问的
-            var oldest = _cache.Values
-                .OrderBy(e => e.LastAccess)
-                .FirstOrDefault();
+            // 线性查找最久未访问——避免 OrderBy 全量排序
+            CacheEntry? oldest = null;
+            var oldestTime = DateTime.MaxValue;
+            foreach (var entry in _cache.Values)
+            {
+                if (entry.LastAccess < oldestTime)
+                {
+                    oldestTime = entry.LastAccess;
+                    oldest = entry;
+                }
+            }
 
             if (oldest == null) break;
 

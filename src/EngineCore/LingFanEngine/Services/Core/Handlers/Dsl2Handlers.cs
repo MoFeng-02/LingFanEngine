@@ -400,14 +400,16 @@ public class SaveDeleteHandler : ICommandHandler<SaveDeleteCommand>, IDefaultCom
             try
             {
                 await ctx.SaveService.DeleteAsync(cmd.SlotId);
-                System.Diagnostics.Debug.WriteLine(
-                    $"[SaveDeleteHandler] 存档已删除: {cmd.SlotId}");
+                System.Diagnostics.Debug.WriteLine($"[SaveDeleteHandler] 存档已删除: {cmd.SlotId}");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[SaveDeleteHandler] 删除存档失败: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[SaveDeleteHandler] 删除存档失败: {ex.Message}");
             }
-        });
+        }).ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+                System.Diagnostics.Debug.WriteLine($"[SaveDeleteHandler] Task.Run faulted: {t.Exception?.GetBaseException().Message}");
+        }, TaskContinuationOptions.OnlyOnFaulted);
     }
 }

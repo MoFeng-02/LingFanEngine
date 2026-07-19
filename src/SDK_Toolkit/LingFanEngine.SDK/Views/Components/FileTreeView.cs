@@ -89,7 +89,7 @@ public class FileTreeView : UserControl
                     Directory.CreateDirectory(newDirPath);
                     Refresh();
                 }
-                catch { }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex.Message); }
             }
         };
 
@@ -126,7 +126,7 @@ public class FileTreeView : UserControl
                     else if (OperatingSystem.IsLinux())
                         System.Diagnostics.Process.Start("xdg-open", path);
                 }
-                catch { }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex.Message); }
             }
         };
 
@@ -171,7 +171,7 @@ public class FileTreeView : UserControl
                     Directory.Delete(node.FullPath, true);
                     Refresh();
                 }
-                catch { }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex.Message); }
             }
             else
             {
@@ -469,9 +469,9 @@ public class FileTreeView : UserControl
                 nodes.Add(node);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // 目录访问失败——忽略
+            System.Diagnostics.Debug.WriteLine($"[FileTreeView] 目录访问失败: {ex.Message}");
         }
 
         return nodes;

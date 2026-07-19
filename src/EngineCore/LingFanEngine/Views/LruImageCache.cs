@@ -54,7 +54,7 @@ internal sealed class LruImageCache : IDisposable
                 _order.RemoveLast();
                 if (_store.TryRemove(oldestKey, out var oldBmp))
                 {
-                    try { oldBmp.Dispose(); } catch { }
+                    try { oldBmp.Dispose(); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[LruImageCache] Dispose bitmap failed: {ex.Message}"); }
                 }
             }
         }
@@ -72,7 +72,7 @@ internal sealed class LruImageCache : IDisposable
             {
                 if (_store.TryRemove(key, out var bmp))
                 {
-                    try { bmp.Dispose(); } catch { }
+                    try { bmp.Dispose(); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[LruImageCache] Dispose on clear failed: {ex.Message}"); }
                 }
             }
             _order.Clear();

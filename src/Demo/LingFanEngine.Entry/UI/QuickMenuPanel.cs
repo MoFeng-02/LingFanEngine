@@ -29,6 +29,7 @@ public class QuickMenuPanel : UserControl
         _state = state;
         _controller = controller;
 
+        ZIndex = 999;
         // 透明背景，仅在菜单区域可见
         var mainPanel = new Panel();
 

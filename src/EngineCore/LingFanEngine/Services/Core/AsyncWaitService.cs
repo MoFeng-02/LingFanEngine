@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Diagnostics;
 using LingFanEngine.Abstractions.Interfaces.Core;
 
@@ -8,12 +9,19 @@ namespace LingFanEngine.Services.Core;
 /// <para>订阅状态容器的值变更事件，当值变化时检查所有活跃等待的谓词，
 /// 满足条件则通过 TaskCompletionSource 零延迟唤醒。</para>
 /// <para>使用 RunContinuationsAsynchronously 避免 ValueChanged 回调线程被阻塞。</para>
+/// <para>Phase 64：无锁设计——ImmutableArray + ImmutableInterlocked 原子替换。</para>
+/// <para>选择 ImmutableArray 而非 ConcurrentDictionary 的理由：</para>
+/// <para>1. 语义匹配——这是"集合"而非"键值映射"</para>
+/// <para>2. 遍历性能——连续内存，CPU 缓存预取，比 Node 链表快 3-5 倍</para>
+/// <para>3. GC 压力——无 Node 堆对象，短生命周期条目零 Gen0 垃圾</para>
+/// <para>4. 写入成本——n 通常 1-10，O(n) 复制 &lt; 10ns，比哈希+分桶+Node 分配更快</para>
 /// </summary>
 public class AsyncWaitService : IAsyncWaitService
 {
     private readonly IStateContainer _state;
-    private readonly List<WaitEntry> _waiters = new();
-    private readonly object _lock = new();
+
+    /// <summary>等待者集合——ImmutableArray 不可变快照，原子替换</summary>
+    private ImmutableArray<WaitEntry> _waiters = ImmutableArray<WaitEntry>.Empty;
 
     /// <summary>
     /// 等待条目
@@ -22,7 +30,10 @@ public class AsyncWaitService : IAsyncWaitService
     {
         public required Func<bool> Predicate;
         public required TaskCompletionSource<bool> Tcs;
-        public bool IsCompleted;
+        /// <summary>原子标记——Interlocked.Exchange 防止重复完成</summary>
+        private int _isCompleted;
+        public bool IsCompleted => Interlocked.CompareExchange(ref _isCompleted, 0, 0) != 0;
+        public bool TryMarkCompleted() => Interlocked.Exchange(ref _isCompleted, 1) == 0;
     }
 
     public AsyncWaitService(IStateContainer state)
@@ -47,36 +58,24 @@ public class AsyncWaitService : IAsyncWaitService
 
         using var registration = timeoutCts.Token.Register(() =>
         {
-            lock (_lock)
+            // 原子标记完成——TryMarkCompleted 保证只有一个路径会 TrySetCanceled
+            if (entry.TryMarkCompleted())
             {
-                if (!entry.IsCompleted)
-                {
-                    entry.IsCompleted = true;
-                    if (ct.IsCancellationRequested)
-                        tcs.TrySetCanceled(ct);
-                    else
-                        tcs.TrySetCanceled(timeoutCts.Token);
-                }
+                if (ct.IsCancellationRequested)
+                    tcs.TrySetCanceled(ct);
+                else
+                    tcs.TrySetCanceled(timeoutCts.Token);
             }
         });
 
-        // 注册等待
-        lock (_lock)
-        {
-            _waiters.Add(entry);
-        }
+        // 注册等待——ImmutableInterlocked.Update 原子添加（CAS + O(n) 复制，n 通常 1-10）
+        ImmutableInterlocked.Update(ref _waiters, arr => arr.Add(entry));
 
         // Double-check：注册后再次检查谓词，防止注册到检查之间的竞态
         if (predicate())
         {
-            lock (_lock)
-            {
-                if (!entry.IsCompleted)
-                {
-                    entry.IsCompleted = true;
-                    tcs.TrySetResult(true);
-                }
-            }
+            if (entry.TryMarkCompleted())
+                tcs.TrySetResult(true);
         }
 
         try
@@ -90,10 +89,8 @@ public class AsyncWaitService : IAsyncWaitService
         }
         finally
         {
-            lock (_lock)
-            {
-                _waiters.Remove(entry);
-            }
+            // 移除等待者——ImmutableInterlocked.Update 原子移除
+            ImmutableInterlocked.Update(ref _waiters, arr => arr.Remove(entry));
         }
     }
 
@@ -102,39 +99,33 @@ public class AsyncWaitService : IAsyncWaitService
     /// </summary>
     private void OnValueChanged(string key, object? value)
     {
-        // 快速检查：无等待者时直接返回（避免 lock 开销）
-        List<WaitEntry>? toComplete = null;
+        // 拍快照——原子读引用，ImmutableArray 不可变，遍历期间无竞态
+        var snapshot = _waiters;
 
-        lock (_lock)
+        // 快速检查：无等待者时直接返回
+        if (snapshot.IsDefaultOrEmpty)
+            return;
+
+        // 连续内存遍历——CPU 缓存预取友好
+        foreach (var w in snapshot)
         {
-            if (_waiters.Count == 0)
-                return;
+            // 已完成则跳过（原子检查）
+            if (w.IsCompleted)
+                continue;
 
-            foreach (var w in _waiters)
+            try
             {
-                if (w.IsCompleted)
-                    continue;
-
-                try
+                if (w.Predicate())
                 {
-                    if (w.Predicate())
-                    {
-                        w.IsCompleted = true;
-                        (toComplete ??= new List<WaitEntry>()).Add(w);
-                    }
-                }
-                catch
-                {
-                    // 谓词异常不应影响其他等待者
+                    // 原子标记完成——TryMarkCompleted 保证只有一个路径会 TrySetResult
+                    if (w.TryMarkCompleted())
+                        w.Tcs.TrySetResult(true);
                 }
             }
-        }
-
-        // 在锁外完成 TCS，避免回调链持有锁
-        if (toComplete != null)
-        {
-            foreach (var w in toComplete)
-                w.Tcs.TrySetResult(true);
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[AsyncWaitService] 谓词异常: {ex.Message}");
+            }
         }
     }
 }

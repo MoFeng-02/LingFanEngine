@@ -1,6 +1,5 @@
 using System.Text.Json.Serialization;
 using LingFanEngine.Abstractions.Entities;
-using LingFanEngine.Abstractions.Entities.Dlc;
 using LingFanEngine.Abstractions.Entities.Events;
 using LingFanEngine.Abstractions.Entities.Medias;
 // Router 已移除
@@ -20,7 +19,6 @@ namespace LingFanEngine.Abstractions.Serialization;
 /// <para>注册所有 Entity 和 Model 类型，支持 Native AOT 编译时的零反射序列化。</para>
 /// </summary>
 [JsonSerializable(typeof(BaseEntity))]
-[JsonSerializable(typeof(DlcModuleEntity))]
 [JsonSerializable(typeof(TimeEventEntity))]
 [JsonSerializable(typeof(MediaEntity))]
 [JsonSerializable(typeof(SceneEntity))]
@@ -35,7 +33,6 @@ namespace LingFanEngine.Abstractions.Serialization;
 [JsonSerializable(typeof(SaveEntry))]
 [JsonSerializable(typeof(RollbackCheckpoint))]
 [JsonSerializable(typeof(TransitionEntity))]
-[JsonSerializable(typeof(DlcManifest))]
 [JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSerializable(typeof(Dictionary<string, object?>))]
 [JsonSerializable(typeof(Dictionary<string, SaveEntry>))]

@@ -53,8 +53,8 @@ public class SaveLoadPanel : UserControl
         var loadBtn = new Button { Content = "📂 读取", Margin = new Thickness(5), MinWidth = 100 };
         var closeBtn = new Button { Content = "✕ 关闭", Margin = new Thickness(5), MinWidth = 80 };
 
-        saveBtn.Click += (_, _) => { _isSaveMode = true; RefreshSlots(); };
-        loadBtn.Click += (_, _) => { _isSaveMode = false; RefreshSlots(); };
+        saveBtn.Click += (_, _) => { _isSaveMode = true; _ = RefreshSlotsAsync(); };
+        loadBtn.Click += (_, _) => { _isSaveMode = false; _ = RefreshSlotsAsync(); };
         closeBtn.Click += (_, _) => { Hide(); Closed?.Invoke(); };
 
         headerPanel.Children.Add(saveBtn);
@@ -93,7 +93,7 @@ public class SaveLoadPanel : UserControl
     {
         _isSaveMode = saveMode;
         IsVisible = true;
-        RefreshSlots();
+        _ = RefreshSlotsAsync();
     }
 
     /// <summary>隐藏面板</summary>
@@ -103,7 +103,7 @@ public class SaveLoadPanel : UserControl
     }
 
     /// <summary>刷新存档槽列表</summary>
-    private async void RefreshSlots()
+    private async Task RefreshSlotsAsync()
     {
         _slotsPanel.Children.Clear();
 
@@ -193,9 +193,10 @@ public class SaveLoadPanel : UserControl
                 };
                 thumbContainer.Child = img;
             }
-            catch
+            catch (Exception ex)
             {
                 // 缩略图数据损坏，显示占位图标
+                System.Diagnostics.Debug.WriteLine($"[SaveLoadPanel] 缩略图加载失败: {ex.Message}");
                 thumbContainer.Child = new TextBlock
                 {
                     Text = "🖼",
@@ -303,7 +304,7 @@ public class SaveLoadPanel : UserControl
     {
         _controller?.Save(slotId);
         await Task.Delay(300); // 等待保存完成
-        RefreshSlots();
+        await RefreshSlotsAsync();
     }
 
     /// <summary>执行读取</summary>
@@ -320,6 +321,6 @@ public class SaveLoadPanel : UserControl
     {
         if (_saveService != null)
             await _saveService.DeleteAsync(slotId);
-        RefreshSlots();
+        await RefreshSlotsAsync();
     }
 }

@@ -460,9 +460,9 @@ internal sealed class ControlFactory : IControlFactory
                 {
                     videoControl.Source = new Uri(System.IO.Path.GetFullPath(source));
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // 路径无法解析时忽略——UpdateVideoPlayer 会根据状态键重新设置
+                    System.Diagnostics.Debug.WriteLine($"[ControlFactory] 视频路径无法解析: {ex.Message}");
                 }
 
                 return videoControl;

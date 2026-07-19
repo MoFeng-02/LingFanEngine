@@ -123,8 +123,9 @@ public partial class ProjectService : ObservableObject, IProjectService
             var json = File.ReadAllText(recentFile);
             _recentProjectsCache = JsonHelper.Deserialize(json, SdkJsonContext.Default.ListRecentProject) ?? [];
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[ProjectService] 最近项目缓存加载失败: {ex.Message}");
             _recentProjectsCache = [];
         }
 

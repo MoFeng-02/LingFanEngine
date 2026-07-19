@@ -1,62 +1,58 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using LingFanEngine.Abstractions.Interfaces.Entry;
 
 namespace LingFanEngine.Services.Entry;
 
 /// <summary>
-/// 简单的事件聚合器
+/// 简单的事件聚合器（Phase 64：无锁 ImmutableArray 替代 List+lock）
 /// </summary>
 public class EventAggregator : IEventAggregator
 {
-    private readonly ConcurrentDictionary<Type, List<Delegate>> _handlers = new();
+    private readonly ConcurrentDictionary<Type, ImmutableArray<Delegate>> _handlers = new();
 
     public IDisposable Subscribe<TEvent>(Action<TEvent> handler) where TEvent : class
     {
-        var handlers = _handlers.GetOrAdd(typeof(TEvent), _ => new List<Delegate>());
-        lock (handlers)
-        {
-            handlers.Add(handler);
-        }
+        var key = typeof(TEvent);
+        _handlers.AddOrUpdate(
+            key,
+            ImmutableArray.Create<Delegate>(handler),
+            (_, existing) => existing.Add(handler));
+
         return new Subscription(() =>
-        {
-            lock (handlers)
-            {
-                handlers.Remove(handler);
-            }
-        });
+            _handlers.AddOrUpdate(
+                key,
+                ImmutableArray<Delegate>.Empty,
+                (_, existing) => existing.Remove(handler)));
     }
 
     public void Publish<TEvent>(TEvent evt) where TEvent : class
     {
         if (_handlers.TryGetValue(typeof(TEvent), out var handlers))
         {
-            List<Delegate> snapshot;
-            lock (handlers)
+            // ImmutableArray 无需快照——遍历的是不可变快照
+            // 逐个调用，单个 handler 异常不中断其他 handler
+            foreach (var handler in handlers)
             {
-                snapshot = handlers.ToList();
-            }
-            foreach (var handler in snapshot)
-            {
-                ((Action<TEvent>)handler)(evt);
+                try { ((Action<TEvent>)handler)(evt); }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[EventAggregator] Publish handler failed: {ex.Message}"); }
             }
         }
     }
 
-    public async Task PublishAsync<TEvent>(TEvent evt, CancellationToken ct = default) where TEvent : class
+    public Task PublishAsync<TEvent>(TEvent evt, CancellationToken ct = default) where TEvent : class
     {
         if (_handlers.TryGetValue(typeof(TEvent), out var handlers))
         {
-            List<Delegate> snapshot;
-            lock (handlers)
+            // 直接同步调用——handler 是 Action<TEvent>，无需 Task.Run
+            // 逐个调用，单个 handler 异常不中断其他 handler
+            foreach (var handler in handlers)
             {
-                snapshot = handlers.ToList();
-            }
-            var tasks = snapshot.Select(handler => Task.Run(() => ((Action<TEvent>)handler)(evt), ct)).ToList();
-            if (tasks.Count > 0)
-            {
-                await Task.WhenAll(tasks);
+                try { ((Action<TEvent>)handler)(evt); }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[EventAggregator] PublishAsync handler failed: {ex.Message}"); }
             }
         }
+        return Task.CompletedTask;
     }
 
     private class Subscription(Action unsubscribe) : IDisposable

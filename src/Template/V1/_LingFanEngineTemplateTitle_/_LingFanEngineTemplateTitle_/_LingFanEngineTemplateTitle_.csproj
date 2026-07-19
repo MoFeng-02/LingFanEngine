@@ -35,7 +35,6 @@
 		<None Include="Audio\**" CopyToOutputDirectory="PreserveNewest" />
 		<None Include="Video\**" CopyToOutputDirectory="PreserveNewest" />
 		<None Include="Live2D\**" CopyToOutputDirectory="PreserveNewest" />
-		<None Include="Mods\**" CopyToOutputDirectory="PreserveNewest" />
 		<None Include="Lang\**" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>
 

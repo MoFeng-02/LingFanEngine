@@ -54,11 +54,6 @@ public class LingFanEngineOptions
     public string Live2DDirectory { get; set; } = "Live2D";
 
     /// <summary>
-    /// Mods/DLC 目录（默认 "Mods"）
-    /// </summary>
-    public string ModsDirectory { get; set; } = "Mods";
-
-    /// <summary>
     /// 故事脚本根目录（默认 "Stories"）
     /// <para>StoryRegistry.Scan() 在此目录下递归扫描 .story 文件。</para>
     /// </summary>

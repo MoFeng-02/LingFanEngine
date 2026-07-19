@@ -91,9 +91,10 @@ internal sealed class EngineLogger : IEngineLogger
             {
                 sink.Write(entry);
             }
-            catch
+            catch (Exception ex)
             {
                 // 日志系统自身异常吞掉，绝不影响引擎主流程
+                System.Diagnostics.Debug.WriteLine($"[EngineLogger] Sink Write 失败: {ex.Message}");
             }
         }
     }
@@ -109,9 +110,9 @@ internal sealed class EngineLogger : IEngineLogger
             {
                 sink.Flush();
             }
-            catch
+            catch (Exception ex)
             {
-                // 刷新失败忽略
+                System.Diagnostics.Debug.WriteLine($"[EngineLogger] Sink Flush 失败: {ex.Message}");
             }
         }
     }

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
@@ -17,9 +18,9 @@ public class I18nService : II18nService
 {
     private readonly IStateContainer _state;
     private readonly IEncryptedFileReader? _fileReader;
-    private Dictionary<string, string> _translations = new();
+    private readonly ConcurrentDictionary<string, string> _translations = new();
     private string _loadedLang = "";
-    private bool _loaded;
+    private volatile bool _loaded;
 
     /// <summary>翻译文件根目录下的语言子目录（如 Lang/en-US/）</summary>
     public const string LangRoot = "Lang";

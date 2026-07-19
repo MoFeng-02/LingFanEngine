@@ -8,20 +8,14 @@ namespace LingFanEngine.Services.Logging.Sinks;
 /// <summary>
 /// Debug/Trace 输出 Sink——写入 System.Diagnostics.Debug（IDE 调试器附加时可见）。
 /// <para>替代引擎中散落的 Debug.WriteLine 调用。</para>
-/// <para>线程安全：lock 保护（Debug.WriteLine 本身可能非线程安全）。</para>
+/// <para>线程安全：Debug.WriteLine 本身线程安全，无需额外加锁。</para>
 /// <para>AOT 友好：无反射，纯字符串操作。</para>
 /// </summary>
 internal sealed class DebugTraceSink : IEngineLogSink
 {
-    private readonly object _lock = new();
-
     public void Write(EngineLogEntry entry)
     {
-        var line = FormatEntry(entry);
-        lock (_lock)
-        {
-            Debug.WriteLine(line);
-        }
+        Debug.WriteLine(FormatEntry(entry));
     }
 
     public void Flush() { /* Debug.WriteLine 无缓冲 */ }

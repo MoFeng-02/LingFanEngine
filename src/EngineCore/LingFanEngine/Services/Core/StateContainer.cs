@@ -179,8 +179,9 @@ private object? Normalize(object? value)
                 result = (T)Convert.ChangeType(value, typeof(T), System.Globalization.CultureInfo.InvariantCulture);
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[StateContainer] ChangeType 失败: {ex.Message}");
                 return false;
             }
         }

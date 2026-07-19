@@ -79,8 +79,9 @@ public static class ProcessHelper
             process?.WaitForExit();
             return process?.ExitCode == 0;
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[ProcessHelper] 进程执行失败: {ex.Message}");
             return false;
         }
     }
@@ -104,8 +105,9 @@ public static class ProcessHelper
             process.WaitForExit();
             return output.Trim();
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[ProcessHelper] 进程输出读取失败: {ex.Message}");
             return null;
         }
     }

@@ -228,7 +228,7 @@ public class DslExecutor : IDslExecutor
                         if (!_state.Get<bool>(StateKeys.Rollback.IsReplay))
                             CreateCheckpoint(currentIndex, StateKeys.Dsl.WaitingTypes.Dialog);
 
-                        _ = _pipeline.SendAsync(cmd);
+                        await _pipeline.SendAsync(cmd);
                         _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Dialog);
 
                         await WaitForDialogComplete(ct);
@@ -337,6 +337,12 @@ public class DslExecutor : IDslExecutor
 
                     case MenuCommand menu:
                     {
+                        // 清除对话框状态——防止上一句 say 的文本残留在对话框中
+                        _state.Set(StateKeys.Dialog.Text, "");
+                        _state.Set(StateKeys.Dialog.Speaker, "");
+                        _state.Set(StateKeys.Dialog.Clickable, false);
+                        _state.Set(StateKeys.Dialog.Complete, false);
+
                         _state.Set(StateKeys.Menu.Prompt, menu.Prompt);
                         _state.Set<object>(StateKeys.Menu.Options, menu.Options.Select(o => o.Text).ToArray());
                         _state.Set(StateKeys.Menu.Selected, -1);
@@ -384,6 +390,12 @@ public class DslExecutor : IDslExecutor
 
                     case InputCommand input:
                     {
+                        // 清除对话框状态——防止上一句 say 的文本残留在对话框中
+                        _state.Set(StateKeys.Dialog.Text, "");
+                        _state.Set(StateKeys.Dialog.Speaker, "");
+                        _state.Set(StateKeys.Dialog.Clickable, false);
+                        _state.Set(StateKeys.Dialog.Complete, false);
+
                         _state.Set(StateKeys.Input.Prompt, input.Prompt);
                         _state.Set(StateKeys.Input.DslStore, input.StoreKey);
                         _state.Set<object>(StateKeys.Input.Options, input.Options ?? Array.Empty<string>());
@@ -531,7 +543,7 @@ public class DslExecutor : IDslExecutor
                         break;
 
                     case TransitionCommand:
-                        _ = _pipeline.SendAsync(cmd);
+                        await _pipeline.SendAsync(cmd);
                         await WaitForTransitionComplete(ct);
                         if (ct.IsCancellationRequested) return;
                         _state.Set(StateKeys.Dsl.CurrentIndex, currentIndex + 1);
@@ -550,6 +562,12 @@ public class DslExecutor : IDslExecutor
 
                     case CallScreenCommand cs:
                         {
+                            // 清除对话框状态——防止上一句 say 的文本残留在对话框中
+                            _state.Set(StateKeys.Dialog.Text, "");
+                            _state.Set(StateKeys.Dialog.Speaker, "");
+                            _state.Set(StateKeys.Dialog.Clickable, false);
+                            _state.Set(StateKeys.Dialog.Complete, false);
+
                             // Phase 24: 设置传入参数
                             if (cs.Params != null)
                                 _state.Set(StateKeys.Screen.Params, cs.Params);
@@ -561,7 +579,7 @@ public class DslExecutor : IDslExecutor
 
                             _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.CallScreen);
                             _state.Set<object?>(StateKeys.Screen.Result, null);
-                            _ = _pipeline.SendAsync(new NavigateCommand { Path = cs.SceneName });
+                            await _pipeline.SendAsync(new NavigateCommand { Path = cs.SceneName });
                             await WaitForScreenResult(ct);
                             if (ct.IsCancellationRequested) return;
 
@@ -588,7 +606,7 @@ public class DslExecutor : IDslExecutor
                         }
 
                     case SaveLoadCommand slCmd when !slCmd.IsSave:
-                        _ = _pipeline.SendAsync(slCmd);
+                        await _pipeline.SendAsync(slCmd);
                         _state.Set(StateKeys.Dsl.CurrentIndex, currentIndex + 1);
                         // 标记执行结束——ApplySaveData 异步执行，期间 DslExecutor 不应处于 Executing 状态
                         _state.Set(StateKeys.Dsl.Executing, false);
@@ -607,12 +625,12 @@ public class DslExecutor : IDslExecutor
                                 AdvanceRollbackFrontier();
                             }
                         }
-                        _ = _pipeline.SendAsync(cmd);
+                        await _pipeline.SendAsync(cmd);
                         _state.Set(StateKeys.Dsl.CurrentIndex, currentIndex + 1);
                         break;
 
                     default:
-                        _ = _pipeline.SendAsync(cmd);
+                        await _pipeline.SendAsync(cmd);
                         _state.Set(StateKeys.Dsl.CurrentIndex, currentIndex + 1);
                         break;
                 }
@@ -710,7 +728,7 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
         switch (cmd)
         {
             case ShowDialogCommand:
-                _ = _pipeline.SendAsync(cmd);
+                await _pipeline.SendAsync(cmd);
                 _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Dialog);
                 await WaitForDialogComplete(ct);
                 _state.Set(StateKeys.Dsl.WaitingType, "");
@@ -754,7 +772,7 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
                 break;
 
             case TransitionCommand:
-                _ = _pipeline.SendAsync(cmd);
+                await _pipeline.SendAsync(cmd);
                 await WaitForTransitionComplete(ct);
                 break;
 
@@ -794,14 +812,14 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
                     _state.Set<object?>(StateKeys.Screen.Params, null);
                 _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.CallScreen);
                 _state.Set<object?>(StateKeys.Screen.Result, null);
-                _ = _pipeline.SendAsync(new NavigateCommand { Path = cs.SceneName });
+                await _pipeline.SendAsync(new NavigateCommand { Path = cs.SceneName });
                 await WaitForScreenResult(ct);
                 _state.Set(StateKeys.Dsl.WaitingType, "");
                 break;
 
             default:
                 // 非交互命令——直接发送到管道
-                _ = _pipeline.SendAsync(cmd);
+                await _pipeline.SendAsync(cmd);
                 break;
         }
     }

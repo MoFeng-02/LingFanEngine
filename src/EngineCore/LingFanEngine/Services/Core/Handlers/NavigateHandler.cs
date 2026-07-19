@@ -177,7 +177,11 @@ public class NavigateHandler : ICommandHandler<NavigateCommand>, IDefaultCommand
             ctx.DslExecutor.CreateSceneCheckpoint(navScName);
         }
 
-        _ = RunScriptEntryWithGeneration(scriptEntry, ctx.State);
+        _ = RunScriptEntryWithGeneration(scriptEntry, ctx.State).ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+                System.Diagnostics.Debug.WriteLine($"[NavigateHandler] RunScriptEntry faulted: {t.Exception?.GetBaseException().Message}");
+        }, TaskContinuationOptions.OnlyOnFaulted);
     }
 
     /// <summary>

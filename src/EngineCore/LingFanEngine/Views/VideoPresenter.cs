@@ -87,9 +87,9 @@ internal sealed class VideoPresenter : IVideoPresenter
                 {
                     _videoPlayer.Source = new Uri(System.IO.Path.GetFullPath(playPath));
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // 路径无效——忽略
+                    System.Diagnostics.Debug.WriteLine($"[VideoPresenter] 视频路径无效: {ex.Message}");
                 }
 
                 _sceneRoot?.Children.Add(_videoPlayer);

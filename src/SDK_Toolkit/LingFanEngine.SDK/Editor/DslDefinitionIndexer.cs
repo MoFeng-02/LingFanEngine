@@ -146,9 +146,9 @@ public class DslDefinitionIndexer
                 TryMatch(s_spriteRegex, line, filePath, i + 1, DefinitionType.Sprite);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // 文件读取失败——跳过
+            System.Diagnostics.Debug.WriteLine($"[DslDefinitionIndexer] 文件读取失败: {ex.Message}");
         }
     }
 

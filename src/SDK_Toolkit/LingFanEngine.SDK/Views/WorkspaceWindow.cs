@@ -716,8 +716,9 @@ public class WorkspaceWindow : Window
                 Height = 800;
             }
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[WorkspaceWindow] 窗口状态加载失败: {ex.Message}");
             Width = 1280;
             Height = 800;
         }
@@ -734,8 +735,9 @@ public class WorkspaceWindow : Window
             var pos = Position;
             File.WriteAllText(StateFilePath, $"{Width},{Height},{pos.X},{pos.Y}");
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[WorkspaceWindow] 窗口状态保存失败: {ex.Message}");
         }
     }
 }

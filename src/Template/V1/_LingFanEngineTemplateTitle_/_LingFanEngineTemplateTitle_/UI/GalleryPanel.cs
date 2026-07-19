@@ -238,7 +238,7 @@ public class GalleryPanel : UserControl
                     if (System.IO.File.Exists(entry.ImagePath))
                         _fullViewImage.Source = new Bitmap(entry.ImagePath);
                 }
-                catch { }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex.Message); }
                 _fullViewBorder.IsVisible = true;
             }
         };

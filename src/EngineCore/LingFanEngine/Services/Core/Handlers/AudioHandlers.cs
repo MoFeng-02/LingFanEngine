@@ -47,7 +47,12 @@ public class BgmQueueHandler : ICommandHandler<BgmQueueCommand>, IDefaultCommand
 {
     public void Handle(BgmQueueCommand q, ICommandContext ctx)
     {
-        _ = ctx.AudioManager?.QueueBgmAsync(q.Path, q.Volume, q.CrossFadeDuration);
+        _ = ctx.AudioManager?.QueueBgmAsync(q.Path, q.Volume, q.CrossFadeDuration)
+            .ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                    System.Diagnostics.Debug.WriteLine($"[BgmQueueHandler] QueueBgmAsync failed: {t.Exception?.GetBaseException().Message}");
+            }, TaskContinuationOptions.OnlyOnFaulted);
     }
 }
 
@@ -69,6 +74,11 @@ public class StopAmbientHandler : ICommandHandler<StopAmbientCommand>, IDefaultC
 {
     public void Handle(StopAmbientCommand cmd, ICommandContext ctx)
     {
-        _ = ctx.AudioManager?.StopAmbientAsync();
+        _ = ctx.AudioManager?.StopAmbientAsync()
+            .ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                    System.Diagnostics.Debug.WriteLine($"[StopAmbientHandler] StopAmbientAsync failed: {t.Exception?.GetBaseException().Message}");
+            }, TaskContinuationOptions.OnlyOnFaulted);
     }
 }

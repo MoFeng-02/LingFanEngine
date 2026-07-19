@@ -26,9 +26,6 @@ public static class ProjectConstants
     /// <summary>Live2D 资源目录名</summary>
     public const string Live2DDir = "Live2D";
 
-    /// <summary>Mod 目录名</summary>
-    public const string ModsDir = "Mods";
-
     /// <summary>语言文件目录名</summary>
     public const string LangDir = "Lang";
 
@@ -45,7 +42,7 @@ public static class ProjectConstants
     public static readonly string[] ResourceDirNames =
     [
         StoriesDir, MediaDir, ImagesDir, AudioDir,
-        VideoDir, Live2DDir, ModsDir, LangDir,
+        VideoDir, Live2DDir, LangDir,
     ];
 
     /// <summary>
@@ -65,7 +62,6 @@ public static class ProjectConstants
         AudioDir,
         VideoDir,
         Live2DDir,
-        ModsDir,
         LangDir,
     ];
 

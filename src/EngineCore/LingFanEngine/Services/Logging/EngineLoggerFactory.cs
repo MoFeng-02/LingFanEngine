@@ -101,9 +101,9 @@ internal sealed class EngineLoggerFactory : IEngineLoggerFactory, IDisposable
             {
                 sink.Dispose();
             }
-            catch
+            catch (Exception ex)
             {
-                // 释放失败忽略
+                System.Diagnostics.Debug.WriteLine($"[EngineLoggerFactory] Sink Dispose 失败: {ex.Message}");
             }
         }
     }

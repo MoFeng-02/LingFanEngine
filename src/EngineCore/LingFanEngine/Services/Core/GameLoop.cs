@@ -399,7 +399,8 @@ private readonly ITimeEventRegistry? _timeEventRegistry;
                     {
                         // fallback：无调度器时同步执行（测试场景）
                         _uiFramePending = false;
-                        try { _uiFrameAction(delta); } catch { /* ignore */ }
+                        try { _uiFrameAction(delta); }
+                        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[GameLoop] UI frame action failed (fallback): {ex.Message}"); }
                     }
                 }
                 else if (_uiFrameAction != null)
@@ -626,7 +627,11 @@ private readonly ITimeEventRegistry? _timeEventRegistry;
         // 音频生命周期：根据配置标记决定是否自动停止 BGM/Voice
         var options = _options;
         if (ShouldAutoStop(StateKeys.Audio.BgmAutoStop, options.DefaultAutoStopBgm))
-            _ = _audioManager?.StopBgmAsync();
+            _ = _audioManager?.StopBgmAsync().ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                    System.Diagnostics.Debug.WriteLine($"[GameLoop] StopBgmAsync failed: {t.Exception?.GetBaseException().Message}");
+            }, TaskContinuationOptions.OnlyOnFaulted);
         if (ShouldAutoStop(StateKeys.Audio.VoiceAutoStop, options.DefaultAutoStopVoice))
             _audioManager?.StopVoice();
     }
@@ -743,15 +748,15 @@ public IGameTimeService? TimeService => loop._time;
         _disposed = true;
 
         // 停止主循环
-        try { _stopCts?.Cancel(); } catch { }
-        try { if (_loopTask != null && !_loopTask.IsCompleted) _loopTask.Wait(2000); } catch { }
+        try { _stopCts?.Cancel(); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[GameLoop] Dispose Cancel failed: {ex.Message}"); }
+        try { if (_loopTask != null && !_loopTask.IsCompleted) _loopTask.Wait(2000); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[GameLoop] Dispose Wait failed: {ex.Message}"); }
 
         // 释放停止 CTS
         _stopCts?.Dispose();
 
         // 释放管道（CommandPipeline 实现了 IDisposable，但接口未暴露，用 is 检查）
         if (_pipeline is IDisposable disposablePipeline)
-            try { disposablePipeline.Dispose(); } catch { }
+            try { disposablePipeline.Dispose(); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[GameLoop] Dispose Pipeline failed: {ex.Message}"); }
 
         GC.SuppressFinalize(this);
     }
