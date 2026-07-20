@@ -91,7 +91,7 @@ if points >= 20:
 
 ```dsl
 define "player.points" 0 once
-set "player.points" += 10
+set "player.points" {player.points + 10}
 if {player.points >= 20}
   navigate "good_ending"
 ```

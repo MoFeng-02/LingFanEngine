@@ -14,7 +14,7 @@ public class BattleScene : StoryScript
     public override string SceneName => "cs_battle";
     public override string SceneType => "game";
 
-    public override async Task RunAsync()
+    public override async Task Run()
     {
         await SayAsync("野怪出现！", speaker: "系统");
         var enemyHp = Random.Shared.Next(30, 50);
@@ -27,7 +27,7 @@ public class BattleScene : StoryScript
         if (enemyHp <= 0)
         {
             await SayAsync("敌人被击败！", speaker: "系统");
-            State.Set("player.exp", State.Get<int>("player.exp") + 30);
+            _state.Set("player.exp", _state.Get<int>("player.exp") + 30);
         }
         else
         {
@@ -88,11 +88,11 @@ await SkipableWaitAsync(2.0);  // 可跳过的等待
 ### 菜单与输入
 
 ```csharp
-var choice = await ShowMenuAsync("你要怎么做？", "战斗", "逃跑");
+var choice = await Ctrl.ShowMenuAsync("你要怎么做？", "战斗", "逃跑");
 if (choice == 0) { /* 战斗 */ }
 
 var input = await InputAsync("请输入名字：");
-State.Set("player.name", input);
+_state.Set("player.name", input);
 ```
 
 ### UI 面板
@@ -124,17 +124,17 @@ await ExitNvlAsync();
 
 ```csharp
 // 读取
-var gold = State.Get<int>("player.gold");
-var name = State.Get<string>("player.name");
+var gold = _state.Get<int>("player.gold");
+var name = _state.Get<string>("player.name");
 
 // 写入
-State.Set("player.gold", gold + 50);
-State.Set("story.met_elder", true);
+_state.Set("player.gold", gold + 50);
+_state.Set("story.met_elder", true);
 
 // 检查存在
-if (State.ContainsKey("player.weapon"))
+if (_state.ContainsKey("player.weapon"))
 {
-    var weapon = State.Get<string>("player.weapon");
+    var weapon = _state.Get<string>("player.weapon");
 }
 ```
 
@@ -200,7 +200,7 @@ await NavigateAsync("cs_shop");
 C# 场景通过 `CreateSceneCheckpoint()` 创建检查点：
 
 ```csharp
-public override async Task RunAsync()
+public override async Task Run()
 {
     await SayAsync("战斗开始前");
     CreateSceneCheckpoint();  // 创建检查点
@@ -226,7 +226,7 @@ public class SimpleBattle : StoryScript
     public override string SceneName => "cs_battle";
     public override string SceneType => "game";
 
-    public override async Task RunAsync()
+    public override async Task Run()
     {
         var enemyHp = Random.Shared.Next(30, 50);
         await SayAsync($"野怪出现！HP: {enemyHp}", speaker: "系统");
@@ -242,13 +242,13 @@ public class SimpleBattle : StoryScript
             if (enemyHp <= 0) break;
 
             var enemyDmg = Random.Shared.Next(5, 15);
-            var playerHp = State.Get<int>("player.hp") - enemyDmg;
-            State.Set("player.hp", Math.Max(0, playerHp));
+            var playerHp = _state.Get<int>("player.hp") - enemyDmg;
+            _state.Set("player.hp", Math.Max(0, playerHp));
             await SayAsync($"你受到 {enemyDmg} 伤害！", speaker: "系统");
         }
 
         await SayAsync("战斗胜利！", speaker: "系统");
-        State.Set("player.exp", State.Get<int>("player.exp") + 30);
+        _state.Set("player.exp", _state.Get<int>("player.exp") + 30);
         await NavigateAsync("town");
     }
 }

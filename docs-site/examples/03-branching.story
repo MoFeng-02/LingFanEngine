@@ -21,13 +21,13 @@ label encounter:
 
 label help_elder:
   say "谢谢你，年轻人！" speaker="老人"
-  set "npc.trust" += 1
-  set "player.gold" += 20
+  set "npc.trust" {npc.trust + 1}
+  set "player.gold" {player.gold + 20}
   say "好感度 +1，获得 20 金币。" speaker="系统"
   navigate "branch_demo"
 
 label ignore_elder:
   say "你径直走过，他叹了口气。" speaker="旁白"
-  set "npc.trust" -= 1
+  set "npc.trust" {npc.trust - 1}
   say "好感度 -1。" speaker="系统"
   navigate "branch_demo"

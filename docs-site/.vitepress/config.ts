@@ -137,7 +137,7 @@ export default defineConfig({
     ],
 
     footer: {
-      message: '基于 .NET 10 + Avalonia 12 · MIT License',
+      message: '基于 .NET 10 + Avalonia 12 · Apache-2.0 License',
       copyright: 'Copyright © 2024-2026 灵泛引擎',
     },
   },

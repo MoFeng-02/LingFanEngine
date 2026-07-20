@@ -45,7 +45,8 @@ local "key" value        # 别名
 
 ```dsl
 set "key" {expression}
-set "key" += 50           # 复合赋值：+= -= *= /= %=
+// 注意：不支持 += -= *= /= %= 复合赋值，自增/自减请用表达式：
+set "key" {key + 50}
 ```
 
 ### undef 销毁
@@ -312,19 +313,19 @@ hide "tag" with "dissolve" duration=0.8
 transition "fade" duration=1.5
 ```
 
-效果：`fade` / `dissolve` / `none`
+效果：`fade` / `crossfade` / `fadeout` / `dissolve` / `slideleft` / `slideright` / `slideup` / `slidedown` / `fadeup` / `fadedown` / `blur` / `zoomin`(或 `zoom`) / `shrink` / `blink`（大小写不敏感，无 `none`）
 
 ### animate
 
 ```dsl
-animate "tag" property value [duration=N] [easing=ease_out]
+animate "tag" property value [duration=N] [easing=EaseOutQuad]
 ```
 
 属性：`x` / `y` / `opacity` / `rotate` / `scale`
 
-缓动：`linear` / `ease_in` / `ease_out` / `ease_in_out` / `back`
+缓动（PascalCase 枚举成员名，大小写敏感，默认 `EaseOutQuad`）：`Linear` / `EaseInQuad` / `EaseOutQuad` / `EaseInOutQuad` / `EaseInCubic` / `EaseOutCubic` / `EaseInOutCubic` / `EaseInBack` / `EaseOutBack` / `EaseInOutBack` / `EaseInElastic` / `EaseOutElastic` / `EaseInOutElastic` / `EaseInBounce` / `EaseOutBounce` / `EaseInOutBounce`
 
-示例：`animate "tag" x 80 duration=1.0 easing=ease_out`
+示例：`animate "tag" x 80 duration=1.0 easing=EaseOutQuad`
 
 ### shake
 
@@ -356,15 +357,18 @@ BGM 交叉淡入队列（C# API）：
 await gameController.SendAsync(new BgmQueueCommand { Path = "Audio/BGM/song2.ogg", Volume = 0.7f, CrossFadeDuration = 2.0 });
 ```
 
-### se / voice / ambient
+### se / ambient
 
 ```dsl
 se "path" volume=0.5
-voice "path"
 ambient "path" volume=0.4
 stop_ambient
 stop_ambient "tag"
 ```
+
+::: tip 语音（Voice）
+`voice` 不是 DSL 命令，需用 C# API 播放：`gameController.PlayVoice("path")`。
+:::
 
 ## 文本特效
 

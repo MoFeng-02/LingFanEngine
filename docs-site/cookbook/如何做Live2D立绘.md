@@ -1,6 +1,6 @@
 ﻿# 如何做 Live2D 立绘
 
-Live2D 让 2D 立绘动起来——呼吸、眨眼、表情切换、头部跟随。本章展示灵泛引擎的 Live2D 集成。
+Live2D 让 2D 立绘动起来（呼吸、眨眼、表情切换、头部跟随）。本章展示灵泛引擎的 Live2D 集成——目前引擎已实现 DSL/C# 管线与数据接口，视觉渲染控件待接入（Cubism SDK 授权中）。
 
 ## 前置准备
 
@@ -131,6 +131,10 @@ live2d_resume "hero"
 
 ## 自动呼吸和眨眼
 
+::: warning 待渲染控件
+自动呼吸和眨眼依赖尚未实现的 Live2D 渲染控件（需集成 Cubism SDK，授权中）。当前仅 DSL/C# 管线与数据接口可用，模型暂不会被绘制出来。
+:::
+
 Live2D 模型默认启用自动呼吸和眨眼（如果模型支持）。无需手动控制。
 
 ## 头部跟随
@@ -144,10 +148,10 @@ public class Live2DScene : StoryScript
 {
     public override string SceneName => "cs_live2d";
 
-    public override async Task RunAsync()
+    public override async Task Run()
     {
         // 创建并显示 Live2D
-        await Pipeline.SendAsync(new Live2DCommand
+        await _pipeline.SendAsync(new Live2DCommand
         {
             Operation = "char",
             Id = "hero",
@@ -160,7 +164,7 @@ public class Live2DScene : StoryScript
             }
         });
 
-        await Pipeline.SendAsync(new Live2DCommand
+        await _pipeline.SendAsync(new Live2DCommand
         {
             Operation = "show",
             Id = "hero"
@@ -169,7 +173,7 @@ public class Live2DScene : StoryScript
         await SayAsync("你好。", speaker: "勇者");
 
         // 切换表情
-        await Pipeline.SendAsync(new Live2DCommand
+        await _pipeline.SendAsync(new Live2DCommand
         {
             Operation = "expr",
             Id = "hero",
@@ -179,7 +183,7 @@ public class Live2DScene : StoryScript
         await SayAsync("很高兴见到你！", speaker: "勇者");
 
         // 隐藏
-        await Pipeline.SendAsync(new Live2DCommand
+        await _pipeline.SendAsync(new Live2DCommand
         {
             Operation = "hide",
             Id = "hero",

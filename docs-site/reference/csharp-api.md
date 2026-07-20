@@ -40,7 +40,7 @@ Task WaitForConditionAsync(Func<bool> condition);
 ### 菜单与输入
 
 ```csharp
-Task<int> ShowMenuAsync(string prompt, params string[] options);
+Task<int> Ctrl.ShowMenuAsync(string prompt, params string[] options);
 Task<string> InputAsync(string prompt);
 Task<object?> CallScreenAsync(string screenName);
 ```
@@ -114,9 +114,9 @@ event Action<string>? ValueChanged;
 ### 点分路径
 
 ```csharp
-State.Set("player.gold", 100);
-State.Set("player.inventory.weapon", "剑");
-var gold = State.Get<int>("player.gold");
+_state.Set("player.gold", 100);
+_state.Set("player.inventory.weapon", "剑");
+var gold = _state.Get<int>("player.gold");
 ```
 
 ## StoryScript
@@ -129,16 +129,16 @@ public abstract class StoryScript
     public abstract string SceneName { get; }
     public virtual string SceneType => "game";
 
-    protected IStateContainer State { get; }
-    protected ICommandPipeline Pipeline { get; }
-    protected ISceneRegistry SceneRegistry { get; }
+    protected IStateContainer? _state;
+    protected ICommandPipeline? _pipeline;
+    protected ISceneRegistry? _sceneRegistry;
 
-    public abstract Task RunAsync();
+    public abstract Task Run();
 
-    // C# API 方法（通过 IGameController）
-    protected Task SayAsync(string text, string? speaker = null, string? template = null);
-    protected Task NavigateAsync(string target);
-    // ... 其他 IGameController 方法
+    // C# API 通过 Ctrl（IGameController）调用，例如：
+    //   await Ctrl.SayAsync(text, speaker);
+    //   await Ctrl.NavigateAsync(target);
+    //   await Ctrl.ShowMenuAsync(prompt, options);
 
     protected void CreateSceneCheckpoint();  // 创建回溯检查点
 }
@@ -151,13 +151,13 @@ public class MyScene : StoryScript
 {
     public override string SceneName => "cs_my_scene";
 
-    public override async Task RunAsync()
+    public override async Task Run()
     {
-        await SayAsync("欢迎！", speaker: "系统");
-        var choice = await ShowMenuAsync("选择", "A", "B");
+        await Ctrl.SayAsync("欢迎！", speaker: "系统");
+        var choice = await Ctrl.ShowMenuAsync("选择", "A", "B");
         if (choice == 0)
-            State.Set("story.choice", "A");
-        await NavigateAsync("next_scene");
+            _state.Set("story.choice", "A");
+        await Ctrl.NavigateAsync("next_scene");
     }
 }
 ```
