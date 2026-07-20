@@ -14,7 +14,7 @@ hero:
       link: /tutorial/00-准备工作
     - theme: alt
       text: API 参考
-      link: /reference/dsl/
+      link: /reference/dsl
 
 features:
   - icon: ⚡
