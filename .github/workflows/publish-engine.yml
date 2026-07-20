@@ -16,6 +16,9 @@
 #     其他平台=Avalonia 不支持 WinExe 故退为 Exe（会带控制台窗口，功能正常）。
 #   - 每个 SDK job 先 `dotnet build` 引擎库，确保 bin 目录存在 4 个 DLL，
 #     SyncEngineDlls target 才能把它们复制进 SDK 安装包的 DLL/ 子目录（自愈种子）。
+#   - 版本号统一在 `Compute version` 步骤（shell: bash）中从 tag 剥离 `v` 前缀，
+#     通过 ${{ steps.version.outputs.VERSION }} 注入；不在 run 脚本里做 shell 展开，
+#     避免 Windows runner 默认 PowerShell 无法解析 ${GITHUB_REF_NAME#v} 导致版本为空。
 # =============================================================================
 name: Publish Engine + SDK
 
@@ -39,10 +42,15 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Compute version
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       # 构建引擎核心库（传递依赖会一并产出 Abstractions / DslCore / Pidgin 到 bin 目录）
       # 版本号由 tag 注入（-p:Version），使 DLL 程序集版本与发布 tag 保持一致（不再写死 1.0.0）
       - name: Build engine core (Release)
-        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${GITHUB_REF_NAME#v}
+        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${{ steps.version.outputs.VERSION }}
 
       - name: Collect DLLs + compute sha256 + generate manifest
         id: collect
@@ -51,16 +59,16 @@ jobs:
           set -euo pipefail
           OUT="src/EngineCore/LingFanEngine/bin/Release/net10.0"
           DLLS=(LingFanEngine.dll LingFanEngine.Abstractions.dll LingFanEngine.DslCore.dll Pidgin.dll)
+          VER="${{ steps.version.outputs.VERSION }}"
           mkdir -p publish
           declare -A SUMS
           for d in "${DLLS[@]}"; do
             cp "$OUT/$d" "publish/$d"
             SUMS[$d]=$(sha256sum "publish/$d" | cut -d' ' -f1)
           done
-          VER="${GITHUB_REF_NAME#v}"
           TAG="${{ github.ref_name }}"
           # Pidgin 为本地魔改分发，读其 DLL 真实版本（取前三段 X.Y.Z）；读取失败时回落引擎版本
-          PIDGIN_VER=$(pwsh -NoProfile -Command "try { [System.Reflection.AssemblyName]::GetAssemblyName((Resolve-Path '$OUT/Pidgin.dll')).Version.ToString(3) } catch { '$VER' }")
+          PIDGIN_VER=$(pwsh -NoProfile -Command "try { [System.Reflection.AssemblyName]::GetAssemblyName((Resolve-Path '$OUT/Pidgin.dll')).Version.ToString(3) } catch { '${{ steps.version.outputs.VERSION }}' }")
           PIDGIN_VER="${PIDGIN_VER//[$'\r\n']/}"
           [ -z "$PIDGIN_VER" ] && PIDGIN_VER="$VER"
           cat > updates/latest.json <<EOF
@@ -109,12 +117,17 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Compute version
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       # 先构建引擎库，确保 bin/Release/net10.0 存在 4 个 DLL，供 SyncEngineDlls 复制进 SDK 安装包
       - name: Build engine libs (seed for SyncEngineDlls)
-        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${GITHUB_REF_NAME#v}
+        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${{ steps.version.outputs.VERSION }}
 
       - name: AOT publish SDK.Desktop (win-x64)
-        run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:Version=${GITHUB_REF_NAME#v}
+        run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:Version=${{ steps.version.outputs.VERSION }}
 
       - name: Package
         shell: bash
@@ -139,15 +152,20 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Compute version
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       # NativeAOT 在 Linux 需要 clang + zlib 开发头文件
       - name: Install NativeAOT dependencies
         run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
 
       - name: Build engine libs (seed for SyncEngineDlls)
-        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${GITHUB_REF_NAME#v}
+        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${{ steps.version.outputs.VERSION }}
 
       - name: AOT publish SDK.Desktop (linux-x64)
-        run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:Version=${GITHUB_REF_NAME#v}
+        run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:Version=${{ steps.version.outputs.VERSION }}
 
       - name: Package
         shell: bash
@@ -172,11 +190,16 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Compute version
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       - name: Build engine libs (seed for SyncEngineDlls)
-        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${GITHUB_REF_NAME#v}
+        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${{ steps.version.outputs.VERSION }}
 
       - name: AOT publish SDK.Desktop (osx-arm64)
-        run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r osx-arm64 --self-contained true -p:PublishAot=true -p:Version=${GITHUB_REF_NAME#v}
+        run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r osx-arm64 --self-contained true -p:PublishAot=true -p:Version=${{ steps.version.outputs.VERSION }}
 
       - name: Package
         shell: bash
