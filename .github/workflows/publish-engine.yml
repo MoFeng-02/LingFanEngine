@@ -27,9 +27,6 @@ on:
     tags:
       - 'v*'
 
-permissions:
-  contents: write
-
 jobs:
   publish-engine:
     runs-on: ubuntu-latest
@@ -219,6 +216,11 @@ jobs:
   release:
     needs: [publish-engine, publish-sdk-windows, publish-sdk-linux, publish-sdk-macos]
     runs-on: ubuntu-latest
+    # 仅 release job 需要写权限创建 Release；其余 job 继承仓库默认 token（含 actions 作用域，
+    # 供 upload/download-artifact 正常调 API）。不在 workflow 顶层写 permissions，避免未列出作用域被降级为 none。
+    permissions:
+      contents: write
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
