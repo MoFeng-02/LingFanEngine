@@ -129,11 +129,14 @@ jobs:
       - name: AOT publish SDK.Desktop (win-x64)
         run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:Version=${{ steps.version.outputs.VERSION }}
 
+      # Windows runner 默认无 Unix 版 zip 命令，改用 PowerShell 原生 Compress-Archive
       - name: Package
-        shell: bash
+        shell: pwsh
         run: |
-          cd src/SDK_Toolkit/LingFanEngine.SDK.Desktop/bin/Release/net10.0/win-x64/publish
-          zip -r "${{ github.workspace }}/LingFanEngine.SDK.Desktop-win-x64.zip" .
+          $publishDir = "src/SDK_Toolkit/LingFanEngine.SDK.Desktop/bin/Release/net10.0/win-x64/publish"
+          $zipPath = "${{ github.workspace }}/LingFanEngine.SDK.Desktop-win-x64.zip"
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          Compress-Archive -Path "$publishDir/*" -DestinationPath $zipPath -Force
 
       - name: Upload SDK windows artifact
         uses: actions/upload-artifact@v4
