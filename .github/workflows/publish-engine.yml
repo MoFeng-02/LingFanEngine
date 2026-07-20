@@ -1,20 +1,23 @@
 # =============================================================================
-# 引擎 DLL 自动发布工作流
+# 引擎 + SDK 自动发布工作流
 # -----------------------------------------------------------------------------
 # 触发：推送 tag `vX.Y.Z` 时自动：
-#   1. 构建 4 个引擎库（LingFanEngine / Abstractions / DslCore，Pidgin 随传递依赖拷贝）
-#   2. 计算各 DLL 的 sha256
-#   3. 生成 updates/latest.json（v2 格式：含 breakingDlls / publishedUtc / minSdkVersion / dllVersions / dllChecksums）
-#   4. 打包 LingFanEngine.DLLs.zip
-#   5. 发布 GitHub Release（zip + latest.json 作为 asset）
+#   1. publish-engine     : 构建 4 个引擎库 → 打包 LingFanEngine.DLLs.zip + updates/latest.json
+#   2. publish-sdk-windows: 在 windows-latest 上 AOT 发布 SDK.Desktop (win-x64, WinExe 无控制台)
+#   3. publish-sdk-linux  : 在 ubuntu-latest 上 AOT 发布 SDK.Desktop (linux-x64, 需 clang)
+#   4. publish-sdk-macos  : 在 macos-latest 上 AOT 发布 SDK.Desktop (osx-arm64)
+#   5. release            : 汇总所有产物，创建 GitHub Release 并上传 asset
 #
-# 注意：
-#   - 三个引擎 DLL 的版本（含 minSdkVersion / version / sdkVersion）均由 tag 自动校准（不再写死）。
-#   - Pidgin 为本地魔改分发（不随 NuGet），其版本从 DLL 真实元数据读取，独立于引擎 tag 版本。
-#   - assetSha256（整包校验）留空（可选）；逐 DLL 的 sha256 必填且由本工作流自动计算。
-#   - 若启用 Authenticode 强校验，CI 需配置代码签名证书（secrets），未配置时 SDK 端回落 sha256 不阻塞。
+# 版本全部由 tag 自动校准（-p:Version），不再写死。
+# Pidgin 为本地魔改分发（不随 NuGet），其版本从 DLL 真实元数据读取，独立于引擎 tag。
+#
+# 说明：
+#   - SDK.Desktop 的 OutputType 按构建机 OS 条件化：Windows=WinExe（无控制台），
+#     其他平台=Avalonia 不支持 WinExe 故退为 Exe（会带控制台窗口，功能正常）。
+#   - 每个 SDK job 先 `dotnet build` 引擎库，确保 bin 目录存在 4 个 DLL，
+#     SyncEngineDlls target 才能把它们复制进 SDK 安装包的 DLL/ 子目录（自愈种子）。
 # =============================================================================
-name: Publish Engine DLLs
+name: Publish Engine + SDK
 
 on:
   push:
@@ -86,12 +89,126 @@ jobs:
           }
           EOF
           (cd publish && zip -r ../LingFanEngine.DLLs.zip .)
-          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Upload engine package
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-package
+          path: |
+            LingFanEngine.DLLs.zip
+            updates/latest.json
+
+  publish-sdk-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # 先构建引擎库，确保 bin/Release/net10.0 存在 4 个 DLL，供 SyncEngineDlls 复制进 SDK 安装包
+      - name: Build engine libs (seed for SyncEngineDlls)
+        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${GITHUB_REF_NAME#v}
+
+      - name: AOT publish SDK.Desktop (win-x64)
+        run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:Version=${GITHUB_REF_NAME#v}
+
+      - name: Package
+        shell: bash
+        run: |
+          cd src/SDK_Toolkit/LingFanEngine.SDK.Desktop/bin/Release/net10.0/win-x64/publish
+          zip -r "${{ github.workspace }}/LingFanEngine.SDK.Desktop-win-x64.zip" .
+
+      - name: Upload SDK windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-windows
+          path: LingFanEngine.SDK.Desktop-win-x64.zip
+
+  publish-sdk-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # NativeAOT 在 Linux 需要 clang + zlib 开发头文件
+      - name: Install NativeAOT dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      - name: Build engine libs (seed for SyncEngineDlls)
+        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${GITHUB_REF_NAME#v}
+
+      - name: AOT publish SDK.Desktop (linux-x64)
+        run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:Version=${GITHUB_REF_NAME#v}
+
+      - name: Package
+        shell: bash
+        run: |
+          cd src/SDK_Toolkit/LingFanEngine.SDK.Desktop/bin/Release/net10.0/linux-x64/publish
+          zip -r "${{ github.workspace }}/LingFanEngine.SDK.Desktop-linux-x64.zip" .
+
+      - name: Upload SDK linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-linux
+          path: LingFanEngine.SDK.Desktop-linux-x64.zip
+
+  publish-sdk-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build engine libs (seed for SyncEngineDlls)
+        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${GITHUB_REF_NAME#v}
+
+      - name: AOT publish SDK.Desktop (osx-arm64)
+        run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r osx-arm64 --self-contained true -p:PublishAot=true -p:Version=${GITHUB_REF_NAME#v}
+
+      - name: Package
+        shell: bash
+        run: |
+          cd src/SDK_Toolkit/LingFanEngine.SDK.Desktop/bin/Release/net10.0/osx-arm64/publish
+          zip -r "${{ github.workspace }}/LingFanEngine.SDK.Desktop-osx-arm64.zip" .
+
+      - name: Upload SDK macos artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-macos
+          path: LingFanEngine.SDK.Desktop-osx-arm64.zip
+
+  release:
+    needs: [publish-engine, publish-sdk-windows, publish-sdk-linux, publish-sdk-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            LingFanEngine.DLLs.zip
-            updates/latest.json
+            artifacts/engine-package/LingFanEngine.DLLs.zip
+            artifacts/engine-package/updates/latest.json
+            artifacts/sdk-windows/LingFanEngine.SDK.Desktop-win-x64.zip
+            artifacts/sdk-linux/LingFanEngine.SDK.Desktop-linux-x64.zip
+            artifacts/sdk-macos/LingFanEngine.SDK.Desktop-osx-arm64.zip
           generate_release_notes: true
