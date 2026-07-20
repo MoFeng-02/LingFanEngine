@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<LangVersion>latest</LangVersion>
+		<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+		<IsAotCompatible>true</IsAotCompatible>
+		<!-- Release 模式不生成 PDB（反编译防护） -->
+		<DebugType>none</DebugType>
+		<DebugSymbols>false</DebugSymbols>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<AvaloniaResource Include="Assets\**" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Avalonia" />
+		<PackageReference Include="Avalonia.Themes.Fluent" />
+		<PackageReference Include="Avalonia.Fonts.Inter" />
+		<PackageReference Include="AvaloniaUI.DiagnosticsSupport">
+			<IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+			<PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+		</PackageReference>
+		<PackageReference Include="MediaPlayer.Controls" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+	</ItemGroup>
+
+	<!-- 共享资源已移至项目根/Resources/，由 Directory.Build.props 的 Content 项统一复制到可执行项目输出 -->
+
+	<ItemGroup>
+	  <Reference Include="LingFanEngine">
+	    <HintPath>..\..\DLL\LingFanEngine.dll</HintPath>
+	  </Reference>
+	  <Reference Include="LingFanEngine.Abstractions">
+	    <HintPath>..\..\DLL\LingFanEngine.Abstractions.dll</HintPath>
+	  </Reference>
+	  <Reference Include="LingFanEngine.DslCore">
+	    <HintPath>..\..\DLL\LingFanEngine.DslCore.dll</HintPath>
+	  </Reference>
+	  <Reference Include="Pidgin">
+	    <HintPath>..\..\DLL\Pidgin.dll</HintPath>
+	  </Reference>
+	</ItemGroup>
+
+
+	<ItemGroup>
+	  <None Update="Icons\**">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	</ItemGroup>
+</Project>

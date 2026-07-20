@@ -82,6 +82,8 @@ public static class DslStatementParser
             // typewriter=true 语法（DSL 2.0——强制启用打字机效果）
             Try(String("typewriter=true").Before(_ws))
         ).Optional()
+        // Phase 65: template="xxx" —— 对话框模板名
+        from template in Try(String("template=").Then(QuotedString).Before(_ws)).Optional()
         select (DslStatement)new SayStmt
         {
             Text = text,
@@ -89,7 +91,8 @@ public static class DslStatementParser
             Clickable = clickable.HasValue,
             Noskip = noskip.HasValue,
             Instant = instant.HasValue,
-            Typewriter = typewriter.HasValue ? true : null
+            Typewriter = typewriter.HasValue ? true : null,
+            Template = template.HasValue ? template.Value : null
         };
 
     /// <summary>navigate "path" [scene "name"]</summary>

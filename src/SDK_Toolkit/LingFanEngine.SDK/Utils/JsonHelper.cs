@@ -21,6 +21,11 @@ namespace LingFanEngine.SDK.Utils;
 [JsonSerializable(typeof(PackManifestInfo))]
 [JsonSerializable(typeof(PackResult))]
 [JsonSerializable(typeof(SdkSettings))]
+[JsonSerializable(typeof(EngineUpdateManifest))]
+[JsonSerializable(typeof(PendingUpdateManifest))]
+[JsonSerializable(typeof(EngineLockFile))]
+[JsonSerializable(typeof(TemplateUpdateManifest))]
+[JsonSerializable(typeof(TemplateLockFile))]
 [JsonSourceGenerationOptions(
     WriteIndented = true,
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,

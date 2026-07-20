@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Text.Json;
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
@@ -12,7 +13,10 @@ namespace LingFanEngine.Services.Entry;
 /// <para>启动时只扫描 Lang/ 目录注册可用语言，不加载任何文件。</para>
 /// <para>Translate() 首次调用时按需读取 Lang/{lang}/ 并缓存到内存。</para>
 /// <para>语言切换时清除缓存，下次调用重新读取。</para>
-/// <para>多文件合并：全局翻译 + 场景级翻译逐条覆盖，后加载的覆盖先加载的。</para>
+/// <para>加载策略：语言根目录（Lang/{lang}/）下的所有 .json 文件递归加载——
+/// main.json 优先作为全局兜底，其余文件按路径排序加载（后覆盖先）。
+/// 内部组织方式完全自由：扁平、子文件夹分类、单个大文件均可。</para>
+/// <para>降级：若无 Lang/{lang}/ 目录，则尝试单文件 Lang/{lang}.json。</para>
 /// </summary>
 public class I18nService : II18nService
 {
@@ -45,7 +49,7 @@ public class I18nService : II18nService
 
     /// <summary>
     /// 原文→译文翻译
-    /// <para>首次调用或语言切换后自动按需加载 Lang/{lang}/ 下的翻译文件。</para>
+    /// <para>首次调用或语言切换后自动按需加载 Lang/{lang}/ 下的所有翻译文件。</para>
     /// <para>找不到译文时返回原文。</para>
     /// </summary>
     public string Translate(string original)
@@ -96,26 +100,36 @@ public class I18nService : II18nService
         if (string.IsNullOrEmpty(lang) || lang == "zh-CN" || lang == "zh-Hans")
             return;
 
-        // 1. 全局翻译（兜底）——Lang/{lang}/main.json 或 Lang/{lang}.json
-        var global = Path.Combine(LangRoot, lang, "main.json");
-        if (!File.Exists(global))
-            global = Path.Combine(LangRoot, $"{lang}.json");
-        if (File.Exists(global))
-            LoadFile(global);
-
-        // 2. 当前场景级翻译——Lang/{lang}/{sceneName}.json
-        var sceneName = _state.Get<string>(StateKeys.Scene.CurrentName);
-        if (!string.IsNullOrEmpty(sceneName))
+        // 目录形式优先：Lang/{lang}/ 递归加载所有 .json 文件
+        var langDir = Path.Combine(LangRoot, lang);
+        if (Directory.Exists(langDir))
         {
-            var scenePath = Path.Combine(LangRoot, lang, $"{sceneName}.json");
-            if (File.Exists(scenePath))
-                LoadFile(scenePath);
+            // 1. 全局兜底——main.json 优先加载（其余文件覆盖它）
+            var mainFile = Path.Combine(langDir, "main.json");
+            if (File.Exists(mainFile))
+                LoadFile(mainFile);
+
+            // 2. 递归加载其余所有 .json 文件（子文件夹/扁平/单文件均支持）
+            //    按路径排序保证加载顺序确定——后加载的覆盖先加载的
+            foreach (var file in Directory.GetFiles(langDir, "*.json", SearchOption.AllDirectories)
+                         .OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+            {
+                if (!string.Equals(file, mainFile, StringComparison.OrdinalIgnoreCase))
+                    LoadFile(file);
+            }
+        }
+        else
+        {
+            // 降级：单文件形式 Lang/{lang}.json
+            var singleFile = Path.Combine(LangRoot, $"{lang}.json");
+            if (File.Exists(singleFile))
+                LoadFile(singleFile);
         }
     }
 
     /// <summary>
     /// 加载单个翻译文件——逐条添加/覆盖到 _translations（合并模式）
-    /// <para>后加载的文件覆盖先加载的同名键（场景级覆盖全局）。</para>
+    /// <para>后加载的文件覆盖先加载的同名键。main.json 最先加载作为全局兜底。</para>
     /// </summary>
     private void LoadFile(string path)
     {

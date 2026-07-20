@@ -1,0 +1,14 @@
+{
+  "name": "lingfan-engine-docs",
+  "version": "1.0.0",
+  "description": "灵泛引擎官方教程文档站",
+  "type": "module",
+  "scripts": {
+    "docs:dev": "vitepress dev",
+    "docs:build": "vitepress build",
+    "docs:preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.3"
+  }
+}

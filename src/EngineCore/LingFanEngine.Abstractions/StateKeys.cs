@@ -170,6 +170,9 @@ public const string Instant = "__dialog_instant";
         /// <para>对标 Ren'Py window auto/show/hide</para>
         /// </summary>
         public const string WindowMode = "__dialog_window_mode";
+
+        /// <summary>对话框模板名 (string?)，Phase 65。null=用角色级 screen 或全局默认</summary>
+        public const string Template = "__dialog_template";
     }
 
     // ==================== 过渡动画 ====================

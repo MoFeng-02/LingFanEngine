@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using LingFanEngine.SDK.Dsl;
 
 namespace LingFanEngine.SDK.Editor;
 
@@ -23,6 +24,9 @@ public class DslDefinitionIndexer
     private static readonly Regex s_dictRegex = new(@"^\s*dict\s+""([^""]+)""", RegexOptions.Compiled);
     private static readonly Regex s_funcRegex = new(@"^\s*func\s+(\w+)\s*\(", RegexOptions.Compiled);
     private static readonly Regex s_spriteRegex = new(@"^\s*sprite\s+""([^""]+)""", RegexOptions.Compiled);
+
+    // 跨文件变量"使用"集合——扫描所有 .story 的 {变量} 引用（P2: 跨场景未使用判定）
+    private readonly HashSet<string> _usedVariables = new();
 
     /// <summary>所有索引的定义</summary>
     public List<DslDefinition> Definitions { get; private set; } = [];
@@ -62,6 +66,9 @@ public class DslDefinitionIndexer
         .Distinct()
         .ToList();
 
+    /// <summary>跨文件变量"使用"名集合——所有 .story 中 {变量} 引用到的变量名（P2: 跨场景未使用判定）</summary>
+    public List<string> UsedVariableNames => _usedVariables.ToList();
+
     /// <summary>函数名集合（P0-2）</summary>
     public List<string> FunctionNames => Definitions
         .Where(d => d.Type == DefinitionType.Function)
@@ -80,6 +87,7 @@ public class DslDefinitionIndexer
     public async Task ReindexAsync(string storiesDirectory)
     {
         Definitions.Clear();
+        _usedVariables.Clear();
 
         if (!Directory.Exists(storiesDirectory))
             return;
@@ -144,6 +152,9 @@ public class DslDefinitionIndexer
                 TryMatch(s_dictRegex, line, filePath, i + 1, DefinitionType.Dict);
                 TryMatch(s_funcRegex, line, filePath, i + 1, DefinitionType.Function);
                 TryMatch(s_spriteRegex, line, filePath, i + 1, DefinitionType.Sprite);
+
+                // 扫描本行的 {变量} 引用，累计到跨文件使用集合
+                ScanVariableUses(line);
             }
         }
         catch (Exception ex)
@@ -163,6 +174,56 @@ public class DslDefinitionIndexer
                 filePath,
                 lineNum));
         }
+    }
+
+    /// <summary>扫描一行中的 {变量} 引用，累计到跨文件使用集合（忽略内联标记）</summary>
+    private void ScanVariableUses(string line)
+    {
+        var cleaned = DslCommentHelper.CleanLine(line);
+        if (string.IsNullOrEmpty(cleaned)) return;
+
+        var i = 0;
+        while (i < cleaned.Length)
+        {
+            if (cleaned[i] == '{')
+            {
+                var end = cleaned.IndexOf('}', i + 1);
+                if (end > i)
+                {
+                    var expr = cleaned.Substring(i + 1, end - i - 1).Trim();
+                    if (!IsInlineTag(expr))
+                    {
+                        var parts = expr.Split([' ', '+', '-', '*', '/', '%', '>', '<', '=', '!', '?', ':', '&', '|', '(', ')'],
+                            StringSplitOptions.RemoveEmptyEntries);
+                        foreach (var part in parts)
+                            if (IsValidIdentifier(part)) _usedVariables.Add(part);
+                    }
+                    i = end + 1;
+                }
+                else i++;
+            }
+            else i++;
+        }
+    }
+
+    private static bool IsInlineTag(string content)
+    {
+        var tags = new[] { "b", "/b", "i", "/i", "w", "fast", "p" };
+        if (tags.Contains(content)) return true;
+        if (content.StartsWith("color=") || content.StartsWith("/color") ||
+            content.StartsWith("font=") || content.StartsWith("/font") ||
+            content.StartsWith("size=") || content.StartsWith("/size"))
+            return true;
+        return false;
+    }
+
+    private static bool IsValidIdentifier(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return false;
+        if (!char.IsLetter(s[0]) && s[0] != '_') return false;
+        foreach (var c in s)
+            if (!char.IsLetterOrDigit(c) && c != '_') return false;
+        return true;
     }
 }
 

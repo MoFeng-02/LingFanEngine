@@ -51,6 +51,8 @@ public sealed partial class SayStmt : DslStatement
     public bool Instant { get; init; }
     /// <summary>显式启用打字机效果（say typewriter=true）</summary>
     public bool? Typewriter { get; init; }
+    /// <summary>对话框模板名（say template="xxx"，Phase 65）。null=用角色级 screen 或全局默认</summary>
+    public string? Template { get; init; }
 }
 
 public sealed partial class NavigateStmt : DslStatement

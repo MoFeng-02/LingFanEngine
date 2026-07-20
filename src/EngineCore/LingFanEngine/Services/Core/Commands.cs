@@ -136,6 +136,13 @@ public bool Noskip { get; init; }
 /// <summary>瞬时显示文本（DSL 2.0，say instant=true），跳过打字机效果</summary>
 public bool Instant { get; init; }
 
+/// <summary>
+/// 对话框模板名（Phase 65）。null=用角色级 screen 或全局默认
+/// <para>DSL: say "text" template="bubble"</para>
+/// <para>C#: SayAsync(text, template: "bubble")</para>
+/// </summary>
+public string? Template { get; init; }
+
 public ShowDialogCommand() { }
 }
 

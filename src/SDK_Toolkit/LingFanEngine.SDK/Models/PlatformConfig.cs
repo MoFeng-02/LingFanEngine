@@ -36,12 +36,21 @@ public class PlatformConfig
 
     public static readonly PlatformConfig MacOS = new()
     {
-        Name = "macOS",
+        Name = "macOS (osx-arm64)",
         RuntimeIdentifier = "osx-arm64",
         SupportsAot = true,
         OutputFormat = "app"
     };
 
-    /// <summary>获取所有受支持的桌面平台</summary>
-    public static IReadOnlyList<PlatformConfig> DesktopPlatforms => [Windows, Linux, MacOS];
+    /// <summary>macOS Intel (x64) 架构目标（与 Apple Silicon 区分，供发布勾选）</summary>
+    public static readonly PlatformConfig MacOSX64 = new()
+    {
+        Name = "macOS (osx-x64)",
+        RuntimeIdentifier = "osx-x64",
+        SupportsAot = true,
+        OutputFormat = "app"
+    };
+
+    /// <summary>获取所有受支持的桌面平台（含 macOS 双架构）</summary>
+    public static IReadOnlyList<PlatformConfig> DesktopPlatforms => [Windows, Linux, MacOS, MacOSX64];
 }

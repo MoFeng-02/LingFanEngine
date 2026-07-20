@@ -16,13 +16,16 @@ public interface IProjectSession : INotifyPropertyChanged
     /// <summary>项目根目录（.lfproj 所在目录，未打开时为空字符串）</summary>
     string ProjectDirectory { get; }
 
-    /// <summary>核心项目目录（ProjectDirectory/项目名，包含 .csproj 和所有资源）</summary>
+    /// <summary>核心项目目录（ProjectDirectory/项目名，包含 .csproj 和 C# 源码）</summary>
     string CoreProjectDirectory { get; }
 
-    /// <summary>Stories 目录路径（位于核心项目目录内）</summary>
+    /// <summary>共享资源目录路径（ProjectDirectory/Resources，包含 Stories/Media 等所有资源）</summary>
+    string ResourcesDirectory { get; }
+
+    /// <summary>Stories 目录路径（位于 Resources 目录内）</summary>
     string StoriesDirectory { get; }
 
-    /// <summary>Media 目录路径（位于核心项目目录内）</summary>
+    /// <summary>Media 目录路径（位于 Resources 目录内）</summary>
     string MediaDirectory { get; }
 
     /// <summary>是否已打开项目</summary>

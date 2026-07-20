@@ -950,7 +950,8 @@ Speaker = s.Speaker,
 Clickable = s.Clickable,
 Noskip = s.Noskip,
 Instant = s.Instant,
-TypewriterEnabled = s.Typewriter ?? true
+TypewriterEnabled = s.Typewriter ?? true,
+Template = s.Template
 },
 
             NavigateStmt n => new NavigateCommand { Path = n.Path, SceneName = n.SceneName },

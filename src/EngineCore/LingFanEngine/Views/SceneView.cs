@@ -25,6 +25,7 @@ public partial class SceneView : UserControl, ISceneRenderer
     private readonly II18nService _i18n;
     private readonly ISceneRegistry? _sceneRegistry;
     private readonly IDialogBoxFactory? _dialogBoxFactory;
+    private readonly IDialogTemplateRegistry? _dialogRegistry;
 
     // ── 子模块（DI 注入）──
     private readonly IControlFactory _controlFactory;
@@ -36,6 +37,9 @@ public partial class SceneView : UserControl, ISceneRenderer
     // ── 对话框 ──
     private DialogBox? _dialogBox;
     private IDialogBox? _dialogBoxIF;
+    // Phase 65: 模板缓存 + 当前激活模板名
+    private readonly Dictionary<string, IDialogBox> _dialogCache = new();
+    private string? _activeTemplateName;
 
     // ── 状态追踪 ──
     private string _lastSceneName = "";
@@ -75,6 +79,7 @@ public partial class SceneView : UserControl, ISceneRenderer
         ICommandService? cmdService = null,
         ISceneRegistry? sceneRegistry = null,
         IDialogBoxFactory? dialogBoxFactory = null,
+        IDialogTemplateRegistry? dialogRegistry = null,
         double designWidth = 1920, double designHeight = 1080,
         LayoutScaleMode scaleMode = LayoutScaleMode.Stretch)
     {
@@ -88,6 +93,7 @@ public partial class SceneView : UserControl, ISceneRenderer
         _animationApplier = animationApplier;
         _sceneRegistry = sceneRegistry;
         _dialogBoxFactory = dialogBoxFactory;
+        _dialogRegistry = dialogRegistry;
         _designWidth = designWidth;
         _designHeight = designHeight;
         _scaleMode = scaleMode;
@@ -223,8 +229,18 @@ public partial class SceneView : UserControl, ISceneRenderer
     {
         _controlFactory.ClearBoundTextBlocks();
         _lastDialogText = "";
+
+        // Phase 65: 场景切换时清理所有缓存模板的 NVL 状态 + 清空缓存
+        foreach (var dlg in _dialogCache.Values)
+        {
+            dlg.ResetNvlState();
+            dlg.Hide();
+        }
+        _dialogCache.Clear();
+        _activeTemplateName = null;
         _dialogBoxIF?.Hide();
         _dialogBoxIF?.ResetNvlState();
+        _dialogBoxIF = null;
 
         // 场景切换时分离子模块
         _overlayRenderer.Detach();
@@ -300,7 +316,16 @@ public partial class SceneView : UserControl, ISceneRenderer
         }
 
         // 对话框
-        if (_dialogBoxFactory != null)
+        // Phase 65: 如果有模板注册表，用 registry 创建；否则回退到旧逻辑
+        var hasRegistry = _dialogRegistry != null && _dialogRegistry!.GetDefault() != null;
+        if (hasRegistry)
+        {
+            _dialogBoxIF = null;
+            _dialogBox = null;
+            // _dialogCache 已在 RebuildScene 开头清理
+            // 模板实例在 UpdateDialog 时按需懒创建
+        }
+        else if (_dialogBoxFactory != null)
         {
             _dialogBoxIF = _dialogBoxFactory.Create(_state);
             _dialogBox = null;
@@ -310,13 +335,16 @@ public partial class SceneView : UserControl, ISceneRenderer
             _dialogBox = new DialogBox(_state);
             _dialogBoxIF = _dialogBox;
         }
-        var dlgControl = _dialogBoxIF.AsControl();
-        dlgControl.SetValue(Grid.ZIndexProperty, 100);
-        dlgControl.VerticalAlignment = VerticalAlignment.Bottom;
-        dlgControl.HorizontalAlignment = HorizontalAlignment.Stretch;
-        ApplyDialogLayout(parentW, parentH);
-        if (!string.IsNullOrEmpty(_lastDialogText))
-            _dialogBoxIF.SetText(_lastDialogText, _state.Get<string>(StateKeys.Dialog.Speaker));
+        if (_dialogBoxIF != null)
+        {
+            var dlgControl = _dialogBoxIF.AsControl();
+            dlgControl.SetValue(Grid.ZIndexProperty, 100);
+            dlgControl.VerticalAlignment = VerticalAlignment.Bottom;
+            dlgControl.HorizontalAlignment = HorizontalAlignment.Stretch;
+            ApplyDialogLayout(parentW, parentH);
+            if (!string.IsNullOrEmpty(_lastDialogText))
+                _dialogBoxIF.SetText(_lastDialogText, _state.Get<string>(StateKeys.Dialog.Speaker));
+        }
 
         // 过渡遮罩
         _transitionOverlay = new Border
@@ -344,7 +372,8 @@ public partial class SceneView : UserControl, ISceneRenderer
         };
 
         rootPanel.Children.Add(_dialogMask);
-        rootPanel.Children.Add(_dialogBoxIF.AsControl());
+        if (_dialogBoxIF != null)
+            rootPanel.Children.Add(_dialogBoxIF.AsControl());
 
         // 缩放层
         _scaleWrapper = new Grid
@@ -476,6 +505,43 @@ public partial class SceneView : UserControl, ISceneRenderer
 
     private void UpdateDialog(string text)
     {
+        // Phase 65: 模板注册表可用时，按名解析并切换
+        if (_dialogRegistry != null && _dialogRegistry.GetDefault() != null)
+        {
+            var templateName = _state.Get<string?>(StateKeys.Dialog.Template);
+            var factory = _dialogRegistry.Resolve(templateName) ?? _dialogRegistry.GetDefault();
+            if (factory == null) return;
+
+            var cacheKey = templateName ?? "__default__";
+
+            // 缓存命中或创建新实例
+            if (!_dialogCache.TryGetValue(cacheKey, out var dlg))
+            {
+                dlg = factory.Create(_state);
+                var ctrl = dlg.AsControl();
+                ctrl.SetValue(Grid.ZIndexProperty, 100);
+                // Phase 65: 不强制覆盖模板自身的对齐方式——由模板控件自行管理
+                _sceneRoot?.Children.Add(ctrl);
+                _dialogCache[cacheKey] = dlg;
+            }
+
+            // 切换激活模板：隐藏旧的
+            if (_dialogBoxIF != null && _dialogBoxIF != dlg)
+                _dialogBoxIF.Hide();
+            _dialogBoxIF = dlg;
+            _activeTemplateName = cacheKey;
+
+            if (string.IsNullOrEmpty(text))
+                dlg.Hide();
+            else
+            {
+                var speaker = _state.Get<string>(StateKeys.Dialog.Speaker);
+                dlg.SetText(text, speaker);
+            }
+            return;
+        }
+
+        // 旧逻辑：单一对话框实例
         if (string.IsNullOrEmpty(text)) _dialogBoxIF?.Hide();
         else
         {
@@ -512,10 +578,20 @@ public partial class SceneView : UserControl, ISceneRenderer
         if (_dialogBoxIF == null) return;
 
         var dlgCtrl = _dialogBoxIF.AsControl();
+        // Phase 65: 模板注册表路径下，仅应用用户显式指定的 wPct/hPct/marginL/marginB
+        // 不强制覆盖模板自身的对齐方式和 MaxHeight 默认值
+        var isRegistryPath = _dialogRegistry != null && _dialogRegistry.GetDefault() != null;
         dlgCtrl.Width = w.HasValue ? parentW * w.Value / 100.0 : double.NaN;
-        dlgCtrl.HorizontalAlignment = HorizontalAlignment.Stretch;
-        dlgCtrl.MaxHeight = h.HasValue ? parentH * h.Value / 100.0 : parentH * 0.35;
-        dlgCtrl.VerticalAlignment = VerticalAlignment.Bottom;
+        if (!isRegistryPath)
+        {
+            dlgCtrl.HorizontalAlignment = HorizontalAlignment.Stretch;
+            dlgCtrl.MaxHeight = h.HasValue ? parentH * h.Value / 100.0 : parentH * 0.35;
+            dlgCtrl.VerticalAlignment = VerticalAlignment.Bottom;
+        }
+        else if (h.HasValue)
+        {
+            dlgCtrl.MaxHeight = parentH * h.Value / 100.0;
+        }
         dlgCtrl.Margin = new Thickness(ml ?? 0, 0, 0, mb ?? 0);
     }
 

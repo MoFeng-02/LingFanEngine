@@ -39,6 +39,9 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>, IDefaultCom
     public void Handle(ShowDialogCommand sd, ICommandContext ctx)
     {
         var dialogText = sd.Text;
+        // 原文翻译（I18n）——在变量替换之前，翻译 key 是带 {占位符} 的原文
+        if (ctx.I18n != null && !string.IsNullOrEmpty(dialogText))
+            dialogText = ctx.I18n.Translate(dialogText);
         // 替换 {变量} 表达式
         if (dialogText.Contains('{'))
             dialogText = DslExpressionEvaluator.ReplaceText(dialogText, ctx.State);
@@ -124,6 +127,10 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>, IDefaultCom
         // Phase 44: 设置 instant 标记（say instant=true 时跳过打字机效果）
         ctx.State.Set(StateKeys.Dialog.Instant, sd.Instant);
 
+        // Phase 65: 模板三级优先级——say template > character screen > null(全局默认)
+        var template = sd.Template ?? GetCharProp(charDef, "screen");
+        ctx.State.Set(StateKeys.Dialog.Template, template);
+
         // 记录对话历史（对标 Ren'Py _history_list）
         RecordHistory(sd, dialogText, speakerName, ctx);
     }
@@ -173,8 +180,12 @@ public class ExtendDialogHandler : ICommandHandler<ExtendDialogCommand>, IDefaul
 {
     public void Handle(ExtendDialogCommand ed, ICommandContext ctx)
     {
+        var appendText = ed.Append;
+        // 原文翻译（I18n）
+        if (ctx.I18n != null && !string.IsNullOrEmpty(appendText))
+            appendText = ctx.I18n.Translate(appendText);
         var cur = ctx.State.Get<string>(StateKeys.Dialog.Text) ?? "";
-        ctx.State.Set(StateKeys.Dialog.Text, cur + ed.Append);
+        ctx.State.Set(StateKeys.Dialog.Text, cur + appendText);
         ctx.State.Set(StateKeys.Dialog.Complete, false);
     }
 }

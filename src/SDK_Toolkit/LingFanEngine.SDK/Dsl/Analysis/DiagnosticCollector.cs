@@ -66,24 +66,24 @@ public static class DiagnosticCollector
         List<DslDiagnostic> warnings,
         List<DslDiagnostic> infos)
     {
-        // 收集当前文件的局部变量定义
-        var localVars = new HashSet<string>();
+        // 收集当前文件的局部变量定义（变量名 → 定义行号，用于未使用变量波浪线定位）
+        var localVars = new Dictionary<string, int>();
         foreach (var stmt in statements)
         {
             switch (stmt)
             {
-                case SetStmt set: localVars.Add(set.Key); break;
-                case DefineStmt def: localVars.Add(def.Key); break;
-                case LetStmt let: localVars.Add(let.Key); break;
-                case ForStmt forStmt: localVars.Add(forStmt.VarName); break;
+                case SetStmt set: localVars[set.Key] = set.LineNumber + 1; break;
+                case DefineStmt def: localVars[def.Key] = def.LineNumber + 1; break;
+                case LetStmt let: localVars[let.Key] = let.LineNumber + 1; break;
+                case ForStmt forStmt: localVars[forStmt.VarName] = forStmt.LineNumber + 1; break;
                 case FuncStmt func:
-                    foreach (var p in func.Parameters) localVars.Add(p);
+                    foreach (var p in func.Parameters) localVars[p] = func.LineNumber + 1;
                     break;
             }
         }
 
         // 跨文件变量定义
-        var allVars = new HashSet<string>(localVars);
+        var allVars = new HashSet<string>(localVars.Keys);
         foreach (var v in indexer.VariableNames)
             allVars.Add(v);
 
@@ -154,42 +154,44 @@ public static class DiagnosticCollector
                 case ForStmt forStmt:
                     CheckVariableReferences(forStmt.SourceExpr, allVars, lineNum, lineText, warnings);
                     break;
+
+                // 变量赋值右值中的未定义变量引用（P1: 原逻辑漏检 set/define 右值）
+                case SetStmt setDef:
+                    CheckVariableReferences(setDef.ValuePart, allVars, lineNum, lineText, warnings);
+                    break;
+
+                case DefineStmt defDef:
+                    CheckVariableReferences(defDef.ValuePart, allVars, lineNum, lineText, warnings);
+                    break;
             }
         }
 
         // 检查未使用的变量（Info 级别）
+        // 全文件扫描 {变量} 引用，覆盖 show/transition/sprite/bg/bgm 等所有引用变量的语句，
+        // 修正"变量已使用却被误报未使用"的误报（原逻辑仅扫描 6 种语句类型，导致
+        // 变量只在 show/transition 等语句中被引用时被判为未使用）。
         var usedVars = new HashSet<string>();
-        foreach (var stmt in statements)
+        foreach (var raw in rawLines)
         {
-            switch (stmt)
-            {
-                case SayStmt say:
-                    CollectVariableNames(say.Text, usedVars);
-                    break;
-                case IfStmt iff:
-                    CollectVariableNames(iff.Condition, usedVars);
-                    break;
-                case ElseIfStmt elif:
-                    CollectVariableNames(elif.Condition, usedVars);
-                    break;
-                case WhileStmt wh:
-                    CollectVariableNames(wh.Condition, usedVars);
-                    break;
-                case SetStmt set:
-                    CollectVariableNames(set.ValuePart, usedVars);
-                    break;
-                case DefineStmt def:
-                    CollectVariableNames(def.ValuePart, usedVars);
-                    break;
-            }
+            var cleaned = DslCommentHelper.CleanLine(raw);
+            if (!string.IsNullOrEmpty(cleaned))
+                CollectVariableNames(cleaned, usedVars);
         }
 
-        foreach (var v in localVars)
+        // 跨场景：合并索引器收集的所有 .story 文件的 {变量} 引用，
+        // 让"变量在另一场景/另一文件被使用"也能被识别，消除跨场景误报未使用。
+        if (indexer != null)
         {
-            if (!usedVars.Contains(v))
+            foreach (var v in indexer.UsedVariableNames)
+                usedVars.Add(v);
+        }
+
+        foreach (var (name, defLine) in localVars)
+        {
+            if (!usedVars.Contains(name))
             {
-                infos.Add(new DslDiagnostic(0, 0,
-                    $"变量 '{v}' 已定义但未被引用", null, DiagnosticSeverity.Info));
+                infos.Add(new DslDiagnostic(defLine, 1,
+                    $"变量 '{name}' 已定义但未被引用", null, DiagnosticSeverity.Info));
             }
         }
     }

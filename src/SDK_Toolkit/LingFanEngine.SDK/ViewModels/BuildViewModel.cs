@@ -15,6 +15,8 @@ public partial class BuildViewModel : ViewModelBase
 {
     private readonly IPublishService _publishService;
     private readonly IProjectSession _session;
+    private readonly IEngineUpdateService _engineUpdateService;
+    private readonly IRunService _runService;
 
     [ObservableProperty]
     private bool _targetWindows = true;
@@ -23,7 +25,10 @@ public partial class BuildViewModel : ViewModelBase
     private bool _targetLinux;
 
     [ObservableProperty]
-    private bool _targetMacOS;
+    private bool _targetMacOSArm64;
+
+    [ObservableProperty]
+    private bool _targetMacOSX64;
 
     [ObservableProperty]
     private bool _enableEncryption = false;
@@ -56,12 +61,44 @@ public partial class BuildViewModel : ViewModelBase
     [ObservableProperty]
     private string _projectPath = "";
 
+    // ===== 项目引擎依赖（版本隔离核心） =====
+    // 当前项目 DLL/ 内的引擎版本（来自 engine.lock.json / LingFanEngine.dll 元数据）
+    [ObservableProperty]
+    private string _engineDependencyVersion = "—";
+
+    // 项目引擎依赖更新状态文案
+    [ObservableProperty]
+    private string _projectEngineUpdateMessage = "";
+
+    // 是否正在检查/应用项目引擎更新（控制按钮可用性）
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(UpdateProjectEngineCommand))]
+    private bool _isUpdatingProjectEngine;
+
+    // ===== 游戏运行（启动/停止） =====
+    // 是否正在启动游戏（含未构建时自动构建）
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(LaunchGameCommand), nameof(BuildCommand))]
+    private bool _isLaunching;
+
+    // 是否正在停止游戏
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(StopGameCommand), nameof(LaunchGameCommand))]
+    private bool _isStopping;
+
+    // 启动/停止游戏状态文案
+    [ObservableProperty]
+    private string _launchMessage = "";
+
     public ObservableCollection<string> LogEntries { get; } = new();
 
-    public BuildViewModel(IPublishService publishService, IProjectSession session)
+    public BuildViewModel(IPublishService publishService, IProjectSession session,
+        IEngineUpdateService engineUpdateService, IRunService runService)
     {
         _publishService = publishService;
         _session = session;
+        _engineUpdateService = engineUpdateService;
+        _runService = runService;
 
         // 监听项目会话
         _session.ProjectOpened += OnProjectOpened;
@@ -72,6 +109,9 @@ public partial class BuildViewModel : ViewModelBase
         {
             OnProjectOpened();
         }
+
+        // 刷新项目引擎依赖版本展示（未打开项目时显示占位）
+        RefreshProjectEngineVersion();
 
         // 属性变更时自动保存（防抖 500ms）
         PropertyChanged += OnViewModelPropertyChanged;
@@ -85,7 +125,7 @@ public partial class BuildViewModel : ViewModelBase
         if (_isLoading) return; // 加载中不触发保存
 
         // 只关注构建相关属性
-        if (e.PropertyName is not (nameof(TargetWindows) or nameof(TargetLinux) or nameof(TargetMacOS)
+        if (e.PropertyName is not (nameof(TargetWindows) or nameof(TargetLinux) or nameof(TargetMacOSArm64) or nameof(TargetMacOSX64)
             or nameof(EnableEncryption) or nameof(EncryptResources) or nameof(PublishAot) or nameof(KeyShardCount)))
             return;
 
@@ -123,7 +163,8 @@ public partial class BuildViewModel : ViewModelBase
         var platforms = new System.Collections.Generic.List<PlatformConfig>();
         if (TargetWindows) platforms.Add(PlatformConfig.Windows);
         if (TargetLinux) platforms.Add(PlatformConfig.Linux);
-        if (TargetMacOS) platforms.Add(PlatformConfig.MacOS);
+        if (TargetMacOSArm64) platforms.Add(PlatformConfig.MacOS);
+        if (TargetMacOSX64) platforms.Add(PlatformConfig.MacOSX64);
         project.TargetPlatforms = platforms;
 
         // 加密
@@ -156,7 +197,8 @@ public partial class BuildViewModel : ViewModelBase
             // 从项目配置加载构建设置
             TargetWindows = project.TargetPlatforms.Exists(p => p.Name == "Windows");
             TargetLinux = project.TargetPlatforms.Exists(p => p.Name == "Linux");
-            TargetMacOS = project.TargetPlatforms.Exists(p => p.Name == "macOS");
+            TargetMacOSArm64 = project.TargetPlatforms.Exists(p => p.RuntimeIdentifier == "osx-arm64");
+            TargetMacOSX64 = project.TargetPlatforms.Exists(p => p.RuntimeIdentifier == "osx-x64");
 
             if (project.Encryption != null)
             {
@@ -177,11 +219,17 @@ public partial class BuildViewModel : ViewModelBase
 
             EncryptResources = project.Build.EncryptResources;
             PublishAot = project.Build.PublishAot;
+
+            // 刷新项目引擎依赖版本展示
+            RefreshProjectEngineVersion();
         }
         finally
         {
             _isLoading = false;
         }
+
+        // 项目开关影响命令可用性（是否可更新引擎依赖）
+        UpdateProjectEngineCommand.NotifyCanExecuteChanged();
     }
 
     private void OnProjectClosed()
@@ -194,6 +242,33 @@ public partial class BuildViewModel : ViewModelBase
         EncryptFileTypes.Clear();
         EnableEncryption = false;
         EncryptResources = false;
+
+        // 引擎依赖版本回到占位，并禁用更新按钮
+        EngineDependencyVersion = "—";
+        ProjectEngineUpdateMessage = "";
+        UpdateProjectEngineCommand.NotifyCanExecuteChanged();
+
+        // 重置游戏运行状态
+        LaunchMessage = "";
+        IsLaunching = false;
+        IsStopping = false;
+        LaunchGameCommand.NotifyCanExecuteChanged();
+        StopGameCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// 刷新「项目引擎依赖版本」展示：优先读最终项目 engine.lock.json / DLL 元数据（版本真相在最终项目）；
+    /// 未打开项目时显示占位。
+    /// </summary>
+    private void RefreshProjectEngineVersion()
+    {
+        if (!_session.IsProjectOpen || string.IsNullOrWhiteSpace(_session.ProjectDirectory))
+        {
+            EngineDependencyVersion = "—";
+            return;
+        }
+        var ver = _engineUpdateService.GetProjectEngineVersion(_session.ProjectDirectory);
+        EngineDependencyVersion = string.IsNullOrWhiteSpace(ver) ? "—" : ver;
     }
 
     /// <summary>开始构建</summary>
@@ -232,7 +307,8 @@ public partial class BuildViewModel : ViewModelBase
             var platforms = new System.Collections.Generic.List<PlatformConfig>();
             if (TargetWindows) platforms.Add(PlatformConfig.Windows);
             if (TargetLinux) platforms.Add(PlatformConfig.Linux);
-            if (TargetMacOS) platforms.Add(PlatformConfig.MacOS);
+            if (TargetMacOSArm64) platforms.Add(PlatformConfig.MacOS);
+            if (TargetMacOSX64) platforms.Add(PlatformConfig.MacOSX64);
 
             if (platforms.Count == 0)
             {
@@ -274,5 +350,131 @@ public partial class BuildViewModel : ViewModelBase
         }
     }
 
-    private bool CanBuild => _session.IsProjectOpen && !IsBuilding;
+    private bool CanBuild => _session.IsProjectOpen && !IsBuilding && !IsLaunching;
+
+    /// <summary>
+    /// 检查并应用「项目引擎依赖」更新（GitHub Release）。
+    /// <para>仅替换项目 DLL/ 内 4 个引擎 DLL（版本隔离点），逐 DLL 比对 + sha256 校验；
+    /// 锁定/缺失 DLL 视为 0.0.0 触发更新，已最新或更新失败绝不降级。更新后回写 engine.lock.json。</para>
+    /// <para>注意：更新仅替换开发态 DLL，需重新构建发布后新版本才会编入最终 exe。</para>
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanUpdateProjectEngine))]
+    private async Task UpdateProjectEngineAsync()
+    {
+        var dir = _session.ProjectDirectory;
+        if (!_session.IsProjectOpen || string.IsNullOrWhiteSpace(dir))
+        {
+            ProjectEngineUpdateMessage = "请先打开项目";
+            return;
+        }
+
+        IsUpdatingProjectEngine = true;
+        ProjectEngineUpdateMessage = "正在检查项目引擎依赖更新...";
+
+        try
+        {
+            var progress = new Progress<string>(msg => ProjectEngineUpdateMessage = msg);
+            var result = await _engineUpdateService.UpdateProjectAsync(dir, progress);
+
+            ProjectEngineUpdateMessage = result.Status switch
+            {
+                EngineUpdateStatus.UpToDate => $"已是最新版本（{EngineDependencyVersion}）",
+                EngineUpdateStatus.UpdateApplied => $"已更新到 {result.ManifestVersion}（替换 {result.UpdatedDlls.Count} 个 DLL，重新构建后生效）",
+                EngineUpdateStatus.Failed => $"更新失败：{result.ErrorMessage}",
+                _ => ProjectEngineUpdateMessage,
+            };
+
+            // 热替换成功后刷新版本展示
+            if (result.Status == EngineUpdateStatus.UpdateApplied
+                && !string.IsNullOrEmpty(result.ManifestVersion))
+            {
+                EngineDependencyVersion = result.ManifestVersion;
+            }
+        }
+        catch (Exception ex)
+        {
+            ProjectEngineUpdateMessage = $"更新异常：{ex.Message}";
+        }
+        finally
+        {
+            IsUpdatingProjectEngine = false;
+        }
+    }
+
+    private bool CanUpdateProjectEngine() => _session.IsProjectOpen && !IsUpdatingProjectEngine;
+
+    // ===== 游戏运行：启动 / 停止 =====
+
+    private void AppendBuildLog(string msg)
+    {
+        LogEntries.Add(msg);
+        BuildLog += msg + "\n";
+    }
+
+    /// <summary>
+    /// 启动游戏：若已构建则直接运行；未构建则自动构建当前平台后再启动。
+    /// <para>与构建互斥（同一时刻只允许一个长时间操作）。</para>
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanLaunchGame))]
+    private async Task LaunchGameAsync()
+    {
+        var project = _session.CurrentProject;
+        if (project == null)
+        {
+            LaunchMessage = "请先打开项目";
+            return;
+        }
+
+        IsLaunching = true;
+        LaunchMessage = "正在定位游戏可执行文件...";
+        var progress = new Progress<string>(msg => AppendBuildLog(msg));
+
+        try
+        {
+            var result = await _runService.LaunchAsync(project, progress);
+            LaunchMessage = result.Message;
+        }
+        catch (Exception ex)
+        {
+            LaunchMessage = $"启动异常：{ex.Message}";
+        }
+        finally
+        {
+            IsLaunching = false;
+        }
+    }
+
+    private bool CanLaunchGame() =>
+        _session.IsProjectOpen && !IsBuilding && !IsLaunching && !IsStopping;
+
+    /// <summary>停止正在运行的游戏进程（防止后续构建/DLL 更新时文件被锁）</summary>
+    [RelayCommand(CanExecute = nameof(CanStopGame))]
+    private async Task StopGameAsync()
+    {
+        var project = _session.CurrentProject;
+        if (project == null)
+        {
+            LaunchMessage = "请先打开项目";
+            return;
+        }
+
+        IsStopping = true;
+        LaunchMessage = "正在停止游戏进程...";
+        try
+        {
+            await _runService.StopAsync(project);
+            LaunchMessage = "已请求停止游戏进程（若正在运行）。";
+        }
+        catch (Exception ex)
+        {
+            LaunchMessage = $"停止异常：{ex.Message}";
+        }
+        finally
+        {
+            IsStopping = false;
+        }
+    }
+
+    private bool CanStopGame() =>
+        _session.IsProjectOpen && !IsStopping && !IsLaunching && !IsBuilding;
 }

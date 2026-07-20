@@ -10,4 +10,21 @@
     <DebugType>None</DebugType>
     <DebugSymbols>false</DebugSymbols>
 </PropertyGroup>
+
+	<!--
+		共享资源复制：项目根/Resources/ → 可执行项目输出目录。
+		仅对 OutputType=Exe/WinExe 的项目生效（平台宿主项目），
+		库项目（核心项目）不复制，避免冗余。
+		Content + LinkBase 确保资源在输出目录中保持正确的子目录结构，
+		且 dotnet publish 能可靠地包含在发布产物中。
+	-->
+	<ItemGroup Condition="'$(OutputType)' == 'Exe' OR '$(OutputType)' == 'WinExe'">
+		<Content Include="$(MSBuildThisFileDirectory)Resources\Stories\**" LinkBase="Stories\" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		<Content Include="$(MSBuildThisFileDirectory)Resources\Media\**" LinkBase="Media\" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		<Content Include="$(MSBuildThisFileDirectory)Resources\Images\**" LinkBase="Images\" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		<Content Include="$(MSBuildThisFileDirectory)Resources\Audio\**" LinkBase="Audio\" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		<Content Include="$(MSBuildThisFileDirectory)Resources\Video\**" LinkBase="Video\" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		<Content Include="$(MSBuildThisFileDirectory)Resources\Live2D\**" LinkBase="Live2D\" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		<Content Include="$(MSBuildThisFileDirectory)Resources\Lang\**" LinkBase="Lang\" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+	</ItemGroup>
 </Project>

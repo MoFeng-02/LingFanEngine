@@ -32,6 +32,22 @@ internal sealed class Program
 
         var provider = services.BuildServiceProvider();
 
+        // 应用上次未完成的引擎 DLL pending 更新（SDK 启动最早时机，JIT 加载目标 DLL 前）
+        // 无 pending 时立即返回；有 pending 但仍被锁定则保留至下次启动
+        try
+        {
+            var updateService = provider.GetService<IEngineUpdateService>();
+            if (updateService != null)
+            {
+                using var cts = new System.Threading.CancellationTokenSource(System.TimeSpan.FromSeconds(10));
+                updateService.ApplyPendingUpdatesAsync(cts.Token).GetAwaiter().GetResult();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Startup] ApplyPendingUpdates 失败: {ex.Message}");
+        }
+
         var lifetime = new ClassicDesktopStyleApplicationLifetime
         {
             Args = args,

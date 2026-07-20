@@ -28,4 +28,14 @@ public class SdkSettings
     public string SdkVersion { get; set; } = "0.1.0";
     public string EngineVersion { get; set; } = "1.0.0";
     public string DotNetVersion { get; set; } = "10.0";
+
+    // 引擎更新
+    /// <summary>引擎更新 manifest 拉取地址（GitHub Release 清单）。空则使用 EngineUpdateDefaults.DefaultManifestUrl。</summary>
+    public string EngineUpdateManifestUrl { get; set; } = "";
+
+    /// <summary>模板更新 manifest 拉取地址（GitHub Release 模板清单）。空则使用 TemplateDefaults.DefaultManifestUrl。</summary>
+    public string TemplateUpdateManifestUrl { get; set; } = "";
+
+    /// <summary>是否在启动时自动检查引擎更新（默认关闭，避免无谓联网）。</summary>
+    public bool AutoCheckEngineUpdate { get; set; }
 }

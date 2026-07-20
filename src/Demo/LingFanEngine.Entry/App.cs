@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Themes.Fluent;
 using LingFanEngine.Abstractions.Interfaces.Core;
+using LingFanEngine.Entry.Extensions;
 using LingFanEngine.Entry.Security;
 using LingFanEngine.Entry.Views;
 using LingFanEngine.Extensions;
@@ -43,6 +44,9 @@ public partial class App : Application
 
         // 注册默认命令服务
         services.AddDefaultCommandService();
+
+        // Phase 65: 注册对话框模板
+        services.AddDialogTemplates();
 
         services.AddSingleton<IEncryptionKeyProvider, GeneratedKeyProvider>();
 

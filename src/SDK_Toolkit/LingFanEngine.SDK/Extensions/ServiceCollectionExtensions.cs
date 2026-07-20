@@ -1,4 +1,6 @@
 ﻿﻿﻿﻿﻿using System;
+using System.Net.Http.Headers;
+using LingFanEngine.SDK.Constants;
 using LingFanEngine.SDK.Navigation;
 using LingFanEngine.SDK.Services.Abstractions;
 using LingFanEngine.SDK.Services.Implementations;
@@ -30,6 +32,28 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPublishService>(sp => new PublishService(
             sp.GetRequiredService<IPackToolService>()));
         services.AddSingleton<IAssetManager, AssetManager>();
+
+        // ===== 引擎 DLL 独立更新服务 =====
+        // 通过 IHttpClientFactory 注册命名客户端，由工厂管理 handler 池，避免套接字耗尽。
+        // SDK 版本作为 User-Agent 后缀，便于 GitHub 侧识别客户端。
+        var sdkVersion = typeof(ServiceCollectionExtensions).Assembly
+            .GetName().Version?.ToString(3) ?? "0.0.0";
+        services.AddHttpClient(EngineUpdateDefaults.HttpClientName, client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(EngineUpdateDefaults.RequestTimeoutSeconds);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                $"{EngineUpdateDefaults.UserAgent}/{sdkVersion}");
+            client.DefaultRequestHeaders.Accept.Add(
+                new MediaTypeWithQualityHeaderValue("application/json"));
+        });
+        services.AddSingleton<IEngineUpdateService, EngineUpdateService>();
+
+        // ===== 模板更新服务（从 Release 拉取模板 zip 并做版本管理） =====
+        // 复用上述 engine-update 命名客户端（TemplateDefaults.HttpClientName == EngineUpdateDefaults.HttpClientName）。
+        services.AddSingleton<ITemplateUpdateService, TemplateUpdateService>();
+
+        // ===== 游戏运行服务（启动/停止用户已构建的游戏） =====
+        services.AddSingleton<IRunService, RunService>();
 
         // ===== 路由（MFToolkit.Routing） =====
         // AddRoutes 自动将 RouteType 和 ViewModelType 注册到 DI 容器（Transient）

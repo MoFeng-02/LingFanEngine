@@ -19,12 +19,12 @@ void Say(string text, string? speaker = null,
 string? speakerColor = null, string? textColor = null,
 bool typewriter = true,
 double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
-bool clickable = false, bool noskip = false);
+bool clickable = false, bool noskip = false, string? template = null);
 Task SayAsync(string text, string? speaker = null,
 string? speakerColor = null, string? textColor = null,
 bool typewriter = true,
 double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
-bool clickable = false, bool noskip = false);
+bool clickable = false, bool noskip = false, string? template = null);
 
     /// <summary>追加文本到当前对话（对标 Ren'Py extend）</summary>
     Task ExtendDialogAsync(string append);

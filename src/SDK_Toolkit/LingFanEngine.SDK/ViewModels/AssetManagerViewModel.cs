@@ -31,9 +31,9 @@ public partial class AssetManagerViewModel : ViewModelBase
     [ObservableProperty]
     private string _projectDirectory = "";
 
-    /// <summary>核心项目目录（资源实际所在位置）</summary>
+    /// <summary>资源目录路径（资源实际所在位置）</summary>
     [ObservableProperty]
-    private string _coreProjectDirectory = "";
+    private string _resourcesDirectory = "";
 
     /// <summary>当前筛选的分类索引（0=全部, 1=故事, 2=图片, 3=音频, 4=视频, 5=其他）</summary>
     [ObservableProperty]
@@ -58,14 +58,14 @@ public partial class AssetManagerViewModel : ViewModelBase
     private void OnProjectOpened()
     {
         ProjectDirectory = _session.ProjectDirectory;
-        CoreProjectDirectory = _session.CoreProjectDirectory;
+        ResourcesDirectory = _session.ResourcesDirectory;
         _ = ScanAssetsAsync();
     }
 
     private void OnProjectClosed()
     {
         ProjectDirectory = "";
-        CoreProjectDirectory = "";
+        ResourcesDirectory = "";
         _allAssets.Clear();
         Assets.Clear();
         Preview = null;
@@ -76,7 +76,7 @@ public partial class AssetManagerViewModel : ViewModelBase
     [RelayCommand]
     private async Task ScanAssetsAsync()
     {
-        if (string.IsNullOrEmpty(CoreProjectDirectory))
+        if (string.IsNullOrEmpty(ResourcesDirectory))
         {
             StatusMessage = "请先打开项目";
             return;
@@ -85,7 +85,7 @@ public partial class AssetManagerViewModel : ViewModelBase
         try
         {
             StatusMessage = "正在扫描资源...";
-            var entries = await _assetManager.ScanAssetsAsync(CoreProjectDirectory);
+            var entries = await _assetManager.ScanAssetsAsync(ResourcesDirectory);
             _allAssets = entries.ToList();
             ApplyCategoryFilter();
             StatusMessage = $"找到 {entries.Count} 个资源";
@@ -150,13 +150,13 @@ public partial class AssetManagerViewModel : ViewModelBase
     [RelayCommand]
     private async Task ImportFilesAsync(string[] filePaths)
     {
-        if (string.IsNullOrEmpty(CoreProjectDirectory))
+        if (string.IsNullOrEmpty(ResourcesDirectory))
         {
             StatusMessage = "请先打开项目";
             return;
         }
 
-        var mediaDir = System.IO.Path.Combine(CoreProjectDirectory, ProjectConstants.MediaDir);
+        var mediaDir = System.IO.Path.Combine(ResourcesDirectory, ProjectConstants.MediaDir);
         System.IO.Directory.CreateDirectory(mediaDir);
 
         var imported = 0;
@@ -172,7 +172,7 @@ public partial class AssetManagerViewModel : ViewModelBase
                 // 根据扩展名确定目标子目录
                 var targetSubDir = ProjectConstants.GetImportTargetSubDir(ext);
 
-                await _assetManager.ImportAssetAsync(CoreProjectDirectory, filePath, targetSubDir);
+                await _assetManager.ImportAssetAsync(ResourcesDirectory, filePath, targetSubDir);
                 imported++;
             }
             catch (Exception ex)

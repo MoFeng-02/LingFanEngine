@@ -331,8 +331,8 @@ public class StoryEditorPage : UserControl, INavigationAware
     /// <summary>变量集合变化时更新补全数据</summary>
     private void OnVariablesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        var (vars, scenes, labels, chars) = _viewModel.GetCompletionData();
-        _editor.UpdateCompletionData(vars, scenes, labels, chars);
+        var (vars, scenes, labels, chars, varNames) = _viewModel.GetCompletionData();
+        _editor.UpdateCompletionData(vars, scenes, labels, chars, varNames);
     }
 
     /// <summary>创建右侧面板：诊断 + 变量 + 引用 + 大纲</summary>

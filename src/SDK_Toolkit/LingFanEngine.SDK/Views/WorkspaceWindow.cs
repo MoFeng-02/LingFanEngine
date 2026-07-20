@@ -553,13 +553,14 @@ public class WorkspaceWindow : Window
                 var parts = new System.Collections.Generic.List<string>();
                 if (vm.TargetWindows) parts.Add("Windows ✓");
                 if (vm.TargetLinux) parts.Add("Linux ✓");
-                if (vm.TargetMacOS) parts.Add("macOS ✓");
+                if (vm.TargetMacOSArm64) parts.Add("macOS (arm64) ✓");
+                if (vm.TargetMacOSX64) parts.Add("macOS (x64) ✓");
                 platformSummary.Text = "平台: " + (parts.Count > 0 ? string.Join("  ", parts) : "(未选择)");
             }
             UpdatePlatformSummary();
             vm.PropertyChanged += (_, e) =>
             {
-                if (e.PropertyName is nameof(BuildViewModel.TargetWindows) or nameof(BuildViewModel.TargetLinux) or nameof(BuildViewModel.TargetMacOS))
+                if (e.PropertyName is nameof(BuildViewModel.TargetWindows) or nameof(BuildViewModel.TargetLinux) or nameof(BuildViewModel.TargetMacOSArm64) or nameof(BuildViewModel.TargetMacOSX64))
                     UpdatePlatformSummary();
             };
             panel.Children.Add(platformSummary);

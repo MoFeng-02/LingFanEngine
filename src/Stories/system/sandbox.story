@@ -1,7 +1,6 @@
 // ============================================================
 // 沙盒模式 - 引擎功能测试
 // ============================================================
-// type=menu
 scene "sandbox" type=menu
   image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.3
   text "沙盒模式" x=50% y=10% size=36 color="#FFD700" halign=center font="Microsoft YaHei"
@@ -22,6 +21,7 @@ scene "sandbox" type=menu
   button "BGM 测试" x=75% y=62% width=140 height=40 color="#FFCCAA" nav="sb_bgm" halign=center
   button "角色模板" x=15% y=72% width=140 height=40 color="#FFAAFF" nav="sb_character" halign=center
   button "等待测试" x=35% y=72% width=140 height=40 color="#AAFFAA" nav="sb_wait" halign=center
+  button "对话框模板" x=55% y=72% width=140 height=40 color="#88FFFF" nav="dialog_templates" halign=center
   button "返回标题" x=50% y=80% width=160 height=42 color="#FF8888" nav="title_main" halign=center
 
 // == 变量操作 =================================================

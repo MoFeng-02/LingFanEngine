@@ -147,6 +147,7 @@ public class SettingsPage : UserControl, INavigationAware
 
         sdkPanel.Children.Add(CreateInfoRow("SDK 版本", viewModel.SdkVersion));
         sdkPanel.Children.Add(CreateInfoRow("引擎版本", viewModel.EngineVersion));
+        sdkPanel.Children.Add(CreateInfoRow("模板版本", viewModel.TemplateVersion));
         sdkPanel.Children.Add(CreateInfoRow(".NET 版本", viewModel.DotNetVersion));
         sdkPanel.Children.Add(CreateInfoRow("应用数据目录", viewModel.AppDataDirectory));
 
@@ -157,6 +158,52 @@ public class SettingsPage : UserControl, INavigationAware
             Margin = new Thickness(0, 4, 0, 0),
         };
         sdkPanel.Children.Add(openDataBtn);
+
+        // 引擎更新（GitHub Release 独立下载）
+        var updateBtn = new Button
+        {
+            Content = "检查引擎更新",
+            Command = viewModel.CheckEngineUpdateCommand,
+            Margin = new Thickness(0, 4, 0, 0),
+        };
+        sdkPanel.Children.Add(updateBtn);
+
+        var updateStatusText = new TextBlock
+        {
+            FontSize = 12,
+            Foreground = Brushes.Gray,
+            TextWrapping = TextWrapping.Wrap,
+            Text = viewModel.EngineUpdateMessage,
+        };
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SettingsViewModel.EngineUpdateMessage))
+                updateStatusText.Text = viewModel.EngineUpdateMessage;
+        };
+        sdkPanel.Children.Add(updateStatusText);
+
+        // 模板更新（GitHub Release 模板 zip，覆盖本地模板缓存）
+        var templateUpdateBtn = new Button
+        {
+            Content = "检查模板更新",
+            Command = viewModel.CheckTemplateUpdateCommand,
+            Margin = new Thickness(0, 10, 0, 0),
+        };
+        sdkPanel.Children.Add(templateUpdateBtn);
+
+        var templateUpdateStatusText = new TextBlock
+        {
+            FontSize = 12,
+            Foreground = Brushes.Gray,
+            TextWrapping = TextWrapping.Wrap,
+            Text = viewModel.TemplateUpdateMessage,
+        };
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SettingsViewModel.TemplateUpdateMessage))
+                templateUpdateStatusText.Text = viewModel.TemplateUpdateMessage;
+        };
+        sdkPanel.Children.Add(templateUpdateStatusText);
 
         grid.Children.Add(sdkPanel);
 

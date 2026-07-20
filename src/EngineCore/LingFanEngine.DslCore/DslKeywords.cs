@@ -78,6 +78,39 @@ public static class DslKeywords
         "skip", "auto", "wait", "pause", "label",
     };
 
+    // ====== 语句关键字的语义子分组（用于 SDK 语义高亮，均为 _statements 的子集）======
+    // 目的：让 SDK 高亮器把不同语义的语句关键字着成不同颜色，缓解"全蓝视觉疲劳"。
+    private static readonly HashSet<string> _controlFlow = new()
+    {
+        // 分支 / 循环 / 块结束
+        "if", "else", "while", "for", "break", "continue", "end",
+        "switch", "case", "default",
+        // 跳转 / 调用 / 返回 / 目标
+        "jump", "call", "return", "label", "menu", "input",
+        // 播放控制
+        "wait", "skip", "auto", "pause",
+    };
+
+    private static readonly HashSet<string> _navigation = new()
+    {
+        // 场景定义 / 跳转 / 界面调用 / 回溯
+        "scene", "navigate", "call_screen", "back", "forward",
+    };
+
+    private static readonly HashSet<string> _dataOp = new()
+    {
+        // 变量 / 数组 / 字典
+        "set", "define", "let", "local", "undef",
+        "array", "array_push", "array_pop", "foreach", "dict", "dict_set",
+    };
+
+    private static readonly HashSet<string> _media = new()
+    {
+        // 音频 / 视频 / 过场
+        "bgm", "se", "ambient", "stop_ambient",
+        "video", "stop_video", "pause_video", "resume_video", "seek_video", "cutscene",
+    };
+
     // ====== 参数 / 修饰符关键字 ======
     // 出现在语句关键字之后的 key=value 参数名或单词修饰符
     private static readonly HashSet<string> _parameters = new()
@@ -131,6 +164,10 @@ public static class DslKeywords
         // say 增强
         "instant",
         "typewriter",
+        // Phase 65: 对话框模板
+        "template",
+        // Phase 65: 角色级模板绑定（character screen="xxx"）
+        "screen",
         // bg_switch 参数
         "transition",
     };
@@ -166,6 +203,18 @@ public static class DslKeywords
 
     /// <summary>UI 元素类型（scene 块内的元素名）</summary>
     public static IReadOnlySet<string> UiElementTypes => _uiElementTypes;
+
+    /// <summary>控制流关键字（if/while/for/jump/call/return/menu 等）→ 用于 SDK 语义高亮（紫）</summary>
+    public static IReadOnlySet<string> ControlFlow => _controlFlow;
+
+    /// <summary>场景/界面导航关键字（scene/navigate/call_screen/back/forward）→ 用于 SDK 语义高亮（青绿）</summary>
+    public static IReadOnlySet<string> Navigation => _navigation;
+
+    /// <summary>数据操作关键字（set/define/let/local/array/dict 等）→ 用于 SDK 语义高亮（黄）</summary>
+    public static IReadOnlySet<string> DataOp => _dataOp;
+
+    /// <summary>媒体关键字（bgm/se/video/cutscene 等）→ 用于 SDK 语义高亮（橙绿）</summary>
+    public static IReadOnlySet<string> Media => _media;
 
     /// <summary>所有关键字的合并只读集合（自动去重）</summary>
     public static IReadOnlySet<string> All { get; } =

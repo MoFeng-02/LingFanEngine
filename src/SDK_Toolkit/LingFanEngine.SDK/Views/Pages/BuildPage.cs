@@ -19,6 +19,9 @@ public class BuildPage : UserControl, INavigationAware
     private readonly BuildViewModel _viewModel;
     private ContentControl? _encryptionDetailPanel;
     private ContentControl? _fileTypesPanel;
+    private TextBlock? _engineVersionText;
+    private TextBlock? _engineUpdateMsgText;
+    private TextBlock? _launchMsgText;
 
     public BuildPage(BuildViewModel viewModel)
     {
@@ -43,7 +46,7 @@ public class BuildPage : UserControl, INavigationAware
 
         var grid = new Grid
         {
-            RowDefinitions = RowDefinitions.Parse("Auto,Auto,Auto,*,Auto"),
+            RowDefinitions = RowDefinitions.Parse("Auto,Auto,Auto,Auto,*,Auto"),
             Margin = new Thickness(16),
         };
 
@@ -80,9 +83,13 @@ public class BuildPage : UserControl, INavigationAware
         linuxCheck.IsCheckedChanged += (_, _) => viewModel.TargetLinux = linuxCheck.IsChecked ?? false;
         platformPanel.Children.Add(linuxCheck);
 
-        var macCheck = CreateCheckbox("macOS", viewModel.TargetMacOS);
-        macCheck.IsCheckedChanged += (_, _) => viewModel.TargetMacOS = macCheck.IsChecked ?? false;
-        platformPanel.Children.Add(macCheck);
+        var macArmCheck = CreateCheckbox("macOS (osx-arm64)", viewModel.TargetMacOSArm64);
+        macArmCheck.IsCheckedChanged += (_, _) => viewModel.TargetMacOSArm64 = macArmCheck.IsChecked ?? false;
+        platformPanel.Children.Add(macArmCheck);
+
+        var macX64Check = CreateCheckbox("macOS (osx-x64)", viewModel.TargetMacOSX64);
+        macX64Check.IsCheckedChanged += (_, _) => viewModel.TargetMacOSX64 = macX64Check.IsChecked ?? false;
+        platformPanel.Children.Add(macX64Check);
 
         topPanel.Children.Add(platformPanel);
 
@@ -114,6 +121,34 @@ public class BuildPage : UserControl, INavigationAware
             BorderThickness = new Thickness(0),
         };
         topPanel.Children.Add(buildBtn);
+
+        // 启动游戏按钮（若已构建则直接运行，未构建自动构建当前平台）
+        var launchBtn = new Button
+        {
+            Content = "启动游戏",
+            Command = viewModel.LaunchGameCommand,
+            FontSize = 14,
+            Padding = new Thickness(24, 8),
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Background = new SolidColorBrush(Color.Parse("#2D9D78")),
+            Foreground = Brushes.White,
+            BorderThickness = new Thickness(0),
+        };
+        topPanel.Children.Add(launchBtn);
+
+        // 停止游戏按钮（杀掉运行中的游戏进程，便于重建/更新 DLL）
+        var stopBtn = new Button
+        {
+            Content = "停止游戏",
+            Command = viewModel.StopGameCommand,
+            FontSize = 14,
+            Padding = new Thickness(24, 8),
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Background = new SolidColorBrush(Color.Parse("#C0392B")),
+            Foreground = Brushes.White,
+            BorderThickness = new Thickness(0),
+        };
+        topPanel.Children.Add(stopBtn);
 
         grid.Children.Add(topPanel);
 
@@ -291,9 +326,79 @@ public class BuildPage : UserControl, INavigationAware
 
         grid.Children.Add(encPanel);
 
+        // ===== 引擎依赖（项目独立 DLL 版本隔离） =====
+        var enginePanel = new StackPanel { Spacing = 6, Margin = new Thickness(0, 0, 0, 16) };
+        Grid.SetRow(enginePanel, 3);
+
+        enginePanel.Children.Add(new TextBlock
+        {
+            Text = "引擎依赖",
+            FontWeight = FontWeight.Bold,
+            Foreground = new SolidColorBrush(Color.Parse("#CCCCCC")),
+        });
+
+        var engineRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 16,
+            Margin = new Thickness(0, 4, 0, 0),
+        };
+
+        _engineVersionText = new TextBlock
+        {
+            Text = $"当前版本：{viewModel.EngineDependencyVersion}",
+            FontSize = 13,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = new SolidColorBrush(Color.Parse("#CCCCCC")),
+        };
+        engineRow.Children.Add(_engineVersionText);
+
+        var updateEngineBtn = new Button
+        {
+            Content = "检查并更新项目引擎",
+            Command = viewModel.UpdateProjectEngineCommand,
+            FontSize = 13,
+            Padding = new Thickness(16, 6),
+            Background = new SolidColorBrush(Color.Parse("#0E639C")),
+            Foreground = Brushes.White,
+            BorderThickness = new Thickness(0),
+        };
+        engineRow.Children.Add(updateEngineBtn);
+
+        enginePanel.Children.Add(engineRow);
+
+        _engineUpdateMsgText = new TextBlock
+        {
+            Text = viewModel.ProjectEngineUpdateMessage,
+            FontSize = 12,
+            Foreground = new SolidColorBrush(Color.Parse("#88C0D0")),
+            TextWrapping = TextWrapping.Wrap,
+        };
+        enginePanel.Children.Add(_engineUpdateMsgText);
+
+        enginePanel.Children.Add(new TextBlock
+        {
+            Text = "提示：更新仅替换项目 DLL/ 内引擎依赖，需重新构建发布后生效。",
+            FontSize = 11,
+            Foreground = new SolidColorBrush(Color.Parse("#888888")),
+        });
+
+        // 启动/停止游戏状态文案
+        _launchMsgText = new TextBlock
+        {
+            Text = viewModel.LaunchMessage,
+            FontSize = 12,
+            Foreground = new SolidColorBrush(Color.Parse("#88C0D0")),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 4, 0, 0),
+        };
+        enginePanel.Children.Add(_launchMsgText);
+
+        grid.Children.Add(enginePanel);
+
         // ===== 第三行：构建日志 =====
         var logPanel = new StackPanel();
-        Grid.SetRow(logPanel, 3);
+        Grid.SetRow(logPanel, 4);
 
         logPanel.Children.Add(new TextBlock
         {
@@ -317,6 +422,12 @@ public class BuildPage : UserControl, INavigationAware
         {
             if (e.PropertyName == nameof(BuildViewModel.BuildLog))
                 logBox.Text = viewModel.BuildLog;
+            if (e.PropertyName == nameof(BuildViewModel.EngineDependencyVersion) && _engineVersionText != null)
+                _engineVersionText.Text = $"当前版本：{viewModel.EngineDependencyVersion}";
+            if (e.PropertyName == nameof(BuildViewModel.ProjectEngineUpdateMessage) && _engineUpdateMsgText != null)
+                _engineUpdateMsgText.Text = viewModel.ProjectEngineUpdateMessage;
+            if (e.PropertyName == nameof(BuildViewModel.LaunchMessage) && _launchMsgText != null)
+                _launchMsgText.Text = viewModel.LaunchMessage;
         };
 
         logPanel.Children.Add(logBox);
@@ -334,7 +445,7 @@ public class BuildPage : UserControl, INavigationAware
             if (e.PropertyName == nameof(BuildViewModel.BuildProgress))
                 progress.Value = viewModel.BuildProgress;
         };
-        Grid.SetRow(progress, 4);
+        Grid.SetRow(progress, 5);
         grid.Children.Add(progress);
 
         scrollViewer.Content = grid;

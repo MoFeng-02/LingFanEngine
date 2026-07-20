@@ -4,6 +4,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
+using LingFanEngine.Abstractions.Interfaces.Entry;
 using LingFanEngine.Abstractions.Models;
 
 namespace LingFanEngine.Views;
@@ -16,6 +17,7 @@ internal sealed class OverlayRenderer : IOverlayRenderer
     private const double NotifyFadeDuration = 0.3;
 
     private readonly IStateContainer _state;
+    private readonly II18nService? _i18n;
 
     private Panel? _sceneRoot;
     private Grid? _outerGrid;
@@ -35,9 +37,10 @@ internal sealed class OverlayRenderer : IOverlayRenderer
     private TextBlock? _perfHud;
     private string _lastPerfHudText = "";
 
-    public OverlayRenderer(IStateContainer state)
+    public OverlayRenderer(IStateContainer state, II18nService? i18n = null)
     {
         _state = state;
+        _i18n = i18n;
     }
 
     public void Attach(Panel? sceneRoot, Grid? outerGrid, Border? dialogMask)
@@ -91,7 +94,9 @@ internal sealed class OverlayRenderer : IOverlayRenderer
     private void UpdateMenuOverlay()
     {
         var opts = _state.Get<object>(StateKeys.Menu.Options) ?? _state.Get<object>(StateKeys.Menu.DslOptions);
-        var prompt = _state.Get<string>(StateKeys.Menu.Prompt) ?? _state.Get<string>(StateKeys.Menu.DslPrompt);
+        var rawPrompt = _state.Get<string>(StateKeys.Menu.Prompt) ?? _state.Get<string>(StateKeys.Menu.DslPrompt);
+        // 原文翻译（I18n）
+        var prompt = _i18n != null && !string.IsNullOrEmpty(rawPrompt) ? _i18n.Translate(rawPrompt) : rawPrompt;
         if (opts is string[] optsArr && optsArr.Length > 0)
         {
             if (_menuPanel != null) return;
@@ -109,7 +114,9 @@ internal sealed class OverlayRenderer : IOverlayRenderer
             for (int i = 0; i < optsArr.Length; i++)
             {
                 var idx = i;
-                var btn = new Button { Content = optsArr[i], Width = 300, Height = 44, Margin = new Thickness(0, 5), Background = new SolidColorBrush(Color.FromArgb(200, 80, 140, 255)) };
+                // 原文翻译（I18n）
+                var optText = _i18n != null ? _i18n.Translate(optsArr[i]) : optsArr[i];
+                var btn = new Button { Content = optText, Width = 300, Height = 44, Margin = new Thickness(0, 5), Background = new SolidColorBrush(Color.FromArgb(200, 80, 140, 255)) };
                 btn.Click += (_, _) => { _state.Set(StateKeys.Dialog.Complete, false); _state.Set(StateKeys.Menu.Selected, idx); };
                 stack.Children.Add(btn);
             }
@@ -127,7 +134,9 @@ internal sealed class OverlayRenderer : IOverlayRenderer
 
     private void UpdateInputOverlay()
     {
-        var prompt = _state.Get<string>(StateKeys.Input.Prompt) ?? _state.Get<string>(StateKeys.Input.DslPrompt);
+        var rawPrompt = _state.Get<string>(StateKeys.Input.Prompt) ?? _state.Get<string>(StateKeys.Input.DslPrompt);
+        // 原文翻译（I18n）
+        var prompt = _i18n != null && !string.IsNullOrEmpty(rawPrompt) ? _i18n.Translate(rawPrompt) : rawPrompt;
         if (!string.IsNullOrEmpty(prompt))
         {
             if (_inputPanel != null) return;

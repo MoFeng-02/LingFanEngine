@@ -206,6 +206,8 @@ services.TryAddSingleton<IEngineLogger>(sp =>
         services.AddSingleton<IPlaybackService, PlaybackService>();
         // 对话框工厂（游戏可注册自定义实现替换内置 DialogBox）
         services.TryAddSingleton<Views.IDialogBoxFactory, Views.DefaultDialogBoxFactory>();
+        // Phase 65: 对话框模板注册表（UI 层注册具体模板，SceneView 按名消费）
+        services.TryAddSingleton<Views.IDialogTemplateRegistry, Views.DialogTemplateRegistry>();
 
         // Phase 32: SceneView 模块化——注册子模块接口（Phase 50：VideoPresenter 注入 IEncryptedFileReader）
         services.AddSingleton<Views.IControlFactory, Views.ControlFactory>();
@@ -213,22 +215,24 @@ services.TryAddSingleton<IEngineLogger>(sp =>
             sp.GetRequiredService<IStateContainer>(),
             sp.GetRequiredService<ICommandPipeline>(),
             sp.GetService<ICommandService>()));
-        services.AddSingleton<Views.IOverlayRenderer, Views.OverlayRenderer>();
+        services.AddSingleton<Views.IOverlayRenderer>(sp => new Views.OverlayRenderer(
+        sp.GetRequiredService<IStateContainer>(),
+        sp.GetService<II18nService>()));
         services.AddSingleton<Views.IVideoPresenter>(sp => new Views.VideoPresenter(
             sp.GetRequiredService<IStateContainer>(),
             sp.GetService<IEncryptedFileReader>()));
         services.AddSingleton<Views.IAnimationApplier, Views.AnimationApplier>();
-services.AddSingleton<ISaveDataService>(sp => new SaveDataService(
-sp.GetRequiredService<IStateContainer>(),
-sp.GetRequiredService<IJsonValueConverter>(),
-sp.GetRequiredService<LingFanEngineOptions>(),
-sp.GetService<ISaveService>(),
-sp.GetService<ISceneStack>(),
-sp.GetService<ISceneRegistry>(),
-sp.GetService<IStoryRegistry>(),
-sp.GetService<IDslExecutor>(),
-sp.GetService<IEventScheduler>(),
-sp.GetService<ITimeEventRegistry>()));
+        services.AddSingleton<ISaveDataService>(sp => new SaveDataService(
+            sp.GetRequiredService<IStateContainer>(),
+            sp.GetRequiredService<IJsonValueConverter>(),
+            sp.GetRequiredService<LingFanEngineOptions>(),
+            sp.GetService<ISaveService>(),
+            sp.GetService<ISceneStack>(),
+            sp.GetService<ISceneRegistry>(),
+            sp.GetService<IStoryRegistry>(),
+            sp.GetService<IDslExecutor>(),
+            sp.GetService<IEventScheduler>(),
+            sp.GetService<ITimeEventRegistry>()));
 
         // 注册 GameLoop 并应用目标帧率
         services.AddSingleton<IGameLoop>(sp =>
@@ -250,17 +254,18 @@ sp.GetService<ITimeEventRegistry>()));
             var video = sp.GetService<IVideoManager>();
             var eventScheduler = sp.GetService<IEventScheduler>();
             var timeEventRegistry = sp.GetService<ITimeEventRegistry>();
+            var i18n = sp.GetService<II18nService>();
             var uiDispatcher = sp.GetService<IUIThreadDispatcher>();
             var loop = new GameLoop(
-                pipeline, state, time,
-                dispatcher, tween, jsonConverter, defaultHandlers,
-                sp.GetRequiredService<IStateInitializer>(),
-                sp.GetRequiredService<IAnimationService>(),
-                sp.GetRequiredService<IShakeService>(),
-                sp.GetRequiredService<IPlaybackService>(),
-                sp.GetRequiredService<ISaveDataService>(),
-                save, sceneReg, options,
-                sceneStack, storyReg, dslExec, transition, audio, video, eventScheduler, timeEventRegistry, uiDispatcher);
+            pipeline, state, time,
+            dispatcher, tween, jsonConverter, defaultHandlers,
+            sp.GetRequiredService<IStateInitializer>(),
+            sp.GetRequiredService<IAnimationService>(),
+            sp.GetRequiredService<IShakeService>(),
+            sp.GetRequiredService<IPlaybackService>(),
+            sp.GetRequiredService<ISaveDataService>(),
+            save, sceneReg, options,
+            sceneStack, storyReg, dslExec, transition, audio, video, eventScheduler, timeEventRegistry, i18n, uiDispatcher);
             loop.TargetFps = options.GetTargetFps();
             // StoryRegistry 扫描副作用（需在 GameLoop 构造后执行）
             storyReg?.Scan();

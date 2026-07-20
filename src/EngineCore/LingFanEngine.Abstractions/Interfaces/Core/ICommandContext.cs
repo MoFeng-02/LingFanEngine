@@ -1,4 +1,5 @@
 using LingFanEngine.Abstractions.EngineOptions;
+using LingFanEngine.Abstractions.Interfaces.Entry;
 using LingFanEngine.Abstractions.Interfaces.Events;
 using LingFanEngine.Abstractions.Interfaces.Media;
 using LingFanEngine.Abstractions.Interfaces.Saves;
@@ -52,6 +53,9 @@ public interface ICommandContext
 
     /// <summary>游戏时间服务</summary>
     IGameTimeService? TimeService { get; }
+
+    /// <summary>国际化翻译服务（原文→译文，null 时不翻译）</summary>
+    II18nService? I18n { get; }
 
     /// <summary>存档服务</summary>
     ISaveService? SaveService { get; }

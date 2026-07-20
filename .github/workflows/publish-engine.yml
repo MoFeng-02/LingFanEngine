@@ -1,0 +1,91 @@
+# =============================================================================
+# 引擎 DLL 自动发布工作流（DRAFT / 未经实跑验证 —— 提交前请人工复核路径与权限）
+# -----------------------------------------------------------------------------
+# 触发：推送 tag `vX.Y.Z` 时自动：
+#   1. 构建 4 个引擎库（LingFanEngine / Abstractions / DslCore，Pidgin 随传递依赖拷贝）
+#   2. 计算各 DLL 的 sha256
+#   3. 生成 updates/latest.json（v2 格式：含 breakingDlls / publishedUtc / minSdkVersion / dllVersions / dllChecksums）
+#   4. 打包 LingFanEngine.DLLs.zip
+#   5. 发布 GitHub Release（zip + latest.json 作为 asset）
+#
+# 注意：
+#   - minSdkVersion 当前写死为 SDK 当前最低兼容版本，正式发布时建议从 SDK 程序集版本动态注入。
+#   - assetSha256（整包校验）留空（可选）；逐 DLL 的 sha256 必填且由本工作流自动计算。
+#   - 若启用 Authenticode 强校验，CI 需配置代码签名证书（secrets），未配置时 SDK 端回落 sha256 不阻塞。
+# =============================================================================
+name: Publish Engine DLLs
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # 构建引擎核心库（传递依赖会一并产出 Abstractions / DslCore / Pidgin 到 bin 目录）
+      - name: Build engine core (Release)
+        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0
+
+      - name: Collect DLLs + compute sha256 + generate manifest
+        id: collect
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="src/EngineCore/LingFanEngine/bin/Release/net10.0"
+          DLLS=(LingFanEngine.dll LingFanEngine.Abstractions.dll LingFanEngine.DslCore.dll Pidgin.dll)
+          mkdir -p publish
+          declare -A SUMS
+          for d in "${DLLS[@]}"; do
+            cp "$OUT/$d" "publish/$d"
+            SUMS[$d]=$(sha256sum "publish/$d" | cut -d' ' -f1)
+          done
+          VER="${GITHUB_REF_NAME#v}"
+          TAG="${{ github.ref_name }}"
+          cat > updates/latest.json <<EOF
+          {
+            "version": "$VER",
+            "sdkVersion": "$VER",
+            "releaseNotesUrl": "https://github.com/MoFeng-02/LingFanEngine/releases/tag/$TAG",
+            "assetUrl": "https://github.com/MoFeng-02/LingFanEngine/releases/download/$TAG/LingFanEngine.DLLs.zip",
+            "assetSha256": "",
+            "breakingAbstractions": false,
+            "breakingDlls": [],
+            "publishedUtc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "minSdkVersion": "0.1.5",
+            "dllChecksums": {
+              "LingFanEngine.dll": "${SUMS[LingFanEngine.dll]}",
+              "LingFanEngine.Abstractions.dll": "${SUMS[LingFanEngine.Abstractions.dll]}",
+              "LingFanEngine.DslCore.dll": "${SUMS[LingFanEngine.DslCore.dll]}",
+              "Pidgin.dll": "${SUMS[Pidgin.dll]}"
+            },
+            "dllVersions": {
+              "LingFanEngine.dll": "$VER",
+              "LingFanEngine.Abstractions.dll": "$VER",
+              "LingFanEngine.DslCore.dll": "$VER",
+              "Pidgin.dll": "$VER"
+            }
+          }
+          EOF
+          (cd publish && zip -r ../LingFanEngine.DLLs.zip .)
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            LingFanEngine.DLLs.zip
+            updates/latest.json
+          generate_release_notes: true

@@ -46,8 +46,36 @@ public interface IDialogBoxFactory
 
 /// <summary>
 /// 默认对话框工厂——创建内置 DialogBox
+/// <para>Phase 65: 改为 public，UI 层注册为 bottom 模板</para>
 /// </summary>
-internal class DefaultDialogBoxFactory : IDialogBoxFactory
+public class DefaultDialogBoxFactory : IDialogBoxFactory
 {
     public IDialogBox Create(IStateContainer state) => new DialogBox(state);
+}
+
+// ========== Phase 65: 模板注册系统 ==========
+
+/// <summary>
+/// 对话框模板注册表接口——UI 层注册模板工厂，SceneView 按名消费
+/// <para>模板 = 独立 Control（实现 IDialogBox），委托 DialogEngine 共享核心逻辑。</para>
+/// </summary>
+public interface IDialogTemplateRegistry
+{
+    /// <summary>注册模板工厂。同名覆盖</summary>
+    void Register(string name, IDialogBoxFactory factory);
+
+    /// <summary>注销模板</summary>
+    bool Unregister(string name);
+
+    /// <summary>按名解析模板工厂。null 或未注册=返回 null</summary>
+    IDialogBoxFactory? Resolve(string? name);
+
+    /// <summary>获取全局默认模板工厂。UI 层必须设置至少一个</summary>
+    IDialogBoxFactory? GetDefault();
+
+    /// <summary>设置全局默认模板名</summary>
+    void SetDefault(string name);
+
+    /// <summary>已注册的所有模板名（供调试/SDK 列举）</summary>
+    IReadOnlyCollection<string> RegisteredNames { get; }
 }

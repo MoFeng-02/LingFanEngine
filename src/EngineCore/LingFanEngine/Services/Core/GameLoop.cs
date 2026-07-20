@@ -2,6 +2,7 @@ using System.Diagnostics;
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.EngineOptions;
 using LingFanEngine.Abstractions.Interfaces.Core;
+using LingFanEngine.Abstractions.Interfaces.Entry;
 using LingFanEngine.Abstractions.Interfaces.Events;
 using LingFanEngine.Abstractions.Interfaces.Media;
 // Router 已移除
@@ -33,7 +34,8 @@ public class GameLoop : IGameLoop
     private readonly IAudioManager? _audioManager;
     private readonly IVideoManager? _videoManager;
     private readonly IEventScheduler? _eventScheduler;
-private readonly ITimeEventRegistry? _timeEventRegistry;
+    private readonly ITimeEventRegistry? _timeEventRegistry;
+    private readonly II18nService? _i18n;
     private readonly IDslExecutor? _dslExecutor;
     private readonly IUIThreadDispatcher? _uiThreadDispatcher;
     private CancellationTokenSource? _stopCts;
@@ -166,6 +168,7 @@ private readonly ITimeEventRegistry? _timeEventRegistry;
         IVideoManager? videoManager = null,
         IEventScheduler? eventScheduler = null,
         ITimeEventRegistry? timeEventRegistry = null,
+        II18nService? i18n = null,
         IUIThreadDispatcher? uiThreadDispatcher = null)
     {
         _pipeline = pipeline;
@@ -185,6 +188,7 @@ private readonly ITimeEventRegistry? _timeEventRegistry;
         _videoManager = videoManager;
         _eventScheduler = eventScheduler;
         _timeEventRegistry = timeEventRegistry;
+        _i18n = i18n;
         _uiThreadDispatcher = uiThreadDispatcher;
 
         _stateInitializer = stateInitializer;
@@ -716,9 +720,10 @@ private readonly ITimeEventRegistry? _timeEventRegistry;
         public ITransitionEngine? TransitionEngine => loop._transitionEngine;
         public IAudioManager? AudioManager => loop._audioManager;
         public IVideoManager? VideoManager => loop._videoManager;
-public IEventScheduler? EventScheduler => loop._eventScheduler;
-public ITimeEventRegistry? TimeEventRegistry => loop._timeEventRegistry;
-public IGameTimeService? TimeService => loop._time;
+        public IEventScheduler? EventScheduler => loop._eventScheduler;
+        public ITimeEventRegistry? TimeEventRegistry => loop._timeEventRegistry;
+        public IGameTimeService? TimeService => loop._time;
+        public II18nService? I18n => loop._i18n;
         public ISaveService? SaveService => loop._saveService;
         public LingFanEngineOptions Options => loop._options;
         public Func<byte[]?>? CaptureThumbnail => loop._sceneRenderer == null ? null : () => loop._sceneRenderer.CaptureThumbnail();

@@ -46,6 +46,22 @@ public enum HighlightCategory
 
     /// <summary>信息级诊断下划线</summary>
     Info,
+
+    // P2: 语句关键字的语义子分类（缓解"全蓝视觉疲劳"）
+    /// <summary>控制流关键字（if/while/for/jump/call/return/menu 等）</summary>
+    ControlFlow,
+    /// <summary>场景/界面导航关键字（scene/navigate/call_screen/back/forward）</summary>
+    Navigation,
+    /// <summary>数据操作关键字（set/define/let/local/array/dict 等）</summary>
+    DataOp,
+    /// <summary>UI 元素类型关键字（text/button/image/vbox/hbox 等）</summary>
+    Uielement,
+    /// <summary>媒体关键字（bgm/se/video/cutscene 等）</summary>
+    Media,
+    /// <summary>UI 容器元素（panel/vbox/hbox/container/scrollview/choice）→ 与展示型 UI 区分</summary>
+    UiContainer,
+    /// <summary>UI 交互元素（button/input/checkbox/slider）→ 与展示型 UI 区分</summary>
+    UiInteractive,
 }
 
 /// <summary>高亮 Token</summary>

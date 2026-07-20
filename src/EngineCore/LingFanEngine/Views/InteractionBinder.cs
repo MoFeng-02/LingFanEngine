@@ -5,6 +5,7 @@ using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Interfaces.Entry;
 using LingFanEngine.Services.Core;
+using LingFanEngine.Services.Scripting;
 
 namespace LingFanEngine.Views;
 
@@ -143,12 +144,12 @@ internal sealed class InteractionBinder : IInteractionBinder
                 };
             else if (cmd != null)
             {
-                var cmdValue = props.GetValueOrDefault("value")?.ToString();
+                var rawValue = props.GetValueOrDefault("value")?.ToString();
                 clickBtn.Click += (_, _) =>
                 {
                     _state.Set(StateKeys.Dialog.Complete, false);
                     if (_cmdService != null)
-                        FireAndForgetExecute(cmd, cmdValue);
+                        FireAndForgetExecute(cmd, ResolveValue(rawValue));
                 };
             }
         }
@@ -162,15 +163,25 @@ internal sealed class InteractionBinder : IInteractionBinder
                 };
             else if (cmd != null)
             {
-                var cmdValue = props.GetValueOrDefault("value")?.ToString();
+                var rawValue = props.GetValueOrDefault("value")?.ToString();
                 control.PointerPressed += (_, _) =>
                 {
                     _state.Set(StateKeys.Dialog.Complete, false);
                     if (_cmdService != null)
-                        FireAndForgetExecute(cmd, cmdValue);
+                        FireAndForgetExecute(cmd, ResolveValue(rawValue));
                 };
             }
         }
+    }
+
+    /// <summary>
+    /// 解析 cmd value——支持 {占位符} 表达式，在点击时求值（拿到最新变量值）
+    /// </summary>
+    private string? ResolveValue(string? rawValue)
+    {
+        if (string.IsNullOrEmpty(rawValue) || !rawValue.Contains('{'))
+            return rawValue;
+        return DslExpressionEvaluator.ReplaceText(rawValue, _state);
     }
 
     /// <summary>fire-and-forget SendAsync 带异常捕获</summary>

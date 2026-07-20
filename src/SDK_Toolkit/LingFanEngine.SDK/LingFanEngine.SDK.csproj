@@ -28,6 +28,7 @@
 		<PackageReference Include="MFToolkit.AutoGenerator" />
 		<PackageReference Include="MFToolkit.Routing" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" />
+		<PackageReference Include="Microsoft.Extensions.Http" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -41,59 +42,42 @@
 		<Folder Include="Utils\" />
 	</ItemGroup>
 
-	<!-- 引擎 DLL 引用（SDK 与引擎核心分离） -->
-	<!-- SDK 只 Reference Abstractions + DslCore + Pidgin，不引用 LingFanEngine.dll -->
-	<!-- LingFanEngine.dll 不在 SDK/DLL/ 中——由 Template/V1/DLL/ 提供给用户项目 -->
 	<ItemGroup>
-		<Reference Include="LingFanEngine.Abstractions">
-			<HintPath>DLL\LingFanEngine.Abstractions.dll</HintPath>
-		</Reference>
-		<Reference Include="LingFanEngine.DslCore">
-			<HintPath>DLL\LingFanEngine.DslCore.dll</HintPath>
-		</Reference>
-		<Reference Include="Pidgin">
-			<HintPath>DLL\Pidgin.dll</HintPath>
-		</Reference>
+	  <ProjectReference Include="..\..\EngineCore\LingFanEngine.DslCore\LingFanEngine.DslCore.csproj" />
 	</ItemGroup>
 
 	<!-- 将 DLL/ 目录复制到输出目录的 DLL/ 子目录 -->
 	<!-- 供 PublishService.UpdateEngineDlls 运行时复制到用户项目的 DLL/ 目录 -->
-	<ItemGroup>
-		<None Include="DLL\*.dll" CopyToOutputDirectory="PreserveNewest" LinkBase="DLL\" />
-	</ItemGroup>
 
-	<!-- Phase 58: 引擎 DLL 自动同步 -->
-	<!-- 编译前从引擎各项目输出目录复制最新 DLL 到 SDK/DLL/（3个）和 Template/DLL/（4个） -->
-	<!-- SDK/DLL/ 只含 Abstractions + DslCore + Pidgin；Template/DLL/ 额外含 LingFanEngine.dll -->
+	<!-- 引擎 DLL 自动同步 -->
+	<!-- 编译前从引擎各项目输出目录复制最新 DLL 到 SDK/DLL/（4个）和 Template/DLL/（4个） -->
+	<!-- SDK/DLL/ 与 Template/DLL/ 均含 Abstractions + DslCore + Pidgin + LingFanEngine， -->
+	<!-- 保证发布时 SDK 能把最新引擎核心一并复制到用户项目。 -->
 	<Target Name="SyncEngineDlls" BeforeTargets="PrepareForBuild">
 		<PropertyGroup>
-			<EngineBinDir>$(MSBuildThisFileDirectory)..\EngineCore\LingFanEngine\bin\$(Configuration)\net10.0</EngineBinDir>
-			<AbstractionsBinDir>$(MSBuildThisFileDirectory)..\EngineCore\LingFanEngine.Abstractions\bin\$(Configuration)\net10.0</AbstractionsBinDir>
-			<DslCoreBinDir>$(MSBuildThisFileDirectory)..\EngineCore\LingFanEngine.DslCore\bin\$(Configuration)\net10.0</DslCoreBinDir>
+			<EngineBinDir>$(MSBuildThisFileDirectory)..\..\EngineCore\LingFanEngine\bin\$(Configuration)\net10.0</EngineBinDir>
+			<AbstractionsBinDir>$(MSBuildThisFileDirectory)..\..\EngineCore\LingFanEngine.Abstractions\bin\$(Configuration)\net10.0</AbstractionsBinDir>
+			<DslCoreBinDir>$(MSBuildThisFileDirectory)..\..\EngineCore\LingFanEngine.DslCore\bin\$(Configuration)\net10.0</DslCoreBinDir>
 			<SdkDllDir>$(MSBuildThisFileDirectory)DLL</SdkDllDir>
-			<TemplateDllDir>$(MSBuildThisFileDirectory)..\Template\V1\_LingFanEngineTemplateTitle_\DLL</TemplateDllDir>
+			<TemplateDllDir>$(MSBuildThisFileDirectory)..\..\Template\V1\_LingFanEngineTemplateTitle_\DLL</TemplateDllDir>
 		</PropertyGroup>
 
-		<!-- SDK/DLL/: 3 个 DLL（SDK 引用的，不含 LingFanEngine.dll） -->
+		<!-- SDK/DLL/: 4 个 DLL（编辑所需 3 个 + 运行时引擎 LingFanEngine.dll） -->
+		<!-- LingFanEngine.dll 一并携带，使发布时 SDK 能自愈地把最新引擎复制到用户项目， -->
+		<!-- 不再依赖用户项目创建时从模板带入（旧设计：缺失只警告、引擎更新无法传播）。 -->
 		<ItemGroup>
-			<SdkSyncDlls Include="$(AbstractionsBinDir)\LingFanEngine.Abstractions.dll"
-			             Condition="Exists('$(AbstractionsBinDir)\LingFanEngine.Abstractions.dll')" />
-			<SdkSyncDlls Include="$(DslCoreBinDir)\LingFanEngine.DslCore.dll"
-			             Condition="Exists('$(DslCoreBinDir)\LingFanEngine.DslCore.dll')" />
-			<SdkSyncDlls Include="$(EngineBinDir)\Pidgin.dll"
-			             Condition="Exists('$(EngineBinDir)\Pidgin.dll')" />
+			<SdkSyncDlls Include="$(EngineBinDir)\LingFanEngine.dll" Condition="Exists('$(EngineBinDir)\LingFanEngine.dll')" />
+			<SdkSyncDlls Include="$(AbstractionsBinDir)\LingFanEngine.Abstractions.dll" Condition="Exists('$(AbstractionsBinDir)\LingFanEngine.Abstractions.dll')" />
+			<SdkSyncDlls Include="$(DslCoreBinDir)\LingFanEngine.DslCore.dll" Condition="Exists('$(DslCoreBinDir)\LingFanEngine.DslCore.dll')" />
+			<SdkSyncDlls Include="$(EngineBinDir)\Pidgin.dll" Condition="Exists('$(EngineBinDir)\Pidgin.dll')" />
 		</ItemGroup>
 
 		<!-- Template/DLL/: 4 个 DLL（含 LingFanEngine.dll） -->
 		<ItemGroup>
-			<TplSyncDlls Include="$(EngineBinDir)\LingFanEngine.dll"
-			             Condition="Exists('$(EngineBinDir)\LingFanEngine.dll')" />
-			<TplSyncDlls Include="$(AbstractionsBinDir)\LingFanEngine.Abstractions.dll"
-			             Condition="Exists('$(AbstractionsBinDir)\LingFanEngine.Abstractions.dll')" />
-			<TplSyncDlls Include="$(DslCoreBinDir)\LingFanEngine.DslCore.dll"
-			             Condition="Exists('$(DslCoreBinDir)\LingFanEngine.DslCore.dll')" />
-			<TplSyncDlls Include="$(EngineBinDir)\Pidgin.dll"
-			             Condition="Exists('$(EngineBinDir)\Pidgin.dll')" />
+			<TplSyncDlls Include="$(EngineBinDir)\LingFanEngine.dll" Condition="Exists('$(EngineBinDir)\LingFanEngine.dll')" />
+			<TplSyncDlls Include="$(AbstractionsBinDir)\LingFanEngine.Abstractions.dll" Condition="Exists('$(AbstractionsBinDir)\LingFanEngine.Abstractions.dll')" />
+			<TplSyncDlls Include="$(DslCoreBinDir)\LingFanEngine.DslCore.dll" Condition="Exists('$(DslCoreBinDir)\LingFanEngine.DslCore.dll')" />
+			<TplSyncDlls Include="$(EngineBinDir)\Pidgin.dll" Condition="Exists('$(EngineBinDir)\Pidgin.dll')" />
 		</ItemGroup>
 
 		<Copy SourceFiles="@(SdkSyncDlls)" DestinationFolder="$(SdkDllDir)" SkipUnchangedFiles="true" />

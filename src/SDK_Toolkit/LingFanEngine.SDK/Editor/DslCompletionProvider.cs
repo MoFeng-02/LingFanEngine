@@ -29,24 +29,11 @@ public class DslCompletionProvider
     // 场景类型枚举
     private static readonly string[] s_sceneTypes = { "game", "menu", "ui" };
 
-    // 过渡效果
-    private static readonly string[] s_transitions =
-    {
-        "fade", "slideleft", "slideright", "zoomin",
-        "fadeup", "fadedown", "slideup", "slidedown",
-        "blur", "dissolve", "shrink",
-    };
+    // 过渡效果——从 DslTransitionNames 共享常量自动同步（修复 P0: 硬编码与引擎不同步）
+    private static readonly IReadOnlySet<string> s_transitions = DslTransitionNames.All;
 
-    // 缓动函数
-    private static readonly string[] s_easings =
-    {
-        "Linear", "EaseOutQuad", "EaseInOutQuad",
-        "EaseOutCubic", "EaseInOutCubic",
-        "EaseOutQuart", "EaseInOutQuart",
-        "EaseOutBack", "EaseInOutBack",
-        "EaseOutElastic", "EaseInOutElastic",
-        "EaseOutBounce", "EaseInOutBounce",
-    };
+    // 缓动函数——从 DslEasingNames 共享常量自动同步（修复 P0: 硬编码与引擎不同步）
+    private static readonly IReadOnlySet<string> s_easings = DslEasingNames.All;
 
     // 布尔参数集合——key=true|false 形式，true 和 false 都合法
     private static readonly HashSet<string> s_booleanParams = new()
@@ -72,7 +59,8 @@ public class DslCompletionProvider
         List<VariableInfo> variables,
         List<string> scenes,
         List<string> labels,
-        List<string> characters)
+        List<string> characters,
+        List<string>? crossFileVariables = null)
     {
         // 获取当前行文本和光标在行中的位置
         var line = document.GetLineByOffset(offset);
@@ -107,11 +95,24 @@ public class DslCompletionProvider
                 break;
 
             case CompletionContext.VariableReference:
-                // { → 变量名
+                // { → 变量名（当前文件变量 + 跨场景变量）
+                var addedV = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var v in variables)
                 {
                     if (Matches(prefix, v.Name))
+                    {
                         results.Add(new DslCompletionData(v.Name, v.Name + "}", s_variableColor, $"变量 (行 {v.DefinitionLine})"));
+                        addedV.Add(v.Name);
+                    }
+                }
+                if (crossFileVariables != null)
+                {
+                    foreach (var name in crossFileVariables)
+                    {
+                        if (addedV.Contains(name)) continue;
+                        if (Matches(prefix, name))
+                            results.Add(new DslCompletionData(name, name + "}", s_variableColor, "变量 (跨场景)"));
+                    }
                 }
                 break;
 
@@ -173,13 +174,26 @@ public class DslCompletionProvider
 
             case CompletionContext.General:
             default:
-                // 通用补全：关键字 + UI 元素 + 变量
+                // 通用补全：关键字 + UI 元素 + 变量（当前文件 + 跨场景）
                 AddKeywordCompletions(results, prefix, DslKeywords.Statements, "语句关键字", s_keywordColor);
                 AddKeywordCompletions(results, prefix, DslKeywords.UiElementTypes, "UI 元素", s_keywordColor);
+                var addedG = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var v in variables)
                 {
                     if (Matches(prefix, v.Name))
+                    {
                         results.Add(new DslCompletionData(v.Name, v.Name, s_variableColor, $"变量 (行 {v.DefinitionLine})"));
+                        addedG.Add(v.Name);
+                    }
+                }
+                if (crossFileVariables != null)
+                {
+                    foreach (var name in crossFileVariables)
+                    {
+                        if (addedG.Contains(name)) continue;
+                        if (Matches(prefix, name))
+                            results.Add(new DslCompletionData(name, name, s_variableColor, "变量 (跨场景)"));
+                    }
                 }
                 break;
         }
@@ -207,7 +221,7 @@ public class DslCompletionProvider
 
     private static void AddValueCompletions(
         List<ICompletionData> results, string prefix,
-        string[] values, string description)
+        IEnumerable<string> values, string description)
     {
         foreach (var val in values)
         {

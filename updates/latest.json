@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "sdkVersion": "0.1.5",
+  "releaseNotesUrl": "https://github.com/MoFeng-02/LingFanEngine/releases/tag/v0.2.0",
+  "assetUrl": "https://github.com/MoFeng-02/LingFanEngine/releases/download/v0.2.0/LingFanEngine.DLLs.zip",
+  "assetSha256": "",
+  "breakingAbstractions": false,
+  "breakingDlls": [],
+  "publishedUtc": "2026-07-20T00:00:00Z",
+  "minSdkVersion": "0.1.5",
+  "dllChecksums": {
+    "LingFanEngine.dll": "replace-with-sha256-of-LingFanEngine.dll",
+    "LingFanEngine.Abstractions.dll": "replace-with-sha256-of-LingFanEngine.Abstractions.dll",
+    "LingFanEngine.DslCore.dll": "replace-with-sha256-of-LingFanEngine.DslCore.dll",
+    "Pidgin.dll": "replace-with-sha256-of-Pidgin.dll"
+  },
+  "dllVersions": {
+    "LingFanEngine.dll": "0.2.0",
+    "LingFanEngine.Abstractions.dll": "0.2.0",
+    "LingFanEngine.DslCore.dll": "0.2.0",
+    "Pidgin.dll": "0.2.0"
+  }
+}

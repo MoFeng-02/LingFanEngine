@@ -27,6 +27,15 @@ namespace LingFanEngine.SDK.Services.Implementations;
 /// </summary>
 public class TemplateService : ITemplateService
 {
+    private readonly IEngineUpdateService _engineUpdateService;
+    private readonly ITemplateUpdateService _templateUpdateService;
+
+    public TemplateService(IEngineUpdateService engineUpdateService, ITemplateUpdateService templateUpdateService)
+    {
+        _engineUpdateService = engineUpdateService;
+        _templateUpdateService = templateUpdateService;
+    }
+
     private const string TitlePlaceholder = "{LingFanEngineTemplateTitle}";
     private const string NamespacePlaceholder = "_LingFanEngineTemplateTitle_";
     private const string VersionPlaceholder = "{Version}";
@@ -89,7 +98,7 @@ public class TemplateService : ITemplateService
         var projectDir = Path.Combine(outputDir, projectName);
         PathHelper.EnsureDirectory(projectDir);
 
-        // 尝试开发模式（目录复制），失败则用分发模式（ZIP 解压）
+        // 尝试开发模式（目录复制），失败则用分发模式（优先下载缓存，否则内置 ZIP 解压）
         var templatePath = GetTemplatePath();
         if (templatePath != null && Directory.Exists(templatePath))
         {
@@ -97,7 +106,16 @@ public class TemplateService : ITemplateService
         }
         else
         {
-            ExtractEmbeddedTemplate(projectDir);
+            // 分发模式：若已从 Release 下载且版本高于内置，则优先用缓存；否则回退内置嵌入 zip
+            var cached = _templateUpdateService?.GetCachedTemplateDir();
+            if (cached != null)
+            {
+                await CopyTemplateDirectoryAsync(cached, projectDir);
+            }
+            else
+            {
+                ExtractEmbeddedTemplate(projectDir);
+            }
         }
 
         // 替换所有文件中的占位符
@@ -108,6 +126,9 @@ public class TemplateService : ITemplateService
 
         // 将 Directory.Build.props.temp 重命名为 Directory.Build.props
         RenameTempPropsFiles(projectDir);
+
+        // 为新建项目播种引擎 DLL（4 个齐全，离线也基于缓存）：DLL/ + engine.lock.json
+        await _engineUpdateService.SeedNewProjectEngineAsync(projectDir);
     }
 
     /// <summary>复制模板目录（排除 bin/obj/.vs 和残留文件）</summary>

@@ -470,14 +470,15 @@ public partial class StoryEditorViewModel : ViewModelBase, IQueryAttributable
     }
 
     /// <summary>获取补全数据源快照</summary>
-    public (List<VariableInfo> Variables, List<string> Scenes, List<string> Labels, List<string> Characters)
+    public (List<VariableInfo> Variables, List<string> Scenes, List<string> Labels, List<string> Characters, List<string> VariableNames)
         GetCompletionData()
     {
         return (
             new List<VariableInfo>(Variables),
             DefinitionIndexer.SceneNames,
             DefinitionIndexer.LabelNames,
-            DefinitionIndexer.CharacterKeys);
+            DefinitionIndexer.CharacterKeys,
+            DefinitionIndexer.VariableNames);
     }
 
     /// <summary>P0-3: Go to Definition——查找当前光标下的词并跳转</summary>

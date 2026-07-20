@@ -47,6 +47,7 @@ public class CodeEditorView : UserControl
     private List<string> _scenes = new();
     private List<string> _labels = new();
     private List<string> _characters = new();
+    private List<string> _variableNames = new();
 
     // P0-4: Enter 键标记，供 OnTextEntered 检测
     private bool _isEnterKey;
@@ -519,12 +520,14 @@ public class CodeEditorView : UserControl
         List<VariableInfo> variables,
         List<string> scenes,
         List<string> labels,
-        List<string> characters)
+        List<string> characters,
+        List<string> variableNames)
     {
         _variables = variables;
         _scenes = scenes;
         _labels = labels;
         _characters = characters;
+        _variableNames = variableNames;
     }
 
     /// <summary>获取光标下的单词（P0-3/P0-4 共用）</summary>
@@ -674,7 +677,7 @@ public class CodeEditorView : UserControl
         {
             var offset = _textEditor.CaretOffset;
             var completions = _completionProvider.GetCompletions(
-                _textEditor.Document, offset, _variables, _scenes, _labels, _characters);
+                _textEditor.Document, offset, _variables, _scenes, _labels, _characters, _variableNames);
 
             var list = new List<ICompletionData>(completions);
             if (list.Count == 0)

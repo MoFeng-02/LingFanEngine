@@ -12,21 +12,29 @@ public static class Highlighter
 {
     private static readonly IReadOnlySet<string> s_keywords = DslKeywords.All;
 
-    private static readonly HashSet<string> s_knownEnumValues = new()
-    {
-        "fade", "slideleft", "slideright", "slideup", "slidedown",
-        "zoomin", "fadeup", "fadedown", "blur", "dissolve", "shrink",
-        "EaseInQuad", "EaseOutQuad", "EaseInOutQuad", "EaseInCubic", "EaseOutCubic",
-        "EaseInOutCubic", "EaseInSine", "EaseOutSine", "EaseInOutSine",
-        "EaseInExpo", "EaseOutExpo", "EaseInOutExpo", "Linear",
-        "true", "false", "game", "menu", "ui",
-    };
+    // 已知枚举值——过渡效果和缓动函数从 DslCore 共享常量自动同步（修复 P0: 硬编码与引擎不同步）
+    private static readonly HashSet<string> s_knownEnumValues = new(
+        DslTransitionNames.All
+            .Concat(DslEasingNames.All)
+            .Concat(new[] { "true", "false", "game", "menu", "ui" }));
 
     private static readonly HashSet<string> s_fileExtensions = new()
     {
         ".story", ".json", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
         ".mp3", ".ogg", ".wav", ".m4a", ".flac",
         ".mp4", ".webm", ".mkv", ".avi", ".mov",
+    };
+
+    // UI 元素子类分组——让 text/button/image 等不同类型的 UI 元素着不同色，
+    // 解决"UI 元素关键字之间没区分"的视觉问题（展示型=红，容器型=青绿，交互型=橙）。
+    private static readonly HashSet<string> s_uiContainer = new()
+    {
+        "panel", "vbox", "hbox", "container", "scrollview",
+    };
+
+    private static readonly HashSet<string> s_uiInteractive = new()
+    {
+        "button", "input", "checkbox", "slider",
     };
 
     /// <summary>从源码生成高亮 token 列表（单遍 O(n)，无 Pidgin）</summary>
@@ -108,7 +116,7 @@ public static class Highlighter
         {
             case TokenType.Comment: return HighlightCategory.Comment;
             case TokenType.Number: return HighlightCategory.Number;
-            case TokenType.Keyword: return HighlightCategory.Keyword;
+            case TokenType.Keyword: return ClassifyKeyword(token, lineTokens);
             case TokenType.Symbol: return HighlightCategory.Symbol;
             
             case TokenType.String:
@@ -173,6 +181,74 @@ public static class Highlighter
         }
 
         return HighlightCategory.Plain;
+    }
+
+    /// <summary>
+    /// 细分关键字类别——根据 DslKeywords 子集和上下文位置区分颜色。
+    /// <para>语句关键字 → Keyword（蓝色），参数键后跟= → PropertyName（浅蓝），</para>
+    /// <para>字面量 → PropertyValue（橙色），UI 元素类型 → Keyword（蓝色）。</para>
+    /// </summary>
+    private static HighlightCategory ClassifyKeyword(
+        Token token,
+        Dictionary<int, List<Token>> lineTokens)
+    {
+        var value = token.Value;
+
+        // 获取 token 在行内的位置索引
+        int tokenIdx = -1;
+        List<Token>? toks = null;
+        if (lineTokens.TryGetValue(token.Line, out var list))
+        {
+            toks = list;
+            for (var i = 0; i < toks.Count; i++)
+            {
+                if (ReferenceEquals(toks[i], token)) { tokenIdx = i; break; }
+            }
+        }
+
+        bool isAtLineStart = tokenIdx == 0;
+        bool hasNextEquals = tokenIdx >= 0 && toks != null &&
+                             tokenIdx + 1 < toks.Count && toks[tokenIdx + 1].Value == "=";
+
+        // 1. 行首语句关键字（say/scene/if/while/set 等）→ 按语义子分组着色（P2: 缓解全蓝视觉疲劳）
+        if (isAtLineStart && DslKeywords.Statements.Contains(value))
+        {
+            if (DslKeywords.ControlFlow.Contains(value)) return HighlightCategory.ControlFlow;   // 控制流 → 紫
+            if (DslKeywords.Navigation.Contains(value)) return HighlightCategory.Navigation;      // 导航 → 青绿
+            if (DslKeywords.DataOp.Contains(value)) return HighlightCategory.DataOp;              // 数据操作 → 黄
+            if (DslKeywords.Media.Contains(value)) return HighlightCategory.Media;                // 媒体 → 橙绿
+            return HighlightCategory.Keyword;                                                     // 显示/系统类主语句 → 蓝
+        }
+
+        // 2. 后面跟 = 的参数键 / UI 元素属性键 → PropertyName（浅蓝）
+        //    如 volume=、duration=、speaker=、width=、height=、x=、y=
+        if (hasNextEquals &&
+            (DslKeywords.Parameters.Contains(value) || DslKeywords.ElementAttributes.Contains(value)))
+            return HighlightCategory.PropertyName;
+
+        // 3. 字面量值（true/false/game/menu/ui）→ PropertyValue（橙色）
+        //    如 type=game 中的 game，clickable=true 中的 true
+        if (DslKeywords.Literals.Contains(value))
+            return HighlightCategory.PropertyValue;
+
+        // 4. UI 元素类型（text/button/image/vbox/hbox 等）→ 按子类着色，互相区分
+        if (DslKeywords.UiElementTypes.Contains(value))
+        {
+            if (s_uiContainer.Contains(value)) return HighlightCategory.UiContainer;     // 容器型 → 青绿
+            if (s_uiInteractive.Contains(value)) return HighlightCategory.UiInteractive; // 交互型 → 橙
+            return HighlightCategory.Uielement;                                           // 展示型 → 红
+        }
+
+        // 5. 其他参数关键字（once/in/clear/exit/hard/skipable/store 等不以 = 结尾的修饰符）→ Keyword（蓝色）
+        if (DslKeywords.Parameters.Contains(value))
+            return HighlightCategory.Keyword;
+
+        // 6. 其他 UI 元素属性键（不以 = 结尾时）→ Keyword（蓝色）
+        if (DslKeywords.ElementAttributes.Contains(value))
+            return HighlightCategory.Keyword;
+
+        // 默认 → Keyword
+        return HighlightCategory.Keyword;
     }
 
     private static bool IsPathValue(string value)

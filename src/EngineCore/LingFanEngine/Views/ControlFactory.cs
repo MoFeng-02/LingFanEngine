@@ -84,6 +84,9 @@ internal sealed class ControlFactory : IControlFactory
                 var maxWStr = props.GetValueOrDefault("maxWidth")?.ToString();
                 var maxW = maxWStr != null ? double.TryParse(maxWStr, out var mw) ? mw : 0 : 0;
 
+                // font 参数：null/empty 时不设置，使用 Avalonia 默认字体（系统字体或启动层注入字体）
+                var fontStr = props.GetValueOrDefault("font") as string;
+
                 var tb = new TextBlock
                 {
                     Text = text,
@@ -94,6 +97,7 @@ internal sealed class ControlFactory : IControlFactory
                     MaxWidth = maxW > 0 ? maxW : double.PositiveInfinity,
                     VerticalAlignment = VerticalAlignment.Top
                 };
+                if (!string.IsNullOrEmpty(fontStr)) tb.FontFamily = new FontFamily(fontStr);
 
                 if (rawText.Contains('{'))
                     _boundTextBlocks.Add((tb, rawText));
@@ -110,13 +114,19 @@ internal sealed class ControlFactory : IControlFactory
                 var colorStr = props.GetValueOrDefault("color") as string;
                 var bgColor = colorStr != null ? Color.Parse(colorStr) : Color.FromArgb(100, 80, 80, 80);
 
+                // font / fontSize 参数：null/empty 时不设置，使用默认
+                var btnFontStr = props.GetValueOrDefault("font") as string;
+                var btnFontSizeStr = props.GetValueOrDefault("fontSize")?.ToString();
+                var btnFontSize = btnFontSizeStr != null && double.TryParse(btnFontSizeStr, out var bfs) && bfs > 0 ? bfs : 14;
+
                 var btnText = new TextBlock
                 {
-                    Text = text, Foreground = Brushes.White, FontSize = 14,
+                    Text = text, Foreground = Brushes.White, FontSize = btnFontSize,
                     TextAlignment = TextAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
                     HorizontalAlignment = HorizontalAlignment.Center
                 };
+                if (!string.IsNullOrEmpty(btnFontStr)) btnText.FontFamily = new FontFamily(btnFontStr);
                 var btn = new Button
                 {
                     Content = btnText,
@@ -828,6 +838,19 @@ internal sealed class ControlFactory : IControlFactory
         {
             var spacing = LayoutHelper.ParseDouble(props, "spacing");
             if (spacing > 0) stack.Spacing = spacing;
+        }
+
+        // === Font（TextBlock / Button 内容文本）===
+        // null/empty 时不设置，使用 Avalonia 默认字体（系统字体或启动层注入字体）
+        var fontStr = props.GetValueOrDefault("font") as string;
+        if (!string.IsNullOrEmpty(fontStr))
+        {
+            var fontFamily = new FontFamily(fontStr);
+            switch (control)
+            {
+                case TextBlock tb: tb.FontFamily = fontFamily; break;
+                case Button btn when btn.Content is TextBlock btnTb: btnTb.FontFamily = fontFamily; break;
+            }
         }
     }
 
