@@ -136,14 +136,20 @@ public bool Noskip { get; init; }
 /// <summary>瞬时显示文本（DSL 2.0，say instant=true），跳过打字机效果</summary>
 public bool Instant { get; init; }
 
-/// <summary>
-/// 对话框模板名（Phase 65）。null=用角色级 screen 或全局默认
-/// <para>DSL: say "text" template="bubble"</para>
-/// <para>C#: SayAsync(text, template: "bubble")</para>
-/// </summary>
-public string? Template { get; init; }
+    /// <summary>
+    /// 对话框模板名（Phase 65）。null=用角色级 screen 或全局默认
+    /// <para>DSL: say "text" template="bubble"</para>
+    /// <para>C#: SayAsync(text, template: "bubble")</para>
+    /// </summary>
+    public string? Template { get; init; }
 
-public ShowDialogCommand() { }
+    /// <summary>
+    /// 语音文件路径（DSL: say "text" voice="Media/voice.wav"；C#: SayAsync(text, voice: "...")）。
+    /// <para>非空时对话展示同时播放语音，单轨原子替换，随前进自动停止（DefaultAutoStopVoice）。</para>
+    /// </summary>
+    public string? VoicePath { get; init; }
+
+    public ShowDialogCommand() { }
 }
 
 /// <summary>
@@ -217,6 +223,16 @@ public readonly record struct PlayVoiceCommand : ICommand
     public bool? AutoStop { get; init; }
 
     public PlayVoiceCommand() { }
+}
+
+/// <summary>
+/// 停止语音命令（独立通道）
+/// </summary>
+public readonly record struct StopVoiceCommand : ICommand
+{
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public StopVoiceCommand() { }
 }
 
 /// <summary>

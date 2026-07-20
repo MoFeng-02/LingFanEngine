@@ -131,6 +131,14 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>, IDefaultCom
         var template = sd.Template ?? GetCharProp(charDef, "screen");
         ctx.State.Set(StateKeys.Dialog.Template, template);
 
+        // 行内语音（DSL: say "text" voice="..."）——单轨原子替换，随前进自动停止
+        // 回溯重放时同样播放（符合直觉：重看一句应听到同一句语音）
+        if (!string.IsNullOrEmpty(sd.VoicePath))
+        {
+            ctx.State.Set(StateKeys.Audio.VoiceAutoStop, true);
+            ctx.AudioManager?.PlayVoice(sd.VoicePath);
+        }
+
         // 记录对话历史（对标 Ren'Py _history_list）
         RecordHistory(sd, dialogText, speakerName, ctx);
     }

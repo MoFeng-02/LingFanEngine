@@ -49,10 +49,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAsyncWaitService>(sp => new AsyncWaitService(sp.GetRequiredService<IStateContainer>()));
         // RouterService 已移除，场景切换基于 SceneRegistry + SceneStack
         services.AddSingleton<IEventScheduler, EventScheduler>();
-// Phase 63：DSL 全局时间事件注册表（启动时扫描 .story 文件提取时间事件）
-// 注入 IEncryptedFileReader 支持加密 .story 文件读取
-services.AddSingleton<ITimeEventRegistry>(sp => new TimeEventRegistry(
-    sp.GetService<IEncryptedFileReader>()));
+        // Phase 63：DSL 全局时间事件注册表（启动时扫描 .story 文件提取时间事件）
+        // 注入 IEncryptedFileReader 支持加密 .story 文件读取
+        services.AddSingleton<ITimeEventRegistry>(sp => new TimeEventRegistry(
+            sp.GetService<IEncryptedFileReader>()));
         services.AddSingleton<HotReloadWatcher>();
         services.AddSingleton<ResourceManager>();
         services.AddSingleton<InputService>();
@@ -98,22 +98,22 @@ services.AddSingleton<ITimeEventRegistry>(sp => new TimeEventRegistry(
             sp.GetRequiredService<IAsyncWaitService>(),
             sp.GetService<IEventScheduler>(),
             sp.GetService<IEngineLoggerFactory>()));
-services.AddSingleton<IEventAggregator, EventAggregator>();
-services.AddSingleton<II18nService>(sp => new I18nService(
-    sp.GetRequiredService<IStateContainer>(),
-    sp.GetService<IEncryptedFileReader>()));
+        services.AddSingleton<IEventAggregator, EventAggregator>();
+        services.AddSingleton<II18nService>(sp => new I18nService(
+            sp.GetRequiredService<IStateContainer>(),
+            sp.GetService<IEncryptedFileReader>()));
 
-// 注册日志服务——日志上下文访问器 + 日志工厂（游戏可替换为自定义实现）
-services.TryAddSingleton<IEngineLogContextAccessor, EngineLogContextAccessor>();
-services.TryAddSingleton<IEngineLoggerFactory>(sp =>
-{
-    var options = sp.GetRequiredService<LingFanEngineOptions>();
-    var contextAccessor = sp.GetRequiredService<IEngineLogContextAccessor>();
-    return new EngineLoggerFactory(options, contextAccessor, sp);
-});
-// 默认引擎日志（分类 "Engine"）——供未指定分类的服务使用
-services.TryAddSingleton<IEngineLogger>(sp =>
-    sp.GetRequiredService<IEngineLoggerFactory>().Create("Engine"));
+        // 注册日志服务——日志上下文访问器 + 日志工厂（游戏可替换为自定义实现）
+        services.TryAddSingleton<IEngineLogContextAccessor, EngineLogContextAccessor>();
+        services.TryAddSingleton<IEngineLoggerFactory>(sp =>
+        {
+            var options = sp.GetRequiredService<LingFanEngineOptions>();
+            var contextAccessor = sp.GetRequiredService<IEngineLogContextAccessor>();
+            return new EngineLoggerFactory(options, contextAccessor, sp);
+        });
+        // 默认引擎日志（分类 "Engine"）——供未指定分类的服务使用
+        services.TryAddSingleton<IEngineLogger>(sp =>
+            sp.GetRequiredService<IEngineLoggerFactory>().Create("Engine"));
 
         // 注册资源包加载器
         services.AddSingleton<PackLoader>();
@@ -147,6 +147,7 @@ services.TryAddSingleton<IEngineLogger>(sp =>
         services.AddSingleton<IDefaultCommandHandler, BgmQueueHandler>();
         services.AddSingleton<IDefaultCommandHandler, PlayAmbientHandler>();
         services.AddSingleton<IDefaultCommandHandler, StopAmbientHandler>();
+        services.AddSingleton<IDefaultCommandHandler, StopVoiceHandler>();
         services.AddSingleton<IDefaultCommandHandler, TransitionHandler>();
         services.AddSingleton<IDefaultCommandHandler, AnimateHandler>();
         services.AddSingleton<IDefaultCommandHandler, ShowHideHandler>();
@@ -186,6 +187,9 @@ services.TryAddSingleton<IEngineLogger>(sp =>
         services.AddSingleton<IDefaultCommandHandler, TimePauseHandler>();
         services.AddSingleton<IDefaultCommandHandler, TimeResumeHandler>();
         services.AddSingleton<IDefaultCommandHandler, SkipTimeHandler>();
+        services.AddSingleton<IDefaultCommandHandler, SetTimeEventHandler>();
+        services.AddSingleton<IDefaultCommandHandler, UnregisterTimeEventHandler>();
+        services.AddSingleton<IDefaultCommandHandler, RestoreTimeEventHandler>();
         services.AddSingleton<IDefaultCommandHandler, NotifyHandler>();
 
         // Phase 44-47: DSL 2.0 新命令处理器

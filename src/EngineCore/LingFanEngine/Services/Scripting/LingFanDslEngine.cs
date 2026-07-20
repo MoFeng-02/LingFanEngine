@@ -951,7 +951,8 @@ Clickable = s.Clickable,
 Noskip = s.Noskip,
 Instant = s.Instant,
 TypewriterEnabled = s.Typewriter ?? true,
-Template = s.Template
+Template = s.Template,
+VoicePath = s.VoicePath
 },
 
             NavigateStmt n => new NavigateCommand { Path = n.Path, SceneName = n.SceneName },
@@ -1013,6 +1014,17 @@ Template = s.Template
 
             // DSL 2.0: stop_ambient
             StopAmbientStmt => new StopAmbientCommand(),
+
+            // DSL: voice "path" [volume=N] [auto_stop=true|false]
+            VoiceStmt v => new PlayVoiceCommand
+            {
+                Path = v.Path,
+                Volume = v.Volume ?? 1.0f,
+                AutoStop = v.AutoStop
+            },
+
+            // DSL: stop_voice
+            StopVoiceStmt => new StopVoiceCommand(),
 
             VideoStmt v => new PlayVideoCommand
             {

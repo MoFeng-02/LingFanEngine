@@ -84,6 +84,8 @@ public static class DslStatementParser
         ).Optional()
         // Phase 65: template="xxx" —— 对话框模板名
         from template in Try(String("template=").Then(QuotedString).Before(_ws)).Optional()
+        // voice="path" —— 行内语音（DSL 语音支持）
+        from voice in Try(String("voice=").Then(QuotedString).Before(_ws)).Optional()
         select (DslStatement)new SayStmt
         {
             Text = text,
@@ -92,7 +94,8 @@ public static class DslStatementParser
             Noskip = noskip.HasValue,
             Instant = instant.HasValue,
             Typewriter = typewriter.HasValue ? true : null,
-            Template = template.HasValue ? template.Value : null
+            Template = template.HasValue ? template.Value : null,
+            VoicePath = voice.HasValue ? voice.Value : null
         };
 
     /// <summary>navigate "path" [scene "name"]</summary>
@@ -206,9 +209,26 @@ public static class DslStatementParser
             Volume = volume.HasValue ? (float)volume.Value : null
         };
 
+    /// <summary>voice "path" [volume=N] [auto_stop=true|false]</summary>
+    private static readonly Parser<char, DslStatement> _voice =
+        from _1 in String("voice").Before(_ws)
+        from path in QuotedString.Before(_ws)
+        from volume in Try(String("volume=").Then(Number).Before(_ws)).Optional()
+        from autoStop in Try(String("auto_stop=").Then(String("true").Or(String("false"))).Before(_ws)).Optional()
+        select (DslStatement)new VoiceStmt
+        {
+            Path = path,
+            Volume = volume.HasValue ? (float)volume.Value : null,
+            AutoStop = autoStop.HasValue ? (bool?)(autoStop.Value == "true") : null
+        };
+
     /// <summary>stop_ambient — DSL 2.0</summary>
     private static readonly Parser<char, DslStatement> _stopAmbient =
         String("stop_ambient").ThenReturn((DslStatement)new StopAmbientStmt());
+
+    /// <summary>stop_voice</summary>
+    private static readonly Parser<char, DslStatement> _stopVoice =
+        String("stop_voice").ThenReturn((DslStatement)new StopVoiceStmt());
 
     /// <summary>video "path" [volume=N] [loop=true|false] [autoplay=true|false]</summary>
     private static readonly Parser<char, DslStatement> _video =
@@ -1348,6 +1368,9 @@ private static readonly Parser<char, DslStatement> _nvl =
         // stop_ambient 必须在 ambient 之前（长关键字优先）
         _stopAmbient,
         _ambient,
+        // voice / stop_voice —— DSL 语音支持
+        _stopVoice,
+        _voice,
         // set_time_event / unregister_time_event / restore_time_event 必须在 set 之前（长关键字优先）
         _setTimeEvent,
         _unregisterTimeEvent,

@@ -45,8 +45,8 @@ local "key" value        # 别名
 
 ```dsl
 set "key" {expression}
-// 注意：不支持 += -= *= /= %= 复合赋值，自增/自减请用表达式：
-set "key" {key + 50}
+set "key" += 50          // ✅ 支持复合赋值 += -= *= /= %=，等价于 {key + 50}
+set "key" {key + 50}     // 花括号写法
 ```
 
 ### undef 销毁
@@ -357,17 +357,22 @@ BGM 交叉淡入队列（C# API）：
 await gameController.SendAsync(new BgmQueueCommand { Path = "Audio/BGM/song2.ogg", Volume = 0.7f, CrossFadeDuration = 2.0 });
 ```
 
-### se / ambient
+### se / ambient / voice
 
 ```dsl
 se "path" volume=0.5
 ambient "path" volume=0.4
 stop_ambient
 stop_ambient "tag"
+
+voice "path" volume=0.9 auto_stop=false   // 独立语音语句（单轨）
+say "文本" speaker="x" voice="path"         // 随对话行内播放
+stop_voice                                  // 停止当前语音
 ```
 
 ::: tip 语音（Voice）
-`voice` 不是 DSL 命令，需用 C# API 播放：`gameController.PlayVoice("path")`。
+语音走独立单轨通道：下一句 `say voice=` 或 `voice` 会原子替换当前语音。
+`say voice=` 在回溯/前进重看时同样重播（符合直觉）。`stop_voice` 用于对话结束后主动中断。
 :::
 
 ## 文本特效
@@ -499,8 +504,15 @@ debug "message" level=Info|Warn|Error|Debug
 | 逻辑 | `{a && b}` `{a \|\| b}` `{!a}` |
 | 三元 | `{a > b ? "大" : "小"}` |
 | 随机 | `{random(1, 6)}` |
+| 数学函数 | `{min(a, b)}` `{max(a, b)}` `{abs(a)}` `{clamp(a, 0, 100)}` |
 | 格式化 | `{var:0.0}` `{var:#,##0}` |
 | 变量引用 | `{player.gold}` |
+
+::: warning 表达式不支持的写法
+- 单 `&` / 单 `|` 未实现，误用会**静默返回 `false`**；逻辑请用 `&&` / `||`。
+- 链式比较 `{a < b < c}` 不支持，拆成 `{a < b && b < c}`。
+- `===` / `!==` / `++` / `--` 均不支持。
+:::
 
 ## 块结束
 

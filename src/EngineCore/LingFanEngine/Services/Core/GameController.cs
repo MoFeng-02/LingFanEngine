@@ -84,7 +84,8 @@ public async Task SayAsync(string text, string? speaker = null,
 string? speakerColor = null, string? textColor = null,
 bool typewriter = true,
 double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
-bool clickable = false, bool noskip = false, string? template = null)
+bool clickable = false, bool noskip = false, string? template = null,
+string? voice = null)
 {
 // C# 场景回放被回溯/前进取消时，抛异常终止整个 Runner（不只是跳过此调用）
 if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
@@ -95,7 +96,7 @@ TypewriterEnabled = typewriter,
 DialogPercentW = wPct, DialogPercentH = hPct,
 DialogMarginL = marginL, DialogMarginB = marginB,
 Clickable = clickable, Noskip = noskip,
-Template = template });
+Template = template, VoicePath = voice });
         _state.Set(StateKeys.Dialog.WaitingSayComplete, false);
         await PollUntilTrue(StateKeys.Dialog.WaitingSayComplete, CancellationToken.None);
 
@@ -410,9 +411,9 @@ public void StopAmbient() =>
     public Task PlayVoiceAsync(string path, float volume = 1.0f, bool? autoStop = null) =>
         _pipeline.SendAsync(new PlayVoiceCommand { Path = path, Volume = volume, AutoStop = autoStop }).AsTask();
 
-    public void StopVoice() => _pipeline.SendAsync(new PlayVoiceCommand { Path = "", Volume = 0 });
+    public void StopVoice() => _pipeline.SendAsync(new StopVoiceCommand());
     public Task StopVoiceAsync() =>
-        _pipeline.SendAsync(new PlayVoiceCommand { Path = "", Volume = 0 }).AsTask();
+        _pipeline.SendAsync(new StopVoiceCommand()).AsTask();
 
     // ========== 堆栈 ==========
 

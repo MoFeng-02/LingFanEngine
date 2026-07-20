@@ -35,7 +35,7 @@ public static class DslKeywords
         // 交互
         "menu", "input",
         // 媒体
-        "bgm", "se", "ambient", "stop_ambient", "background", "video", "stop_video", "pause_video",
+        "bgm", "se", "ambient", "stop_ambient", "voice", "stop_voice", "background", "video", "stop_video", "pause_video",
         "resume_video", "seek_video", "cutscene",
         // 显示与动画
         "transition", "show", "hide", "animate", "animate_block", "style", "shake",
@@ -107,7 +107,7 @@ public static class DslKeywords
     private static readonly HashSet<string> _media = new()
     {
         // 音频 / 视频 / 过场
-        "bgm", "se", "ambient", "stop_ambient",
+        "bgm", "se", "ambient", "stop_ambient", "voice", "stop_voice",
         "video", "stop_video", "pause_video", "resume_video", "seek_video", "cutscene",
     };
 
@@ -126,7 +126,7 @@ public static class DslKeywords
         // animate_block 属性键
         "x", "y", "opacity", "rotate", "scale",
         // bgm / video / cutscene 参数
-        "volume", "loop", "autoplay",
+        "volume", "loop", "autoplay", "auto_stop",
         // call_screen 参数
         "store",
         // input 参数

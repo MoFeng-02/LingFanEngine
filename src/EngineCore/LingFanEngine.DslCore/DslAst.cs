@@ -53,6 +53,8 @@ public sealed partial class SayStmt : DslStatement
     public bool? Typewriter { get; init; }
     /// <summary>对话框模板名（say template="xxx"，Phase 65）。null=用角色级 screen 或全局默认</summary>
     public string? Template { get; init; }
+    /// <summary>行内语音路径（say "text" voice="path"）。非空时对话展示同时播放语音。</summary>
+    public string? VoicePath { get; init; }
 }
 
 public sealed partial class NavigateStmt : DslStatement
@@ -132,10 +134,30 @@ public sealed partial class AmbientStmt : DslStatement
 }
 
 /// <summary>
+/// 语音语句——对标 Ren'Py 的 voice 命令
+/// <para>语法：voice "path" [volume=N] [auto_stop=true|false]</para>
+/// <para>独立语音通道（单轨，原子替换），不覆盖 BGM/SE/Ambient。默认随前进自动停止（DefaultAutoStopVoice）。</para>
+/// </summary>
+public sealed partial class VoiceStmt : DslStatement
+{
+    public required string Path { get; init; }
+    public float? Volume { get; init; }
+    /// <summary>前进时是否自动停止（null=跟随全局配置 DefaultAutoStopVoice）。默认 null。</summary>
+    public bool? AutoStop { get; init; }
+}
+
+/// <summary>
 /// 停止环境音语句——DSL 2.0
 /// <para>语法：stop_ambient</para>
 /// </summary>
 public sealed partial class StopAmbientStmt : DslStatement { }
+
+/// <summary>
+/// 停止语音语句
+/// <para>语法：stop_voice</para>
+/// <para>立即停止当前语音通道（单轨）。用于 say 后无下一句时主动中断，避免语音不会自停。</para>
+/// </summary>
+public sealed partial class StopVoiceStmt : DslStatement { }
 
 // ====== 视频 ======
 

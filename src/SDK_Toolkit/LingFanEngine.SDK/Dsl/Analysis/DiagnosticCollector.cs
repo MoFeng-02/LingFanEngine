@@ -228,7 +228,7 @@ public static class DiagnosticCollector
                     {
                         // 跳过数字和关键字
                         if (double.TryParse(part, out _)) continue;
-                        if (part is "true" or "false" or "random" or "min" or "max") continue;
+                        if (part is "true" or "false" or "random" or "min" or "max" or "abs" or "clamp") continue;
 
                         if (!definedVars.Contains(part) && IsValidIdentifier(part))
                         {

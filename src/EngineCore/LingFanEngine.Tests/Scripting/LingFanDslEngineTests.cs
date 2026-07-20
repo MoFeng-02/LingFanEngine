@@ -205,6 +205,49 @@ public class LingFanDslEngineTests
         cmd.Volume.Should().Be(0.8f);
     }
 
+    // ========== voice 语句 ==========
+
+    [Fact]
+    public void Compile_Voice_DefaultVolume()
+    {
+        var result = _engine.Compile("""voice "voice/line1.wav" """);
+        result.Success.Should().BeTrue();
+        var cmd = result.Commands[0].Should().BeOfType<PlayVoiceCommand>().Subject;
+        cmd.Path.Should().Be("voice/line1.wav");
+        cmd.Volume.Should().Be(1.0f);
+        cmd.AutoStop.Should().BeNull();
+    }
+
+    [Fact]
+    public void Compile_Voice_WithVolumeAndAutoStop()
+    {
+        var result = _engine.Compile("""voice "voice/line1.wav" volume=0.9 auto_stop=false """);
+        result.Success.Should().BeTrue();
+        var cmd = result.Commands[0].Should().BeOfType<PlayVoiceCommand>().Subject;
+        cmd.Path.Should().Be("voice/line1.wav");
+        cmd.Volume.Should().Be(0.9f);
+        cmd.AutoStop.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Compile_StopVoice()
+    {
+        var result = _engine.Compile("""stop_voice """);
+        result.Success.Should().BeTrue();
+        result.Commands[0].Should().BeOfType<StopVoiceCommand>();
+    }
+
+    [Fact]
+    public void Compile_Say_WithVoice()
+    {
+        var result = _engine.Compile("""say "你好" by "旅人" voice="voice/hi.wav" """);
+        result.Success.Should().BeTrue();
+        var cmd = result.Commands[0].Should().BeOfType<ShowDialogCommand>().Subject;
+        cmd.Text.Should().Be("你好");
+        cmd.Speaker.Should().Be("旅人");
+        cmd.VoicePath.Should().Be("voice/hi.wav");
+    }
+
     // ========== transition 语句 ==========
 
     [Fact]

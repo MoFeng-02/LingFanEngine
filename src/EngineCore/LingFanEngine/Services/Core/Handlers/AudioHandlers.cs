@@ -82,3 +82,14 @@ public class StopAmbientHandler : ICommandHandler<StopAmbientCommand>, IDefaultC
             }, TaskContinuationOptions.OnlyOnFaulted);
     }
 }
+
+/// <summary>
+/// 停止语音命令处理器
+/// </summary>
+public class StopVoiceHandler : ICommandHandler<StopVoiceCommand>, IDefaultCommandHandler
+{
+    public void Handle(StopVoiceCommand cmd, ICommandContext ctx)
+    {
+        ctx.AudioManager?.StopVoice();
+    }
+}
