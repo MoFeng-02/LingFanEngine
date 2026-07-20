@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Channels;
 using LingFanEngine.Abstractions.Interfaces.Core;
 
@@ -13,6 +14,7 @@ public class CommandPipeline : ICommandPipeline, IDisposable
     private readonly Channel<ICommand> _channel;
     private readonly CancellationTokenSource _disposeCts = new();
     private bool _disposed;
+    private int _count;
 
     /// <summary>
     /// 创建命令管道
@@ -40,7 +42,7 @@ public class CommandPipeline : ICommandPipeline, IDisposable
 
     /// <inheritdoc/>
     // 🔥 优化 1：直接使用 Channel 内部维护的原子计数，省去手动 Interlocked，更准确
-    public int Count => _channel.Reader.Count;
+    public int Count => Volatile.Read(ref _count);
 
     /// <inheritdoc/>
     public ValueTask SendAsync(ICommand command, CancellationToken ct = default)
@@ -50,10 +52,11 @@ public class CommandPipeline : ICommandPipeline, IDisposable
         // 此时直接返回 ValueTask.CompletedTask，真正实现零堆内存分配（零 GC）！
         if (_channel.Writer.TryWrite(command))
         {
+            Interlocked.Increment(ref _count);
             return ValueTask.CompletedTask;
         }
 
-        // ⚠️ 慢路径（Slow Path）：只有有界队列且通道已满（或管道已关闭）时才会走到这里。
+        // 慢路径（Slow Path）：只有有界队列且通道已满（或管道已关闭）时才会走到这里。
         // 此时才真正需要异步等待，异步状态机也仅在此时才会产生。
         CancellationToken token = ct.CanBeCanceled
             ? CancellationTokenSource.CreateLinkedTokenSource(ct, _disposeCts.Token).Token
@@ -67,6 +70,7 @@ public class CommandPipeline : ICommandPipeline, IDisposable
     {
         // 如果管道已关闭，WriteAsync 会抛出 ChannelClosedException，符合预期
         await _channel.Writer.WriteAsync(command, token);
+        Interlocked.Increment(ref _count);
     }
 
     /// <inheritdoc/>
@@ -78,6 +82,7 @@ public class CommandPipeline : ICommandPipeline, IDisposable
         {
             await foreach (var command in _channel.Reader.ReadAllAsync(_disposeCts.Token))
             {
+                Interlocked.Decrement(ref _count);
                 yield return command;
             }
             yield break;
@@ -86,6 +91,7 @@ public class CommandPipeline : ICommandPipeline, IDisposable
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _disposeCts.Token);
         await foreach (var command in _channel.Reader.ReadAllAsync(linked.Token))
         {
+            Interlocked.Decrement(ref _count);
             yield return command;
         }
     }
@@ -93,8 +99,12 @@ public class CommandPipeline : ICommandPipeline, IDisposable
     /// <inheritdoc/>
     public bool TryRead(out ICommand command)
     {
-        // 直接透传，移除了手动计数维护
-        return _channel.Reader.TryRead(out command!);
+        if (_channel.Reader.TryRead(out command!))
+        {
+            Interlocked.Decrement(ref _count);
+            return true;
+        }
+        return false;
     }
 
     /// <inheritdoc/>

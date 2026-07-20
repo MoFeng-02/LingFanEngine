@@ -140,17 +140,19 @@ vbox x=50% y=40% spacing=12 halign=center
 ### say
 
 ```dsl
-say "文本" speaker="说话者" clickable=true instant=false noskip=false typewriter=true template="xxx"
+say "文本" speaker="说话者" clickable=true template="xxx"
 ```
 
 | 参数 | 默认 | 说明 |
 |:---|:---|:---|
 | `speaker` | null | 说话者（character key 或字面字符串） |
-| `clickable` | false | 对话期间允许点击 UI |
-| `instant` | false | 跳过打字机 |
-| `noskip` | false | Skip 模式下仍需点击 |
-| `typewriter` | true | 启用打字机 |
+| `clickable` | false | 单词修饰符：写 `clickable` 或 `clickable=true` 启用（解析器仅接受 `=true`，不支持 `=false`） |
+| `instant` | false | 单词修饰符：写 `instant=true` 跳过打字机（不支持 `=false`） |
+| `noskip` | false | 单词修饰符：写 `noskip=true` 让 Skip 模式仍需点击（不支持 `=false`） |
+| `typewriter` | true | 单词修饰符：写 `typewriter=true` 强制启用打字机（默认 true，省略即可） |
 | `template` | null | 对话框模板名 |
+
+> 注意：`clickable` / `instant` / `noskip` / `typewriter` 均为**单词修饰符**，只能写 `=true`（或省略 `=true` 直接写单词），**不能写 `=false`**——写 `=false` 会导致语句解析失败（false 是默认值，靠"不写"表达）。
 
 ### nvl
 
@@ -184,6 +186,14 @@ menu "提示文字"
   "选项1" -> label1
   "选项2" -> label2
 ```
+
+### input
+
+```dsl
+input "提示文字" store "变量键" [options=["选项A", "选项B"]]
+```
+
+- 不带 `options` 时为自由文本输入；带 `options` 时从给定列表中选取。结果存入 `store` 指定的变量键。
 
 ### call / return
 
@@ -354,7 +364,7 @@ bgm "path" volume=0.7
 BGM 交叉淡入队列（C# API）：
 
 ```csharp
-await gameController.SendAsync(new BgmQueueCommand { Path = "Audio/BGM/song2.ogg", Volume = 0.7f, CrossFadeDuration = 2.0 });
+await _pipeline.SendAsync(new BgmQueueCommand { Path = "Audio/BGM/song2.ogg", Volume = 0.7f, CrossFadeDuration = 2.0 });
 ```
 
 ### se / ambient / voice

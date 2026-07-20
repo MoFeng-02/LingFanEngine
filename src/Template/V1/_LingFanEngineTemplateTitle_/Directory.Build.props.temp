@@ -7,9 +7,9 @@
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
-    <DebugType>None</DebugType>
-    <DebugSymbols>false</DebugSymbols>
-</PropertyGroup>
+        <DebugType>None</DebugType>
+        <DebugSymbols>false</DebugSymbols>
+    </PropertyGroup>
 
 	<!--
 		共享资源复制：项目根/Resources/ → 可执行项目输出目录。

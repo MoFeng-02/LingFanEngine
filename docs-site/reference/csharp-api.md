@@ -24,25 +24,25 @@
 ### 对话
 
 ```csharp
-Task SayAsync(string text, string? speaker = null, string? template = null);
-Task ExtendDialogAsync(string text);
-Task WaitForClickAsync();
+Task SayAsync(string text, string? speaker = null, string? template = null, CancellationToken ct = default);
+Task ExtendDialogAsync(string append, CancellationToken ct = default);
+Task WaitForClickAsync(CancellationToken ct = default);
 ```
 
 ### 过渡与等待
 
 ```csharp
-Task TransitionAsync(string effect, double duration = 0.5);
-Task SkipableWaitAsync(double seconds);
-Task WaitForConditionAsync(Func<bool> condition);
+Task TransitionAsync(string effect, double duration = 0.5, CancellationToken ct = default);
+Task SkipableWaitAsync(double seconds, CancellationToken ct = default);
+Task WaitAsync(double seconds, CancellationToken ct = default);
 ```
 
 ### 菜单与输入
 
 ```csharp
-Task<int> Ctrl.ShowMenuAsync(string prompt, params string[] options);
-Task<string> InputAsync(string prompt);
-Task<object?> CallScreenAsync(string screenName);
+Task<int> ShowMenuAsync(string prompt, string[] options, CancellationToken ct = default);
+Task<string?> InputAsync(string prompt, string[]? options = null, CancellationToken ct = default);
+Task<string?> CallScreenAsync(string sceneName, CancellationToken ct = default);
 ```
 
 ### 导航
@@ -75,7 +75,7 @@ Task<bool> PlayCutsceneAsync(string path, bool skipable = true, float volume = 1
 ### 时间事件
 
 ```csharp
-Task SetTimeEventAsync(
+void SetTimeEventAsync(
     string id,
     int hour,
     Func<Task>? callback = null,
@@ -133,7 +133,7 @@ public abstract class StoryScript
     protected ICommandPipeline? _pipeline;
     protected ISceneRegistry? _sceneRegistry;
 
-    public abstract Task Run();
+    public abstract Task RunAsync();
 
     // C# API 通过 Ctrl（IGameController）调用，例如：
     //   await Ctrl.SayAsync(text, speaker);
@@ -151,10 +151,10 @@ public class MyScene : StoryScript
 {
     public override string SceneName => "cs_my_scene";
 
-    public override async Task Run()
+    public override async Task RunAsync()
     {
         await Ctrl.SayAsync("欢迎！", speaker: "系统");
-        var choice = await Ctrl.ShowMenuAsync("选择", "A", "B");
+        var choice = await Ctrl.ShowMenuAsync("选择", new[] { "A", "B" });
         if (choice == 0)
             _state.Set("story.choice", "A");
         await Ctrl.NavigateAsync("next_scene");

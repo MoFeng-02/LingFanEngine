@@ -4,6 +4,7 @@
 		<TargetFramework>net10.0</TargetFramework>
 		<Nullable>enable</Nullable>
 		<PublishTrimmed>true</PublishTrimmed>
+		<PublishAot>true</PublishAot>
 	</PropertyGroup>
 
 	<PropertyGroup>

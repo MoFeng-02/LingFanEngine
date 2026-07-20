@@ -82,6 +82,11 @@
 
 		<Copy SourceFiles="@(SdkSyncDlls)" DestinationFolder="$(SdkDllDir)" SkipUnchangedFiles="true" />
 		<Copy SourceFiles="@(TplSyncDlls)" DestinationFolder="$(TemplateDllDir)" SkipUnchangedFiles="true" />
+
+		<!-- 将同步后的 DLL 作为 Content 输出到构建/发布目录，确保 SDK 安装目录包含 DLL/ 种子 -->
+		<ItemGroup>
+			<Content Include="$(SdkDllDir)\*.dll" CopyToOutputDirectory="PreserveNewest" />
+		</ItemGroup>
 	</Target>
 
 	<!-- P2-1: 模板 ZIP 嵌入资源 -->

@@ -148,7 +148,7 @@ public class Live2DScene : StoryScript
 {
     public override string SceneName => "cs_live2d";
 
-    public override async Task Run()
+    public override async Task RunAsync()
     {
         // 创建并显示 Live2D
         await _pipeline.SendAsync(new Live2DCommand

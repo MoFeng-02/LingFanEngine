@@ -18,10 +18,29 @@
 		<DebugSymbols>false</DebugSymbols>
 	</PropertyGroup>
 
+	<!-- 发布产物不携带 pdb，防止创作者不知道删除而被反编译 -->
+	<PropertyGroup>
+		<PublishDebugSymbols>false</PublishDebugSymbols>
+	</PropertyGroup>
+
+	<!-- NativeAOT 发布默认仍可能生成 pdb，显式关闭（覆盖任意配置） -->
+	<PropertyGroup Condition="'$(PublishAot)' == 'true'">
+		<DebugType>None</DebugType>
+		<DebugSymbols>false</DebugSymbols>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<!-- README 文件放到包根目录 -->
 		<None Include="..\..\..\README.md" Pack="true" PackagePath="" />
 		<None Include="..\..\..\README.en.md" Pack="true" PackagePath="" />
 		<None Include="..\..\..\icons\**" Pack="true" PackagePath="Icons\"  CopyToOutputDirectory="PreserveNewest" LinkBase="Icons\" />
 	</ItemGroup>
+
+	<!-- 发布完成后清理输出目录所有 pdb（含第三方原生依赖如 SkiaSharp），彻底防止被反编译 -->
+	<Target Name="StripPdbOnPublish" AfterTargets="Publish">
+		<ItemGroup>
+			<_PublishPdb Include="$(PublishDir)**\*.pdb" />
+		</ItemGroup>
+		<Delete Files="@(_PublishPdb)" Condition="'@(_PublishPdb)' != ''" />
+	</Target>
 </Project>

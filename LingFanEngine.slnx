@@ -30,13 +30,13 @@
   </Folder>
   <Folder Name="/Template/" />
   <Folder Name="/Template/V1/">
-    <Project Path="E:/Project/Engine/src/Template/V1/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.Android/_LingFanEngineTemplateTitle_.Android.csproj" />
-    <Project Path="E:/Project/Engine/src/Template/V1/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.Browser/_LingFanEngineTemplateTitle_.Browser.csproj" />
-    <Project Path="E:/Project/Engine/src/Template/V1/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.Desktop.Linux/_LingFanEngineTemplateTitle_.Desktop.Linux.csproj" />
-    <Project Path="E:/Project/Engine/src/Template/V1/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.Desktop.Mac/_LingFanEngineTemplateTitle_.Desktop.Mac.csproj" />
-    <Project Path="E:/Project/Engine/src/Template/V1/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.Desktop.Windows/_LingFanEngineTemplateTitle_.Desktop.Windows.csproj" />
-    <Project Path="E:/Project/Engine/src/Template/V1/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.Desktop/_LingFanEngineTemplateTitle_.Desktop.csproj" />
-    <Project Path="E:/Project/Engine/src/Template/V1/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.iOS/_LingFanEngineTemplateTitle_.iOS.csproj" />
-    <Project Path="E:/Project/Engine/src/Template/V1/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.csproj" />
+    <Project Path="E:/Project/Engine/src/Template/V1/_LingFanEngineTemplateTitle_/src/_LingFanEngineTemplateTitle_.Android/_LingFanEngineTemplateTitle_.Android.csproj" />
+    <Project Path="E:/Project/Engine/src/Template/V1/_LingFanEngineTemplateTitle_/src/_LingFanEngineTemplateTitle_.Browser/_LingFanEngineTemplateTitle_.Browser.csproj" />
+    <Project Path="E:/Project/Engine/src/Template/V1/_LingFanEngineTemplateTitle_/src/_LingFanEngineTemplateTitle_.Desktop.Linux/_LingFanEngineTemplateTitle_.Desktop.Linux.csproj" />
+    <Project Path="E:/Project/Engine/src/Template/V1/_LingFanEngineTemplateTitle_/src/_LingFanEngineTemplateTitle_.Desktop.Mac/_LingFanEngineTemplateTitle_.Desktop.Mac.csproj" />
+    <Project Path="E:/Project/Engine/src/Template/V1/_LingFanEngineTemplateTitle_/src/_LingFanEngineTemplateTitle_.Desktop.Windows/_LingFanEngineTemplateTitle_.Desktop.Windows.csproj" />
+    <Project Path="E:/Project/Engine/src/Template/V1/_LingFanEngineTemplateTitle_/src/_LingFanEngineTemplateTitle_.Desktop/_LingFanEngineTemplateTitle_.Desktop.csproj" />
+    <Project Path="E:/Project/Engine/src/Template/V1/_LingFanEngineTemplateTitle_/src/_LingFanEngineTemplateTitle_.iOS/_LingFanEngineTemplateTitle_.iOS.csproj" />
+    <Project Path="E:/Project/Engine/src/Template/V1/_LingFanEngineTemplateTitle_/src/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.csproj" />
   </Folder>
 </Solution>

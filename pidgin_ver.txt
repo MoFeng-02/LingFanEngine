@@ -1,0 +1,1 @@
+﻿AssemblyVersion(3段)=1.0.0 | AssemblyVersion(全)=1.0.0.0 | FileVersion=1.0.0.0 | ProductVersion=1.0.0+2e57f4ac503519d5e1bf85edd2db67110c39fbad

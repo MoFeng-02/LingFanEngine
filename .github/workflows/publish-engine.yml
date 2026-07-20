@@ -1,5 +1,5 @@
 # =============================================================================
-# 引擎 DLL 自动发布工作流（DRAFT / 未经实跑验证 —— 提交前请人工复核路径与权限）
+# 引擎 DLL 自动发布工作流
 # -----------------------------------------------------------------------------
 # 触发：推送 tag `vX.Y.Z` 时自动：
 #   1. 构建 4 个引擎库（LingFanEngine / Abstractions / DslCore，Pidgin 随传递依赖拷贝）
@@ -9,7 +9,8 @@
 #   5. 发布 GitHub Release（zip + latest.json 作为 asset）
 #
 # 注意：
-#   - minSdkVersion 当前写死为 SDK 当前最低兼容版本，正式发布时建议从 SDK 程序集版本动态注入。
+#   - 三个引擎 DLL 的版本（含 minSdkVersion / version / sdkVersion）均由 tag 自动校准（不再写死）。
+#   - Pidgin 为本地魔改分发（不随 NuGet），其版本从 DLL 真实元数据读取，独立于引擎 tag 版本。
 #   - assetSha256（整包校验）留空（可选）；逐 DLL 的 sha256 必填且由本工作流自动计算。
 #   - 若启用 Authenticode 强校验，CI 需配置代码签名证书（secrets），未配置时 SDK 端回落 sha256 不阻塞。
 # =============================================================================
@@ -36,8 +37,9 @@ jobs:
           dotnet-version: '10.0.x'
 
       # 构建引擎核心库（传递依赖会一并产出 Abstractions / DslCore / Pidgin 到 bin 目录）
+      # 版本号由 tag 注入（-p:Version），使 DLL 程序集版本与发布 tag 保持一致（不再写死 1.0.0）
       - name: Build engine core (Release)
-        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0
+        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${GITHUB_REF_NAME#v}
 
       - name: Collect DLLs + compute sha256 + generate manifest
         id: collect
@@ -54,6 +56,10 @@ jobs:
           done
           VER="${GITHUB_REF_NAME#v}"
           TAG="${{ github.ref_name }}"
+          # Pidgin 为本地魔改分发，读其 DLL 真实版本（取前三段 X.Y.Z）；读取失败时回落引擎版本
+          PIDGIN_VER=$(pwsh -NoProfile -Command "try { [System.Reflection.AssemblyName]::GetAssemblyName((Resolve-Path '$OUT/Pidgin.dll')).Version.ToString(3) } catch { '$VER' }")
+          PIDGIN_VER="${PIDGIN_VER//[$'\r\n']/}"
+          [ -z "$PIDGIN_VER" ] && PIDGIN_VER="$VER"
           cat > updates/latest.json <<EOF
           {
             "version": "$VER",
@@ -64,7 +70,7 @@ jobs:
             "breakingAbstractions": false,
             "breakingDlls": [],
             "publishedUtc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "minSdkVersion": "0.1.5",
+            "minSdkVersion": "$VER",
             "dllChecksums": {
               "LingFanEngine.dll": "${SUMS[LingFanEngine.dll]}",
               "LingFanEngine.Abstractions.dll": "${SUMS[LingFanEngine.Abstractions.dll]}",
@@ -75,7 +81,7 @@ jobs:
               "LingFanEngine.dll": "$VER",
               "LingFanEngine.Abstractions.dll": "$VER",
               "LingFanEngine.DslCore.dll": "$VER",
-              "Pidgin.dll": "$VER"
+              "Pidgin.dll": "$PIDGIN_VER"
             }
           }
           EOF

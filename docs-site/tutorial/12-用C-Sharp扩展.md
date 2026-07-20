@@ -14,7 +14,7 @@ public class BattleScene : StoryScript
     public override string SceneName => "cs_battle";
     public override string SceneType => "game";
 
-    public override async Task Run()
+    public override async Task RunAsync()
     {
         await SayAsync("野怪出现！", speaker: "系统");
         var enemyHp = Random.Shared.Next(30, 50);
@@ -74,8 +74,10 @@ await WaitClickAsync();             // 等待点击
 
 ### 模板
 
+> 便捷方法 `SayAsync` 暂不暴露 `template` 参数；要指定对话框模板请直接走 `Ctrl.SayAsync`。
+
 ```csharp
-await SayAsync("内心独白", speaker: "旁白", template: "center");
+await Ctrl.SayAsync("内心独白", speaker: "旁白", template: "center");
 ```
 
 ### 过渡与等待
@@ -115,7 +117,7 @@ await Ctrl.PlayCutsceneAsync("Video/intro.mp4");
 
 ```csharp
 await Ctrl.EnterNvlAsync();
-await SayAsync("NVL 文本", speaker: "旁白", template: "fullscreen");
+await Ctrl.SayAsync("NVL 文本", speaker: "旁白", template: "fullscreen");
 await Ctrl.ClearNvlAsync();
 await Ctrl.ExitNvlAsync();
 ```
@@ -200,7 +202,7 @@ await NavigateAsync("cs_shop");
 C# 场景通过 `CreateSceneCheckpoint()` 创建检查点：
 
 ```csharp
-public override async Task Run()
+public override async Task RunAsync()
 {
     await SayAsync("战斗开始前");
     CreateSceneCheckpoint();  // 创建检查点
@@ -226,7 +228,7 @@ public class SimpleBattle : StoryScript
     public override string SceneName => "cs_battle";
     public override string SceneType => "game";
 
-    public override async Task Run()
+    public override async Task RunAsync()
     {
         var enemyHp = Random.Shared.Next(30, 50);
         await SayAsync($"野怪出现！HP: {enemyHp}", speaker: "系统");

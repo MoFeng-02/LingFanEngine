@@ -3,6 +3,7 @@ using LingFanEngine.Abstractions.Entities.Enums;
 using LingFanEngine.Abstractions.Entities.Events;
 using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
+using System.Threading;
 
 namespace LingFanEngine.Games;
 
@@ -113,11 +114,14 @@ public abstract class StoryScript
 
     /// <summary>说一句话（对标 DSL say）。</summary>
     protected Task SayAsync(string text, string? speaker = null, string? speakerColor = null,
-        string? textColor = null, bool typewriter = true, string? voice = null)
-        => Ctrl.SayAsync(text, speaker, speakerColor, textColor, typewriter, voice: voice);
+        string? textColor = null, bool typewriter = true, string? voice = null,
+        CancellationToken ct = default)
+        => Ctrl.SayAsync(text, speaker, speakerColor, textColor, typewriter, voice: voice,
+            ct: ct);
 
     /// <summary>追加文本到当前对话（对标 Ren'Py extend）。</summary>
-    protected Task ExtendAsync(string append) => Ctrl.ExtendDialogAsync(append);
+    protected Task ExtendAsync(string append, CancellationToken ct = default)
+        => Ctrl.ExtendDialogAsync(append, ct: ct);
 
     /// <summary>跳转到场景（对标 DSL navigate）。</summary>
     protected Task NavigateAsync(string sceneName) => Ctrl.NavigateAsync(sceneName);
@@ -134,8 +138,8 @@ public abstract class StoryScript
         => Ctrl.DefineCharacter(key, name, color, font, textColor, textFont, sideImage);
 
     /// <summary>弹出选择菜单，返回选中项索引（对标 DSL menu，0 基）。</summary>
-    protected Task<int> ChoiceAsync(string prompt, params string[] options)
-        => Ctrl.ShowMenuAsync(prompt, options);
+    protected Task<int> ChoiceAsync(string prompt, CancellationToken ct = default, params string[] options)
+        => Ctrl.ShowMenuAsync(prompt, options, ct: ct);
 
     /// <summary>
     /// 弹出选择菜单并执行对应回调（对标 DSL menu + 分支，免手写 switch）。
@@ -145,30 +149,33 @@ public abstract class StoryScript
     ///     ("休息", async () => await SayAsync("你睡了一觉。")));
     /// </code>
     /// </summary>
-    protected async Task ChoiceAsync(string prompt, params (string Label, Func<Task> OnSelect)[] options)
+    protected async Task ChoiceAsync(string prompt, CancellationToken ct = default, params (string Label, Func<Task> OnSelect)[] options)
     {
         var labels = new string[options.Length];
         for (var i = 0; i < options.Length; i++) labels[i] = options[i].Label;
-        var idx = await Ctrl.ShowMenuAsync(prompt, labels);
+        var idx = await Ctrl.ShowMenuAsync(prompt, labels, ct);
         if (idx >= 0 && idx < options.Length) await options[idx].OnSelect();
     }
 
     /// <summary>等待用户输入文本（对标 DSL input）。</summary>
-    protected Task<string?> InputAsync(string prompt, string[]? options = null)
-        => Ctrl.InputAsync(prompt, options);
+    protected Task<string?> InputAsync(string prompt, string[]? options = null, CancellationToken ct = default)
+        => Ctrl.InputAsync(prompt, options, ct: ct);
 
     /// <summary>等待指定秒数（不可跳过）。</summary>
-    protected Task WaitAsync(double seconds) => Ctrl.WaitAsync(seconds);
+    protected Task WaitAsync(double seconds, CancellationToken ct = default)
+        => Ctrl.WaitAsync(seconds, ct: ct);
 
     /// <summary>等待用户点击（对标 DSL pause）。</summary>
-    protected Task WaitClickAsync() => Ctrl.WaitForClickAsync();
+    protected Task WaitClickAsync(CancellationToken ct = default)
+        => Ctrl.WaitForClickAsync(ct: ct);
 
     /// <summary>可跳过的定时等待（对标 Ren'Py pause(delay)）。</summary>
-    protected Task WaitSkipableAsync(double seconds) => Ctrl.SkipableWaitAsync(seconds);
+    protected Task WaitSkipableAsync(double seconds, CancellationToken ct = default)
+        => Ctrl.SkipableWaitAsync(seconds, ct: ct);
 
     /// <summary>场景过渡（对标 DSL transition）。</summary>
-    protected Task TransitionAsync(string type, double duration = 0.5)
-        => Ctrl.TransitionAsync(type, duration);
+    protected Task TransitionAsync(string type, double duration = 0.5, CancellationToken ct = default)
+        => Ctrl.TransitionAsync(type, duration, ct: ct);
 
     /// <summary>设置/切换背景图（对标 DSL background）。</summary>
     protected Task BackgroundAsync(string path) => Ctrl.BackgroundAsync(path);
