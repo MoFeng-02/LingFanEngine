@@ -15,7 +15,7 @@ public class CsTownIntro : StoryScript
     public override string SceneName => "cs_town_intro";
     public override SceneType SceneType => SceneType.Game;
 
-    public override async Task Run()
+    public override async Task RunAsync()
     {
         // 设置场景背景 + 标题
         SetScene("Images/door_zoom.jpg", "小镇入口（C# 场景）", bgOpacity: 0.4);

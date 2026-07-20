@@ -122,10 +122,10 @@ public class EventScheduler : IEventScheduler
             case UnregisterMode.Normal:
             default:
                 // 正常注销：只从 _events 移除，不加任何标记
-                // DSL 事件：Run() 重执行 set_time_event 时自然恢复
-                // C# 声明式事件：不会随 Run() 重执行恢复（InTimeEvents 不在 Run() 中），
+                // DSL 事件：RunAsync() 重执行 set_time_event 时自然恢复
+                // C# 声明式事件：不会随 RunAsync() 重执行恢复（InTimeEvents 不在 RunAsync() 中），
                 //   但可通过 restore_time_event 或读档恢复（全局注册表仍保留定义）
-                // C# 动态事件：Run() 重执行 SetTimeEventAsync 时自然恢复
+                // C# 动态事件：RunAsync() 重执行 SetTimeEventAsync 时自然恢复
                 return removed;
         }
     }

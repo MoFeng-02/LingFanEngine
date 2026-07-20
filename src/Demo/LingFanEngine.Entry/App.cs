@@ -19,7 +19,7 @@ public partial class App : Application
 
     public override void Initialize()
     {
-        //AvaloniaXamlLoader.Load(this);
+        //AvaloniaXamlLoader.LoadAsync(this);
     }
 
     public override void OnFrameworkInitializationCompleted()

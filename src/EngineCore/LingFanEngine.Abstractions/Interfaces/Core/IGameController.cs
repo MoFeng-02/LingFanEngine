@@ -15,20 +15,20 @@ public interface IGameController
     Task NavigateAsync(string sceneName);
 
     // ========== 对话 ==========
-void Say(string text, string? speaker = null,
-string? speakerColor = null, string? textColor = null,
-bool typewriter = true,
-double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
-bool clickable = false, bool noskip = false, string? template = null);
-Task SayAsync(string text, string? speaker = null,
-string? speakerColor = null, string? textColor = null,
-bool typewriter = true,
-double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
-bool clickable = false, bool noskip = false, string? template = null,
-string? voice = null);
+    void Say(string text, string? speaker = null,
+    string? speakerColor = null, string? textColor = null,
+    bool typewriter = true,
+    double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
+    bool clickable = false, bool noskip = false, string? template = null);
+    Task SayAsync(string text, string? speaker = null,
+    string? speakerColor = null, string? textColor = null,
+    bool typewriter = true,
+    double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
+    bool clickable = false, bool noskip = false, string? template = null,
+    string? voice = null, CancellationToken ct = default);
 
     /// <summary>追加文本到当前对话（对标 Ren'Py extend）</summary>
-    Task ExtendDialogAsync(string append);
+    Task ExtendDialogAsync(string append, CancellationToken ct = default);
 
     /// <summary>
     /// 定义角色对话样式（对标 Ren'Py Character 对象）
@@ -41,10 +41,10 @@ string? voice = null);
     /// <param name="font">说话者字体</param>
     /// <param name="textColor">对话文本颜色</param>
     /// <param name="textFont">对话文本字体</param>
-void DefineCharacter(string key, string? name = null,
-string? color = null, string? font = null,
-string? textColor = null, string? textFont = null,
-string? sideImage = null);
+    void DefineCharacter(string key, string? name = null,
+    string? color = null, string? font = null,
+    string? textColor = null, string? textFont = null,
+    string? sideImage = null);
 
     // ========== 变量 ==========
     void Set(string key, object? value);
@@ -54,18 +54,18 @@ string? sideImage = null);
 
     // ========== 过渡 ==========
     void Transition(string type, double duration = 0.5);
-    Task TransitionAsync(string type, double duration = 0.5);
+    Task TransitionAsync(string type, double duration = 0.5, CancellationToken ct = default);
 
     // ========== 等待 ==========
     void Wait(double seconds);
     Task WaitAsync(double seconds, CancellationToken ct = default);
     /// <summary>可跳过的定时等待——用户点击可提前结束（对标 Ren'Py pause(delay)）</summary>
-    Task SkipableWaitAsync(double seconds);
+    Task SkipableWaitAsync(double seconds, CancellationToken ct = default);
     /// <summary>等待用户点击（对标 Ren'Py pause()）</summary>
-    Task WaitForClickAsync();
+    Task WaitForClickAsync(CancellationToken ct = default);
     /// <summary>已废弃——请用 WaitForClickAsync</summary>
     [Obsolete("Use WaitForClickAsync instead")]
-    Task HardPauseAsync();
+    Task HardPauseAsync(CancellationToken ct = default);
 
     // ========== 音频 ==========
     void PlayBgm(string path, float volume = 0.8f, double fadeIn = 0, bool? autoStop = null);
@@ -82,10 +82,10 @@ string? sideImage = null);
     Task BackgroundAsync(string path);
 
     // ========== 菜单 ==========
-    Task<int> ShowMenuAsync(string prompt, string[] options);
+    Task<int> ShowMenuAsync(string prompt, string[] options, CancellationToken ct = default);
 
     // ========== 用户输入 ==========
-    Task<string?> InputAsync(string prompt, string[]? options = null);
+    Task<string?> InputAsync(string prompt, string[]? options = null, CancellationToken ct = default);
 
     // ========== 音效 ==========
     void PlaySe(string path, float volume = 0.6f);

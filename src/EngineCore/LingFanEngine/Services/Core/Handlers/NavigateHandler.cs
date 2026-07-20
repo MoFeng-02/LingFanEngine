@@ -170,7 +170,7 @@ public class NavigateHandler : ICommandHandler<NavigateCommand>, IDefaultCommand
             MergeIntoState(scriptEntry.Defines, ctx.State);
 
         // Game 类型 C# 场景：创建场景级检查点，纳入统一回溯时间线
-        // C# 场景没有 DSL 逐句检查点，回溯到此处 = 重新执行整个 StoryScript.Run()
+        // C# 场景没有 DSL 逐句检查点，回溯到此处 = 重新执行整个 StoryScript.RunAsync()
         // CreateSceneCheckpoint 内部已推进回溯前沿
         if (sceneType == SceneType.Game && ctx.DslExecutor != null)
         {
@@ -389,7 +389,7 @@ internal static class SceneStackDslRestarter
 
         if (lbls.TryGetValue(sceneName, out _))
         {
-            // 场景级 Back/Forward 是硬跳转——清空 DSL 检查点
+            // 场景级 BackAsync/ForwardAsync 是硬跳转——清空 DSL 检查点
             ctx.DslExecutor.LoadCommands(cmds, lbls, preserveCheckpoints: false);
             ctx.DslExecutor.StartFromLabel(sceneName);
         }

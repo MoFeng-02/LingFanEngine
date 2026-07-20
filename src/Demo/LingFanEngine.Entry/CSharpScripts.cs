@@ -36,7 +36,7 @@ public static class CSharpScripts
         {
             SceneName = csTownIntro.SceneName,
             SceneType = csTownIntro.SceneType,
-            Runner = () => csTownIntro.Run(),
+            Runner = () => csTownIntro.RunAsync(),
             Defines = csTownIntro.InDefines(),
             TimeEvents = csTownIntro.InTimeEvents()
         });

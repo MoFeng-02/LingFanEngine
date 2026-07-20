@@ -44,7 +44,7 @@ public class EventAggregator : IEventAggregator
     {
         if (_handlers.TryGetValue(typeof(TEvent), out var handlers))
         {
-            // 直接同步调用——handler 是 Action<TEvent>，无需 Task.Run
+            // 直接同步调用——handler 是 Action<TEvent>，无需 Task.RunAsync
             // 逐个调用，单个 handler 异常不中断其他 handler
             foreach (var handler in handlers)
             {

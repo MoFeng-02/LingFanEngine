@@ -323,8 +323,8 @@ private readonly ITimeEventRegistry? _timeEventRegistry;
         // C# 声明式事件在 RegisterScriptEntry 时已通过 RegisterDeclaration 纳入全局注册表。
         //
         // continueGame=true：按 RegisteredIds 查表精确重注册（只恢复存档时已注册的）
-        // continueGame=false（锚点读取）：C# 声明式事件也需要恢复（C# 场景的 Run() 不会重新
-        //   调用 RegisterScriptEntry，声明式事件来自 InTimeEvents() 不是 Run() 中动态注册的）。
+        // continueGame=false（锚点读取）：C# 声明式事件也需要恢复（C# 场景的 RunAsync() 不会重新
+        //   调用 RegisterScriptEntry，声明式事件来自 InTimeEvents() 不是 RunAsync() 中动态注册的）。
         //   DSL 事件由场景从头执行 set_time_event 自然重注册，无需此处处理。
         if (_options.EnableTimeSystem && _eventScheduler != null && _timeEventRegistry != null)
         {
@@ -372,7 +372,7 @@ private readonly ITimeEventRegistry? _timeEventRegistry;
                 MergeIntoState(scriptEntry.Defines, _state);
 
             // 创建场景级检查点——读档清除了所有检查点，需要为 C# 场景重新创建
-            // 这样回溯到此处 = 重新执行整个 StoryScript.Run()
+            // 这样回溯到此处 = 重新执行整个 StoryScript.RunAsync()
             _dslExecutor?.CreateSceneCheckpoint(sceneName);
 
             // 使用代次追踪模式启动 Runner——与 NavigateHandler.RunScriptEntryWithGeneration 一致

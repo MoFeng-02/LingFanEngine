@@ -1,4 +1,4 @@
-﻿﻿using LingFanEngine.Abstractions;
+﻿using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Entities.Enums;
 using LingFanEngine.Games;
 
@@ -27,7 +27,7 @@ public class TutorialTitle : StoryScript
         },
         { "sandbox.dice", 0 }
     };
-    public override async Task Run()
+    public override async Task RunAsync()
     {
         SetScene("Images/door_zoom.jpg", "灵泛引擎 · 入门教程", 1);
         AddText("基于 C# + Avalonia 的视觉小说引擎", 0, 170, 16, "#AAAAAA", halign: "center");
@@ -46,7 +46,7 @@ public class TutorialChapter : StoryScript
     public override string SceneName => "tutorial_chapter";
     public override SceneType SceneType => SceneType.Game;
 
-    public override async Task Run()
+    public override async Task RunAsync()
     {
         SetScene("Images/door_zoom.jpg", "第一章 · 认识灵泛引擎");
         await Ctrl.TransitionAsync("FadeIn", 0.5);
@@ -71,7 +71,7 @@ public class TutorialFeatures : StoryScript
     public override SceneType SceneType => SceneType.Game;
     public override Dictionary<string, object?> InDefines() => new();
 
-    public override async Task Run()
+    public override async Task RunAsync()
     {
         // 1. 过渡效果演示
         SetScene("Images/door_zoom.jpg", "第二章 · 过渡与动画");
@@ -125,7 +125,7 @@ public class TutorialSandbox : StoryScript
 {
     public override string SceneName => "tutorial_sandbox";
     public override SceneType SceneType => SceneType.Game;
-    public override async Task Run()
+    public override async Task RunAsync()
     {
         SetScene("Images/door_zoom.jpg", "沙盒测试", 0.3);
 

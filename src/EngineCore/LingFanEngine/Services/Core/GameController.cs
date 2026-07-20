@@ -85,7 +85,7 @@ string? speakerColor = null, string? textColor = null,
 bool typewriter = true,
 double? wPct = null, double? hPct = null, double? marginL = null, double? marginB = null,
 bool clickable = false, bool noskip = false, string? template = null,
-string? voice = null)
+string? voice = null, CancellationToken ct = default)
 {
 // C# 场景回放被回溯/前进取消时，抛异常终止整个 Runner（不只是跳过此调用）
 if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
@@ -98,7 +98,7 @@ DialogMarginL = marginL, DialogMarginB = marginB,
 Clickable = clickable, Noskip = noskip,
 Template = template, VoicePath = voice });
         _state.Set(StateKeys.Dialog.WaitingSayComplete, false);
-        await PollUntilTrue(StateKeys.Dialog.WaitingSayComplete, CancellationToken.None);
+        await PollUntilTrue(StateKeys.Dialog.WaitingSayComplete, ct);
 
         // PollUntilTrue 返回后再次检查——回溯可能在等待期间发生
         if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
@@ -147,12 +147,12 @@ Template = template, VoicePath = voice });
     }
 
     /// <summary>追加文本到当前对话（对标 Ren'Py extend）</summary>
-    public async Task ExtendDialogAsync(string append)
+    public async Task ExtendDialogAsync(string append, CancellationToken ct = default)
     {
         if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
         await _pipeline.SendAsync(new ExtendDialogCommand { Append = append });
         _state.Set(StateKeys.Dialog.WaitingSayComplete, false);
-        await PollUntilTrue(StateKeys.Dialog.WaitingSayComplete, CancellationToken.None);
+        await PollUntilTrue(StateKeys.Dialog.WaitingSayComplete, ct);
         if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
     }
 
@@ -192,7 +192,7 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
         _pipeline.SendAsync(new TransitionCommand { Type = type, Duration = duration });
 
     /// <summary>等待过渡完成（__transition_active == false，120 秒超时兜底）</summary>
-    public async Task TransitionAsync(string type, double duration = 0.5)
+    public async Task TransitionAsync(string type, double duration = 0.5, CancellationToken ct = default)
     {
         if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
 
@@ -203,7 +203,7 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
         {
             await _waitService.WaitForAsync(
                 () => !_state.Get<bool>(StateKeys.Transition.Active) || IsCSharpReplayStale(),
-                TimeSpan.FromSeconds(_options.BlockingTimeoutSeconds));
+                TimeSpan.FromSeconds(_options.BlockingTimeoutSeconds), ct);
         }
         catch (OperationCanceledException)
         {
@@ -230,7 +230,7 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
 /// 可跳过的定时等待——用户点击可提前结束（对标 Ren'Py pause(delay, hard=False)）
 /// <para>并行监听 Task.Delay 和用户点击，任一触发即完成。</para>
     /// </summary>
-    public async Task SkipableWaitAsync(double seconds)
+    public async Task SkipableWaitAsync(double seconds, CancellationToken ct = default)
     {
         if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
 
@@ -241,7 +241,7 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
         _state.Set(StateKeys.Dialog.Complete, false);
         _state.Set(StateKeys.Dialog.WaitingSayComplete, false);
 
-        using var cts = new CancellationTokenSource();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var delayTask = Task.Delay(TimeSpan.FromSeconds(seconds), cts.Token);
         var clickTask = PollUntilTrue(StateKeys.Dialog.WaitingSayComplete, cts.Token);
 
@@ -255,7 +255,7 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
     }
 
     /// <summary>等待用户点击（对标 Ren'Py pause()）</summary>
-    public async Task WaitForClickAsync()
+    public async Task WaitForClickAsync(CancellationToken ct = default)
     {
         if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
 
@@ -266,7 +266,7 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
         _state.Set(StateKeys.Dialog.Complete, false);
         _state.Set(StateKeys.Dialog.WaitingSayComplete, false);
 
-        await PollUntilTrue(StateKeys.Dialog.WaitingSayComplete, CancellationToken.None);
+        await PollUntilTrue(StateKeys.Dialog.WaitingSayComplete, ct);
 
         if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
 
@@ -275,11 +275,11 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
 
     /// <summary>已废弃——请用 WaitForClickAsync</summary>
     [Obsolete("Use WaitForClickAsync instead")]
-    public async Task HardPauseAsync()
+    public async Task HardPauseAsync(CancellationToken ct = default)
     {
         await _pipeline.SendAsync(new HardPauseCommand());
         _state.Set(StateKeys.Dialog.WaitingSayComplete, false);
-        await PollUntilTrue(StateKeys.Dialog.WaitingSayComplete, CancellationToken.None);
+        await PollUntilTrue(StateKeys.Dialog.WaitingSayComplete, ct);
     }
 
     // ========== 音频 ==========
@@ -317,7 +317,7 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
     // ========== 菜单 ==========
 
     /// <summary>展示菜单选择面板，返回选中索引</summary>
-    public async Task<int> ShowMenuAsync(string prompt, string[] options)
+    public async Task<int> ShowMenuAsync(string prompt, string[] options, CancellationToken ct = default)
     {
         if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
         // 清除对话框状态——防止上一句 SayAsync 的文本残留在对话框中
@@ -334,7 +334,7 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
         {
             await _waitService.WaitForAsync(
                 () => _state.Get<int>(StateKeys.Menu.Selected) >= 0 || IsCSharpReplayStale(),
-                TimeSpan.FromSeconds(_options.InteractionTimeoutSeconds));
+                TimeSpan.FromSeconds(_options.InteractionTimeoutSeconds), ct);
         }
         catch (OperationCanceledException)
         {
@@ -353,7 +353,7 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
     // ========== 用户输入 ==========
 
     /// <summary>展示输入框，返回用户输入文本</summary>
-    public async Task<string?> InputAsync(string prompt, string[]? options = null)
+    public async Task<string?> InputAsync(string prompt, string[]? options = null, CancellationToken ct = default)
     {
         if (IsCSharpReplayStale()) throw new CSharpSceneReplayCancelledException();
         // 清除对话框状态——防止上一句 SayAsync 的文本残留在对话框中
@@ -370,7 +370,7 @@ _state.Set(StateKeys.Characters.Prefix + key, props);
         {
             await _waitService.WaitForAsync(
                 () => _state.Get<string?>(StateKeys.Input.Result) != null || IsCSharpReplayStale(),
-                TimeSpan.FromSeconds(_options.InteractionTimeoutSeconds));
+                TimeSpan.FromSeconds(_options.InteractionTimeoutSeconds), ct);
         }
         catch (OperationCanceledException)
         {

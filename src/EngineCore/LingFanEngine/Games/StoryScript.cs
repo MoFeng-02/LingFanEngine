@@ -30,7 +30,7 @@ public abstract class StoryScript
         _sceneRegistry = sceneRegistry;
     }
 
-    public abstract Task Run();
+    public abstract Task RunAsync();
 
     /// <summary>
     /// 属性定义，场景可独有，最终执行到这个场景的时候会将其纳入全局define
@@ -106,6 +106,166 @@ public abstract class StoryScript
         _state.Set(StateKeys.Scene.Elements, newList);
         _state.Set(StateKeys.Scene.Dirty, true);
     }
+
+    // ========== 剧情流便捷方法（对标 DSL，不改变上方任何成员） ==========
+    // 目标：让 C# 端写故事也能像 DSL 一样顺手——顺序叙事 + 选择分支 + 时间事件。
+    // 全部为对 Ctrl(IGameController) 的薄封装，AOT 友好（无反射）。
+
+    /// <summary>说一句话（对标 DSL say）。</summary>
+    protected Task SayAsync(string text, string? speaker = null, string? speakerColor = null,
+        string? textColor = null, bool typewriter = true, string? voice = null)
+        => Ctrl.SayAsync(text, speaker, speakerColor, textColor, typewriter, voice: voice);
+
+    /// <summary>追加文本到当前对话（对标 Ren'Py extend）。</summary>
+    protected Task ExtendAsync(string append) => Ctrl.ExtendDialogAsync(append);
+
+    /// <summary>跳转到场景（对标 DSL navigate）。</summary>
+    protected Task NavigateAsync(string sceneName) => Ctrl.NavigateAsync(sceneName);
+
+    /// <summary>变量赋值（对标 DSL set）。</summary>
+    protected void Set(string key, object? value) => Ctrl.Set(key, value);
+
+    /// <summary>全局变量定义（对标 DSL define，全局初始化）。</summary>
+    protected void Define(string key, object? value) => Ctrl.Define(key, value);
+
+    /// <summary>定义角色对话样式（对标 DSL character）。</summary>
+    protected void Character(string key, string? name = null, string? color = null,
+        string? font = null, string? textColor = null, string? textFont = null, string? sideImage = null)
+        => Ctrl.DefineCharacter(key, name, color, font, textColor, textFont, sideImage);
+
+    /// <summary>弹出选择菜单，返回选中项索引（对标 DSL menu，0 基）。</summary>
+    protected Task<int> ChoiceAsync(string prompt, params string[] options)
+        => Ctrl.ShowMenuAsync(prompt, options);
+
+    /// <summary>
+    /// 弹出选择菜单并执行对应回调（对标 DSL menu + 分支，免手写 switch）。
+    /// <code>
+    /// await ChoiceAsync("你要做什么？",
+    ///     ("探索", () => NavigateAsync("explore")),
+    ///     ("休息", async () => await SayAsync("你睡了一觉。")));
+    /// </code>
+    /// </summary>
+    protected async Task ChoiceAsync(string prompt, params (string Label, Func<Task> OnSelect)[] options)
+    {
+        var labels = new string[options.Length];
+        for (var i = 0; i < options.Length; i++) labels[i] = options[i].Label;
+        var idx = await Ctrl.ShowMenuAsync(prompt, labels);
+        if (idx >= 0 && idx < options.Length) await options[idx].OnSelect();
+    }
+
+    /// <summary>等待用户输入文本（对标 DSL input）。</summary>
+    protected Task<string?> InputAsync(string prompt, string[]? options = null)
+        => Ctrl.InputAsync(prompt, options);
+
+    /// <summary>等待指定秒数（不可跳过）。</summary>
+    protected Task WaitAsync(double seconds) => Ctrl.WaitAsync(seconds);
+
+    /// <summary>等待用户点击（对标 DSL pause）。</summary>
+    protected Task WaitClickAsync() => Ctrl.WaitForClickAsync();
+
+    /// <summary>可跳过的定时等待（对标 Ren'Py pause(delay)）。</summary>
+    protected Task WaitSkipableAsync(double seconds) => Ctrl.SkipableWaitAsync(seconds);
+
+    /// <summary>场景过渡（对标 DSL transition）。</summary>
+    protected Task TransitionAsync(string type, double duration = 0.5)
+        => Ctrl.TransitionAsync(type, duration);
+
+    /// <summary>设置/切换背景图（对标 DSL background）。</summary>
+    protected Task BackgroundAsync(string path) => Ctrl.BackgroundAsync(path);
+
+    /// <summary>播放 BGM（对标 DSL bgm）。</summary>
+    protected void Bgm(string path, float volume = 0.8f, double fadeIn = 0, bool? autoStop = null)
+        => Ctrl.PlayBgm(path, volume, fadeIn, autoStop);
+
+    /// <summary>停止 BGM。</summary>
+    protected void StopBgm(double fadeOut = 0) => Ctrl.StopBgm(fadeOut);
+
+    /// <summary>播放音效（对标 DSL se）。</summary>
+    protected void Se(string path, float volume = 0.6f) => Ctrl.PlaySe(path, volume);
+
+    /// <summary>停止音效。</summary>
+    protected void StopSe() => Ctrl.StopSe();
+
+    /// <summary>播放环境音（对标 DSL ambient）。</summary>
+    protected void Ambient(string path, float volume = 0.8f, bool loop = true)
+        => Ctrl.PlayAmbient(path, volume, loop);
+
+    /// <summary>停止环境音。</summary>
+    protected void StopAmbient() => Ctrl.StopAmbient();
+
+    /// <summary>播放语音（对标 DSL voice）。</summary>
+    protected void Voice(string path, float volume = 1.0f, bool? autoStop = null)
+        => Ctrl.PlayVoice(path, volume, autoStop);
+
+    /// <summary>停止语音。</summary>
+    protected void StopVoice() => Ctrl.StopVoice();
+
+    /// <summary>显示通知 Toast（对标 DSL notify）。</summary>
+    protected void Notify(string text, string type = "info", double duration = 0)
+        => Ctrl.Notify(text, type, duration);
+
+    /// <summary>存档（对标 DSL save）。</summary>
+    protected Task SaveAsync(string slot) => Ctrl.SaveAsync(slot);
+
+    /// <summary>读档（对标 DSL load）。</summary>
+    protected Task LoadAsync(string slot) => Ctrl.LoadAsync(slot);
+
+    /// <summary>回溯一步（对标 DSL rollback）。</summary>
+    protected Task RollbackAsync() => Ctrl.RollbackAsync();
+
+    /// <summary>前进一步（对标 DSL rollforward）。</summary>
+    protected Task RollforwardAsync() => Ctrl.RollforwardAsync();
+
+    /// <summary>返回上一场景（对标 DSL back）。</summary>
+    protected Task BackAsync() => Ctrl.BackAsync();
+
+    /// <summary>前进到下一场景（对标 DSL forward）。</summary>
+    protected Task ForwardAsync() => Ctrl.ForwardAsync();
+
+    /// <summary>屏幕震动（对标 DSL shake）。</summary>
+    protected Task ShakeAsync(double intensity = 10.0, double duration = 0.5)
+        => Ctrl.ShakeAsync(intensity, duration);
+
+    // ---- 时间事件（对标 DSL time_event / set_time_event / unregister_time_event / restore_time_event） ----
+
+    /// <summary>注册时间事件（触发时导航到目标场景，对标 DSL time_event）。</summary>
+    protected void TimeEvent(string target, int triggerDay, int? triggerHour = null,
+        int? triggerMinute = null, bool isOneShot = true, string? condition = null, string? description = null)
+        => Ctrl.RegisterTimeEvent(target, triggerDay, triggerHour, triggerMinute, isOneShot, condition, description);
+
+    /// <summary>注册每日重复时间事件（对标 DSL time_event 每日）。</summary>
+    protected void DailyEvent(string target, int triggerHour, int? triggerMinute = null,
+        string? condition = null, string? description = null)
+        => Ctrl.RegisterDailyEvent(target, triggerHour, triggerMinute, condition, description);
+
+    /// <summary>注册按星期触发的时间事件（对标 DSL time_event 星期）。</summary>
+    protected void WeeklyEvent(string target, DayOfWeek[] daysOfWeek, int triggerHour,
+        int? triggerMinute = null, bool isOneShot = false, string? condition = null, string? description = null)
+        => Ctrl.RegisterWeeklyEvent(target, daysOfWeek, triggerHour, triggerMinute, isOneShot, condition, description);
+
+    /// <summary>注册回调驱动的时间事件（时间到执行 callback，对标 DSL set_time_event）。</summary>
+    protected void CallbackEvent(string id, int hour, Func<Task> callback, bool once = false,
+        HashSet<DayOfWeek>? weekdays = null, int? minute = null, int? day = null)
+        => Ctrl.SetTimeEventAsync(id, hour, callback, once, weekdays, minute, day);
+
+    /// <summary>注销时间事件（对标 DSL unregister_time_event）。</summary>
+    protected void UnregisterEvent(string id, bool permanent = false, bool temporary = false)
+        => Ctrl.UnregisterEvent(id, permanent, temporary);
+
+    /// <summary>恢复已注销的时间事件（对标 DSL restore_time_event）。</summary>
+    protected void RestoreEvent(string id) => Ctrl.RestoreEvent(id);
+
+    /// <summary>暂停游戏时间推进。</summary>
+    protected void PauseTime() => Ctrl.PauseGameTime();
+
+    /// <summary>恢复游戏时间推进。</summary>
+    protected void ResumeTime() => Ctrl.ResumeGameTime();
+
+    /// <summary>批量跳过游戏时间（逐分钟 Tick，确保中间时间事件被检查）。</summary>
+    protected void SkipTime(int minutes) => Ctrl.SkipTime(minutes);
+
+    /// <summary>重置游戏时间并清空所有已注册时间事件。</summary>
+    protected void ResetTime() => Ctrl.ResetGameTime();
 
     // ========== 颜色辅助 ==========
 

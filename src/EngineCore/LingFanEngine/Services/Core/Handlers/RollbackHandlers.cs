@@ -44,7 +44,7 @@ public class RollbackToHandler : ICommandHandler<RollbackToCommand>, IDefaultCom
         var targetPos = rtc.TargetCheckpointIndex;
         if (targetPos < 0)
         {
-            // 等价于 Back
+            // 等价于 BackAsync
             ctx.DslExecutor.Rollback();
             return;
         }

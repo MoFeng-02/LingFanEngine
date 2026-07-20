@@ -154,7 +154,7 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>, IDefaultCom
 
     /// <summary>
     /// 将当前对话追加到历史列表，超出上限时移除最旧条目
-    /// <para>回溯重展示（Rollback/Rollforward）时不记录历史，避免重复。</para>
+    /// <para>回溯重展示（RollbackAsync/RollforwardAsync）时不记录历史，避免重复。</para>
     /// </summary>
     private static void RecordHistory(ShowDialogCommand sd, string dialogText, string? speakerName, ICommandContext ctx)
     {

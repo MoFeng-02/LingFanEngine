@@ -131,7 +131,7 @@ public class RestoreTimeEventHandler : ICommandHandler<RestoreTimeEventCommand>,
             return;
         }
 
-        // 4. 未在全局注册表中找到——可能是动态注册的事件（Run() 中 SetTimeEventAsync）
+        // 4. 未在全局注册表中找到——可能是动态注册的事件（RunAsync() 中 SetTimeEventAsync）
         if (wasSuspended)
         {
             System.Diagnostics.Debug.WriteLine(

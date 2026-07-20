@@ -25,7 +25,7 @@ public class PlaybackService : IPlaybackService
     /// <inheritdoc/>
     public void Process(double frameDelta, IStateContainer state)
     {
-        // Menu/UI 场景不执行 Skip/Auto（菜单没有 Say，不应自动推进）
+        // Menu/UI 场景不执行 Skip/Auto（菜单没有 SayAsync，不应自动推进）
         var currentType = (SceneType)state.Get<int>(StateKeys.Scene.CurrentType);
         if (currentType != SceneType.Game) return;
 
@@ -55,7 +55,7 @@ public class PlaybackService : IPlaybackService
             return;
         }
 
-        // P1-#12: Skip/Auto 扩展到 WaitSkipable 和 Pause（不仅限于 Dialog）
+        // P1-#12: Skip/Auto 扩展到 WaitSkipableAsync 和 Pause（不仅限于 Dialog）
         var isInteractive = waitingType == StateKeys.Dsl.WaitingTypes.Dialog
             || waitingType == StateKeys.Dsl.WaitingTypes.WaitSkipable
             || waitingType == StateKeys.Dsl.WaitingTypes.Pause;
@@ -92,7 +92,7 @@ public class PlaybackService : IPlaybackService
                     var seen = state.Get<HashSet<string>>(StateKeys.Playback.SeenSayIndices);
                     if (seen != null && !seen.Contains(seenKey))
                     {
-                        // 未读 Say — 停止跳过
+                        // 未读 SayAsync — 停止跳过
                         state.Set(StateKeys.Playback.SkipActive, false);
                         _skipTimer = 0; // 停止时重置计时器
                         return;
@@ -118,7 +118,7 @@ public class PlaybackService : IPlaybackService
         if (state.Get<bool>(StateKeys.Playback.AutoActive))
         {
             // P1-#12: 打字机检查仅对 Dialog 有意义
-            // WaitSkipable/Pause 没有打字机，直接推进
+            // WaitSkipableAsync/Pause 没有打字机，直接推进
             if (waitingType == StateKeys.Dsl.WaitingTypes.Dialog)
             {
                 var typewriterDone = state.Get<bool>(StateKeys.Dialog.TypewriterDone);

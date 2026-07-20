@@ -205,7 +205,7 @@ public class GameLoop : IGameLoop
         }
 
         // 连接 DslExecutor 的 C# 场景回溯回调
-        // 回溯到 C# 场景检查点时，重新执行 StoryScript.Run()
+        // 回溯到 C# 场景检查点时，重新执行 StoryScript.RunAsync()
         if (_dslExecutor is DslExecutor dslExec)
         {
             dslExec.OnCSharpSceneReplay = async sceneName =>
@@ -238,7 +238,7 @@ public class GameLoop : IGameLoop
                     var currentGen = _state.Get<int>(StateKeys.Dsl.CSharpReplayGeneration);
                     if (currentGen == startGen)
                     {
-                        // Run() 完成后用户进入 idle 状态（与按钮交互）
+                        // RunAsync() 完成后用户进入 idle 状态（与按钮交互）
                         // 重置 IsReplay，使后续 DSL 场景能正常创建检查点
                         _state.Set(StateKeys.Rollback.IsReplay, false);
                         _state.Set(StateKeys.Rollback.IsActive, false);

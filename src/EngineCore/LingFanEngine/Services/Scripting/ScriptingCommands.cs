@@ -1,4 +1,4 @@
-﻿﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using LingFanEngine.Abstractions.Entities.Events;
 using LingFanEngine.Abstractions.Entities.UIs;
 using LingFanEngine.Abstractions.Interfaces.Core;
@@ -149,10 +149,10 @@ public readonly record struct ShowHideCommand : ICommand
     /// <summary>是否为背景操作（background 命令）</summary>
     public bool IsBackground { get; init; }
 
-/// <summary>元素标签（按 tag 匹配 hide，对标 Ren'Py image tag）</summary>
-public string? Tag { get; init; }
+    /// <summary>元素标签（按 tag 匹配 hide，对标 Ren'Py image tag）</summary>
+    public string? Tag { get; init; }
 
-public ShowHideCommand() { }
+    public ShowHideCommand() { }
 }
 
 /// <summary>
@@ -614,7 +614,7 @@ public readonly record struct ForwardCommand : ICommand
 }
 
 /// <summary>
-/// 回溯到指定检查点——从历史面板跳转到某句 Say
+/// 回溯到指定检查点——从历史面板跳转到某句 SayAsync
 /// <para>targetCheckpointIndex 为 -1 时等价于 BackCommand。</para>
 /// </summary>
 public readonly record struct RollbackToCommand : ICommand
@@ -751,16 +751,16 @@ public readonly record struct DebugLogCommand : ICommand
 /// </summary>
 public readonly record struct NvlCommand : ICommand
 {
-public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    public CommandPriority Priority { get; init; } = CommandPriority.Normal;
 
-/// <summary>是否为清空操作（仅清空文本，不退出 NVL 模式）</summary>
-public bool IsClear { get; init; }
+    /// <summary>是否为清空操作（仅清空文本，不退出 NVL 模式）</summary>
+    public bool IsClear { get; init; }
 
-/// <summary>是否为退出操作（退出 NVL 模式并清空文本，恢复 ADV 模式）</summary>
-public bool IsExit { get; init; }
+    /// <summary>是否为退出操作（退出 NVL 模式并清空文本，恢复 ADV 模式）</summary>
+    public bool IsExit { get; init; }
 
-public NvlCommand() { }
+    public NvlCommand() { }
 }
 
 /// <summary>
