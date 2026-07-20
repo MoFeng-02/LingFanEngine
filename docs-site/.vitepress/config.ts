@@ -1,6 +1,9 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
+  // 部署到 GitHub Pages 项目站点（https://mofeng-02.github.io/LingFanEngine/），
+  // 必须设置 base 为仓库名，否则所有 /assets/* 资源会指向根路径而 404。
+  base: '/LingFanEngine/',
   title: '灵泛引擎',
   description: '高性能跨平台视觉小说 / 互动叙事引擎',
   lang: 'zh-CN',
