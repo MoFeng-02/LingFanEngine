@@ -454,8 +454,10 @@ $RECYCLE.BIN/
 !.vscode/extensions.json
 
 # Project-specific
-Saves/
-Media/
+# 禁止使用无路径前缀的 `Saves/` / `Media/` 全局规则：
+# 它们会误伤同名源码命名空间目录（如 LingFanEngine.Abstractions/Models/Saves）
+# 以及 SDK 模板资源目录（Template/V1/.../Resources/Media），导致 CI 编译失败 / 模板资源缺失。
+# 运行时存档与媒体输出均在 bin/ obj/ 下，已被上面的 [Bb]in/ [Oo]bj/ 规则覆盖，无需单独忽略。
 *.lfpack
 /灵泛引擎需求文档
 /文档
