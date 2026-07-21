@@ -90,6 +90,14 @@ public class EventScheduler : IEventScheduler
             return false;
         }
 
+        // E4：单次事件（绝对天锚点）早于当前游戏天 → 永远不会触发（时间不可逆）。
+        // 仅在“即将成功注册”时告警；已销毁/暂挂/已触发的分支已在前面拦掉，不会静默丢失。
+        if (registration.IsOneShot && registration.Day is { } anchorDay && anchorDay < _timeService.CurrentDay)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[EventScheduler] 单次事件 [{registration.Id}] 锚点天 {anchorDay} 早于当前天 {_timeService.CurrentDay}，将永远不会触发（时间不可逆）");
+        }
+
         // 4. ID 已存在 → 去重
         if (!_events.TryAdd(registration.Id, registration))
         {
