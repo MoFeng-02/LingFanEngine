@@ -75,7 +75,7 @@ public class SaveLoadHandlerTests
         handler.Handle(cmd, ctx);
 
         // 等待 Task.Run 内的异步读档 + ApplySaveData 完成（带超时保护）
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(5000));
+        var completed = await Task.WhenAny(tcs.Task, Task.Delay(5000, TestContext.Current.CancellationToken));
         completed.Should().Be(tcs.Task, "读档应回调 ApplySaveData");
         save.LoadCount.Should().Be(1);
         save.LastLoadedSlot.Should().Be("slot9");
@@ -97,7 +97,7 @@ public class SaveLoadHandlerTests
 
         handler.Handle(cmd, ctx);
 
-        await Task.Delay(300);
+        await Task.Delay(300, TestContext.Current.CancellationToken);
         applied.Should().BeFalse();
         save.LoadCount.Should().Be(1);
     }

@@ -97,7 +97,7 @@ public class JsonValueConverter : IJsonValueConverter
                 if (d.TryGetValue("__lf_guid", out var gv) && gv is string gvs && Guid.TryParse(gvs, out var g))
                     return g;
             }
-            return dict.Keys.Cast<object?>().ToDictionary(k => k?.ToString() ?? "", k => Convert(dict[k]));
+            return dict.Keys.OfType<object>().ToDictionary(k => k.ToString() ?? "", k => Convert(dict[k]));
         }
         if (value is System.Collections.IEnumerable en and not string)
             return en.Cast<object?>().Select(Convert).ToList();

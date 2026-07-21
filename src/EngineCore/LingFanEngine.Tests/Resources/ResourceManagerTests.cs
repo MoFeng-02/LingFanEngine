@@ -144,16 +144,16 @@ public class ResourceManagerTests : IDisposable
         var innerDir = Path.Combine(srcDir, "inner");
         Directory.CreateDirectory(innerDir);
         var packContent = new byte[] { 100, 101, 102, 103 };
-        await File.WriteAllBytesAsync(Path.Combine(innerDir, "note.txt"), packContent);
+        await File.WriteAllBytesAsync(Path.Combine(innerDir, "note.txt"), packContent, TestContext.Current.CancellationToken);
 
         var key = new byte[32];
         RandomNumberGenerator.Fill(key);
         var packPath = Path.Combine(_baseDir, "res.lfpack");
         await PackBuilder.BuildAsync(srcDir, packPath, key);
 
-        await _manager.MountPackAsync(packPath, key);
+        await _manager.MountPackAsync(packPath, key, null, TestContext.Current.CancellationToken);
 
-        var loaded = await _manager.LoadBytesAsync("inner/note.txt");
+        var loaded = await _manager.LoadBytesAsync("inner/note.txt", TestContext.Current.CancellationToken);
         loaded.Should().NotBeNull();
         loaded!.Should().BeEquivalentTo(packContent);
 

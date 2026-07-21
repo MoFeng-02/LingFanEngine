@@ -619,7 +619,7 @@ private readonly ITimeEventRegistry? _timeEventRegistry;
             // 故在此包成类型标注字典，反序列化时由 JsonValueConverter.RestoreTypedMarker 还原原生类型。
             System.DateTime dt => new Dictionary<string, object?> { ["__lf_dt"] = dt.ToString("o") },
             System.Guid g => new Dictionary<string, object?> { ["__lf_guid"] = g.ToString() },
-            System.Collections.IDictionary dict => dict.Keys.Cast<object?>().ToDictionary(k => k?.ToString() ?? "", k => NormalizeForSave(dict[k])),
+            System.Collections.IDictionary dict => dict.Keys.OfType<object>().ToDictionary(k => k.ToString() ?? "", k => NormalizeForSave(dict[k])),
             System.Collections.IEnumerable nested => nested.Cast<object?>().Select(NormalizeForSave).ToList(),
             _ => value
         };

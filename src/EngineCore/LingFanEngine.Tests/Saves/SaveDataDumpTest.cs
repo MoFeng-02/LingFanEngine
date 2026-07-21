@@ -36,7 +36,7 @@ public class SaveDataDumpTest
         Array.Copy(key, iv, 16);
 
         var aes = new AesEncryption(key, iv);
-        var encryptedData = await File.ReadAllBytesAsync(savePath);
+        var encryptedData = await File.ReadAllBytesAsync(savePath, TestContext.Current.CancellationToken);
         var decryptedData = aes.Decrypt(encryptedData);
         var json = Encoding.UTF8.GetString(decryptedData);
 

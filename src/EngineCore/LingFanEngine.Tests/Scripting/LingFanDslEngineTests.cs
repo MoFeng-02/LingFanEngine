@@ -649,7 +649,7 @@ public class LingFanDslEngineTests
     {
         var script = """say "hello" """;
         var syncResult = _engine.Compile(script);
-        var asyncResult = await _engine.CompileAsync(script);
+        var asyncResult = await _engine.CompileAsync(script, TestContext.Current.CancellationToken);
         asyncResult.Success.Should().Be(syncResult.Success);
         asyncResult.Commands.Should().HaveCount(syncResult.Commands.Count);
     }

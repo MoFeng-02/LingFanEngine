@@ -167,7 +167,7 @@ public class Dsl2HandlersTests
 
         // 真实删除经由 Task.Run 异步执行，轮询等待其完成（带超时保护，避免偶发竞态导致假失败）。
         for (var i = 0; i < 50 && save.DeleteCount == 0; i++)
-            await Task.Delay(10);
+            await Task.Delay(10, TestContext.Current.CancellationToken);
 
         save.DeleteCount.Should().Be(1);
         save.LastDeletedSlot.Should().Be("slotA");

@@ -7,6 +7,10 @@
     <LangVersion>latest</LangVersion>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- xUnit1051（测试应传 TestContext.Current.CancellationToken 以支持取消响应）属纯提示型分析器；
+         单元测试中给 ~82 处 File.*Async/Task.Delay/... 全插 token 是噪声，统一在此抑制；
+         少数已显式传 token 的调用保留（更优）。 -->
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
   </PropertyGroup>
 
   <!--

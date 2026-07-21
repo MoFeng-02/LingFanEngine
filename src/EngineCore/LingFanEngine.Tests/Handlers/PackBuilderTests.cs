@@ -31,7 +31,7 @@ public class PackBuilderTests
             await PackBuilder.BuildAsync(source, output, MakeKey());
 
             File.Exists(output).Should().BeTrue();
-            var bytes = await File.ReadAllBytesAsync(output);
+            var bytes = await File.ReadAllBytesAsync(output, TestContext.Current.CancellationToken);
             // 前 4 字节应为 LFPK 魔数
             bytes[0].Should().Be((byte)'L');
             bytes[1].Should().Be((byte)'F');
@@ -51,8 +51,8 @@ public class PackBuilderTests
         var source = Path.Combine(Path.GetTempPath(), "lfpack_src_" + Guid.NewGuid().ToString("N"));
         var output = Path.Combine(Path.GetTempPath(), "lfpack_out_" + Guid.NewGuid().ToString("N") + ".lfpack");
         Directory.CreateDirectory(source);
-        await File.WriteAllTextAsync(Path.Combine(source, "a.txt"), "1");
-        await File.WriteAllTextAsync(Path.Combine(source, "b.txt"), "2");
+        await File.WriteAllTextAsync(Path.Combine(source, "a.txt"), "1", TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(source, "b.txt"), "2", TestContext.Current.CancellationToken);
         try
         {
             await PackBuilder.BuildAsync(source, output, MakeKey());
@@ -73,15 +73,15 @@ public class PackBuilderTests
         var source = Path.Combine(Path.GetTempPath(), "lfpack_src_" + Guid.NewGuid().ToString("N"));
         var output = Path.Combine(Path.GetTempPath(), "lfpack_out_" + Guid.NewGuid().ToString("N") + ".lfpack");
         Directory.CreateDirectory(source);
-        await File.WriteAllTextAsync(Path.Combine(source, "data.txt"), "payload-123");
+        await File.WriteAllTextAsync(Path.Combine(source, "data.txt"), "payload-123", TestContext.Current.CancellationToken);
         try
         {
             await PackBuilder.BuildAsync(source, output, MakeKey());
 
             // 用 PackLoader 的挂载能力做 round-trip 验证（不依赖真实资源）
             var loader = new PackLoader();
-            await loader.MountAsync(output, MakeKey());
-            var content = await loader.ReadBytesAsync("data.txt");
+            await loader.MountAsync(output, MakeKey(), null, TestContext.Current.CancellationToken);
+            var content = await loader.ReadBytesAsync("data.txt", TestContext.Current.CancellationToken);
             content.Should().NotBeNull();
             Encoding.UTF8.GetString(content!).Should().Be("payload-123");
         }

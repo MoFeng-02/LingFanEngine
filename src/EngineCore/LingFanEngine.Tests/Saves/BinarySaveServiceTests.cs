@@ -258,7 +258,7 @@ public class BinarySaveServiceTests : IDisposable
 
         // 写入一个损坏的 .sav 文件
         var corruptPath = Path.Combine(_tempDir, "corrupt.sav");
-        await File.WriteAllBytesAsync(corruptPath, new byte[] { 1, 2, 3, 4, 5 });
+        await File.WriteAllBytesAsync(corruptPath, new byte[] { 1, 2, 3, 4, 5 }, TestContext.Current.CancellationToken);
 
         var slots = (await _service.GetAllSaveSlotsAsync()).ToList();
         slots.Should().HaveCount(1);
@@ -275,7 +275,7 @@ public class BinarySaveServiceTests : IDisposable
         await _service.SaveAsync("enc_slot", save);
 
         var filePath = Path.Combine(_tempDir, "enc_slot.sav");
-        var fileBytes = await File.ReadAllBytesAsync(filePath);
+        var fileBytes = await File.ReadAllBytesAsync(filePath, TestContext.Current.CancellationToken);
         var fileText = System.Text.Encoding.UTF8.GetString(fileBytes);
 
         // 加密后的文件不应包含明文内容
