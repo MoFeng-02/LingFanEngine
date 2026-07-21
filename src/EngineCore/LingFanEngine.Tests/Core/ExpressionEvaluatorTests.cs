@@ -221,4 +221,141 @@ public class ExpressionEvaluatorTests
         // ExpressionParser.Replace 在值为 null 时返回原始表达式
         result.Should().Be("player.name");
     }
+
+    // ====== S3 (B7): ==/!= 类型归一化（真实缺陷修复回归） ======
+
+    [Fact]
+    public void Evaluate_Equal_IntVsDoubleLiteral()
+    {
+        // B7 核心：int 0 与 double 0.0 因装箱类型不同，旧实现 object.Equals 误判不等
+        DslExpressionEvaluator.Evaluate("0 == 0.0", _state).Should().Be(true);
+    }
+
+    [Fact]
+    public void Evaluate_NotEqual_IntVsDoubleLiteral()
+    {
+        DslExpressionEvaluator.Evaluate("0 != 0.0", _state).Should().Be(false);
+    }
+
+    [Fact]
+    public void Evaluate_Equal_IntStateVsDoubleLiteral()
+    {
+        // 真实场景：整型状态 vs 浮点字面量
+        _state.Set("gold", 100);
+        DslExpressionEvaluator.Evaluate("gold == 100.0", _state).Should().Be(true);
+    }
+
+    [Fact]
+    public void Evaluate_NotEqual_IntStateVsDoubleLiteral()
+    {
+        _state.Set("gold", 100);
+        DslExpressionEvaluator.Evaluate("gold != 100.0", _state).Should().Be(false);
+    }
+
+    [Fact]
+    public void Evaluate_Equal_DifferentNumericValue()
+    {
+        _state.Set("gold", 100);
+        DslExpressionEvaluator.Evaluate("gold == 101.0", _state).Should().Be(false);
+    }
+
+    [Fact]
+    public void Evaluate_Equal_String()
+    {
+        DslExpressionEvaluator.Evaluate("\"a\" == \"a\"", _state).Should().Be(true);
+    }
+
+    [Fact]
+    public void Evaluate_Equal_String_Different()
+    {
+        DslExpressionEvaluator.Evaluate("\"a\" == \"b\"", _state).Should().Be(false);
+    }
+
+    [Fact]
+    public void Evaluate_Equal_NullOperandVsZero()
+    {
+        // 未设置变量视为 null，与数值比较判不等（锁定既有语义，非行为变更）
+        DslExpressionEvaluator.Evaluate("missing == 0", _state).Should().Be(false);
+    }
+
+    [Fact]
+    public void Evaluate_Equal_Bool()
+    {
+        DslExpressionEvaluator.Evaluate("true == true", _state).Should().Be(true);
+        DslExpressionEvaluator.Evaluate("true == false", _state).Should().Be(false);
+    }
+
+    [Fact]
+    public void EvaluateBool_Equal_IntStateVsDoubleLiteral()
+    {
+        _state.Set("gold", 100);
+        DslExpressionEvaluator.EvaluateBool("gold == 100.0", _state).Should().BeTrue();
+        DslExpressionEvaluator.EvaluateBool("gold != 100.0", _state).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Evaluate_Equal_LongVsInt()
+    {
+        _state.Set("big", 300L);
+        DslExpressionEvaluator.Evaluate("big == 300", _state).Should().Be(true);
+    }
+
+    [Fact]
+    public void Evaluate_Number_DecimalLiteral_NotMangled()
+    {
+        // 解析器 bug 回归：小数点曾被丢弃，100.0 误拼为 1000、0.5 误拼为 05
+        DslExpressionEvaluator.Evaluate("0.5", _state).Should().Be(0.5);
+        DslExpressionEvaluator.Evaluate("100.0", _state).Should().Be(100.0);
+    }
+
+    [Fact]
+    public void Evaluate_Arithmetic_Decimal()
+    {
+        DslExpressionEvaluator.Evaluate("1.5 + 1.2", _state).Should().Be(2.7);
+    }
+
+    // ====== E3 延伸：三元 / 一元 / 短路（行为锁定，非 bug） ======
+
+    [Fact]
+    public void Evaluate_Ternary_TrueBranch()
+    {
+        _state.Set("gold", 100);
+        DslExpressionEvaluator.Evaluate("gold >= 100 ? 1 : 2", _state).Should().Be(1);
+    }
+
+    [Fact]
+    public void Evaluate_Ternary_FalseBranch()
+    {
+        _state.Set("gold", 50);
+        DslExpressionEvaluator.Evaluate("gold >= 100 ? 1 : 2", _state).Should().Be(2);
+    }
+
+    [Fact]
+    public void Evaluate_Unary_Minus()
+    {
+        _state.Set("gold", 50);
+        DslExpressionEvaluator.Evaluate("-gold", _state).Should().Be(-50.0);
+    }
+
+    [Fact]
+    public void EvaluateBool_Unary_Not()
+    {
+        _state.Set("gold", 50);
+        DslExpressionEvaluator.EvaluateBool("!(gold >= 100)", _state).Should().BeTrue();
+    }
+
+    [Fact]
+    public void EvaluateBool_ShortCircuit_And()
+    {
+        _state.Set("gold", 50);
+        DslExpressionEvaluator.EvaluateBool("gold >= 100 && gold < 200", _state).Should().BeFalse();
+        DslExpressionEvaluator.EvaluateBool("gold >= 50 && gold < 200", _state).Should().BeTrue();
+    }
+
+    [Fact]
+    public void EvaluateBool_ShortCircuit_Or()
+    {
+        _state.Set("gold", 100);
+        DslExpressionEvaluator.EvaluateBool("gold >= 100 || gold < 0", _state).Should().BeTrue();
+    }
 }

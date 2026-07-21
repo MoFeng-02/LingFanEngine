@@ -45,7 +45,7 @@ public static class DslExpressionParser
     private static readonly Parser<char, Expr> Number =
         (from intPart in Digit.AtLeastOnceString()
          from fracPart in Try(Char('.').Then(Digit.AtLeastOnceString())).Optional()
-         select MakeNumber(intPart + fracPart.GetValueOrDefault("")))
+         select MakeNumber(intPart + (fracPart.HasValue ? "." + fracPart.Value : "")))
         .Labelled("number");
 
     /// <summary>

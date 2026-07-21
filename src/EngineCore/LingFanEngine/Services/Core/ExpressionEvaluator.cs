@@ -140,8 +140,8 @@ public static class ExpressionEvaluator
             "*" => ToDouble(lVal) * ToDouble(rVal),
             "/" => ToDouble(rVal) != 0 ? ToDouble(lVal) / ToDouble(rVal) : 0,
             "%" => ToDouble(rVal) != 0 ? ToDouble(lVal) % ToDouble(rVal) : 0,
-            "==" => Equals(lVal, rVal),
-            "!=" => !Equals(lVal, rVal),
+            "==" => AreEqual(lVal, rVal),
+            "!=" => !AreEqual(lVal, rVal),
             ">" => ToDouble(lVal) > ToDouble(rVal),
             "<" => ToDouble(lVal) < ToDouble(rVal),
             ">=" => ToDouble(lVal) >= ToDouble(rVal),
@@ -258,7 +258,28 @@ public static class ExpressionEvaluator
     // ====== 类型转换辅助 ======
 
     private static double ToDouble(object? val) =>
-        Convert.ToDouble(val ?? 0, CultureInfo.InvariantCulture);
+        Convert.ToDouble(UnwrapJson(val) ?? 0, CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// 将存档/嵌套字典反序列化残留的 JsonElement 还原为 .NET 原生类型，
+    /// 使状态值（常含 JsonElement）参与比较/算术时与字面量一致（B7 配套）。
+    /// </summary>
+    private static object? UnwrapJson(object? v)
+    {
+        if (v is not System.Text.Json.JsonElement je) return v;
+        switch (je.ValueKind)
+        {
+            case System.Text.Json.JsonValueKind.Number:
+                if (je.TryGetInt32(out var i)) return i;
+                if (je.TryGetInt64(out var l)) return l;
+                return je.GetDouble();
+            case System.Text.Json.JsonValueKind.String: return je.GetString();
+            case System.Text.Json.JsonValueKind.True: return true;
+            case System.Text.Json.JsonValueKind.False: return false;
+            case System.Text.Json.JsonValueKind.Null: return null;
+            default: return je;
+        }
+    }
 
     private static int ConvertToInt(object? val) =>
         Convert.ToInt32(val ?? 0, CultureInfo.InvariantCulture);
@@ -273,6 +294,27 @@ public static class ExpressionEvaluator
         if (val is string s) return !string.IsNullOrEmpty(s);
         return true;
     }
+
+    /// <summary>
+    /// 相等比较——数值类型跨类型归一（如 int 与 double 比较，及 JsonElement 数值），其余类型走 object.Equals 以保留字符串/布尔/自定义类型的相等语义。
+    /// <para>修复：原先直接 object.Equals 导致 <c>0 == 0.0</c>（int 装箱 vs double 装箱）及状态值（JsonElement）与字面量比较时误判不等（B7）。</para>
+    /// </summary>
+    private static bool AreEqual(object? l, object? r)
+    {
+        l = UnwrapJson(l);
+        r = UnwrapJson(r);
+        if (ReferenceEquals(l, r)) return true;   // 同引用或同为 null
+        if (l is null || r is null) return false; // 仅一方为 null
+        if (IsNumeric(l) && IsNumeric(r))
+            return ToDouble(l) == ToDouble(r);     // 跨数值类型按 double 归一比较
+        return Equals(l, r);                        // 字符串/布尔/同类型值走默认语义
+    }
+
+    /// <summary>
+    /// 判断值是否为数值类型（用于 ==/!= 跨类型归一）
+    /// </summary>
+    private static bool IsNumeric(object? v) =>
+        v is sbyte or byte or short or ushort or int or uint or long or ulong or float or double or decimal;
 
     /// <summary>
     /// 加法——数字相加或字符串拼接
