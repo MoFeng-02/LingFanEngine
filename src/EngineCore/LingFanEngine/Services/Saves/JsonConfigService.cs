@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LingFanEngine.Abstractions.Interfaces.Saves;
+using LingFanEngine.Services.Core;
 
 namespace LingFanEngine.Services.Saves;
 
@@ -44,8 +45,18 @@ public class JsonConfigService : IConfigService
             if (File.Exists(_configPath))
             {
                 var json = File.ReadAllText(_configPath);
-                _config = JsonSerializer.Deserialize(json,
-                    LingFanEngine.Abstractions.Serialization.LfJsonContext.Default.DictionaryStringObject) ?? new();
+                var raw = JsonSerializer.Deserialize(json,
+                    LingFanEngine.Abstractions.Serialization.LfJsonContext.Default.DictionaryStringObject)
+                    ?? new Dictionary<string, object?>();
+
+                // 源生成 DictionaryStringObject 将 JSON 数字反序列化为 JsonElement（装箱），
+                // 直接存入会导致 Get<int> 等类型化读取永远返回默认值。
+                // 统一经 JsonValueConverter 还原为原生类型，确保磁盘重载后的配置可被类型化读取。
+                var converter = new JsonValueConverter();
+                var converted = new Dictionary<string, object?>(raw.Count);
+                foreach (var kvp in raw)
+                    converted[kvp.Key] = kvp.Value is JsonElement je ? converter.Convert(je) : kvp.Value;
+                _config = converted;
             }
         }
         catch (Exception ex)

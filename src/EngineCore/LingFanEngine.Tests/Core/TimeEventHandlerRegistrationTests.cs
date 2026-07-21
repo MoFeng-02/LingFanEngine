@@ -2,6 +2,9 @@ using FluentAssertions;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Extensions;
 using LingFanEngine.Services.Core.Handlers;
+using LingFanEngine.Services.Scripting;
+using LingFanEngine.Tests.Fakes;
+using LingFanEngine.Tests.Handlers;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -32,5 +35,18 @@ public class TimeEventHandlerRegistrationTests
             "unregister_time_event / Ctrl.UnregisterEvent 需要 UnregisterTimeEventHandler，否则静默空操作");
         registeredImplementations.Should().Contain(typeof(RestoreTimeEventHandler),
             "restore_time_event / Ctrl.RestoreEvent 需要 RestoreTimeEventHandler，否则静默空操作");
+    }
+
+    [Fact]
+    public void RegisteredSetTimeEventHandler_PerformsRegistration_WhenSchedulerPresent()
+    {
+        // 端到端行为校验：DI 注册的 SetTimeEventHandler 不只是被注册，而是真的产生副作用。
+        // 这把 E 类「仅校验注册描述符」升级为「构造服务 + 跑 Handle + 断言副作用」。
+        var scheduler = new FakeEventScheduler();
+        var ctx = new FakeCommandContext { EventScheduler = scheduler };
+
+        new SetTimeEventHandler().Handle(new SetTimeEventCommand { Id = "e1", Hour = 8, Minute = 30 }, ctx);
+
+        scheduler.Registrations.Should().ContainSingle(r => r.Id == "e1" && r.Hour == 8 && r.Minute == 30);
     }
 }

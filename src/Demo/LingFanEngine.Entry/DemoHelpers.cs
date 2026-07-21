@@ -23,7 +23,7 @@ public static class DemoHelpers
                 ["text"] = text, ["x"] = x, ["y"] = y,
                 ["fontSize"] = fontSize, ["color"] = color,
                 ["halign"] = halign, ["valign"] = valign,
-                ["fontFamily"] = font
+                ["font"] = font
             },
             Order = order
         };

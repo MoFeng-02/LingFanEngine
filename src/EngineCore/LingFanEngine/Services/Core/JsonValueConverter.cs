@@ -23,19 +23,18 @@ public class JsonValueConverter : IJsonValueConverter
 
     private static readonly ImmutableArray<Func<JsonElement, object?>> s_defaultConverters =
     [
-        // 顺序很重要：int 最常见，优先于 short/byte
-        je => je.TryGetInt32(out var i) ? i : null,
-        je => je.TryGetInt64(out var l) ? l : null,
-        je => je.TryGetInt16(out var s) ? s : null,
-        je => je.TryGetByte(out var t) ? t : null,
+        // 注意：.NET 10 的 JsonElement.TryGetXxx 对非目标 ValueKind 会抛 InvalidOperationException，
+        // 因此每个数字转换器必须先校验 ValueKind == Number，避免对非数字元素误抛异常。
+        // Guid/DateTime 等字符串型转换器已从默认链移除：原实现仅 Number 分支走链，字符串从不自动转换，
+        // 移除可避免“日期格式字符串被误转”的行为变更；需此类转换请通过 RegisterCustomConverter 显式注册。
+        je => je.ValueKind == JsonValueKind.Number && je.TryGetInt32(out var i) ? i : null,
+        je => je.ValueKind == JsonValueKind.Number && je.TryGetInt64(out var l) ? l : null,
+        je => je.ValueKind == JsonValueKind.Number && je.TryGetInt16(out var s) ? s : null,
+        je => je.ValueKind == JsonValueKind.Number && je.TryGetByte(out var t) ? t : null,
         // 浮点数：double 优先于 float（JSON 数字默认精度）
-        je => je.TryGetDouble(out var d) ? d : null,
-        je => je.TryGetSingle(out var f) ? f : null,
-        je => je.TryGetDecimal(out var d) ? d : null,
-        // 非数值类型
-        je => je.TryGetGuid(out var guid) ? guid : null,
-        je => je.TryGetDateTimeOffset(out var t) ? t : null,
-        je => je.TryGetDateTime(out var t) ? t : null,
+        je => je.ValueKind == JsonValueKind.Number && je.TryGetDouble(out var d) ? d : null,
+        je => je.ValueKind == JsonValueKind.Number && je.TryGetSingle(out var f) ? f : null,
+        je => je.ValueKind == JsonValueKind.Number && je.TryGetDecimal(out var d) ? d : null,
     ];
 
     /// <summary>
@@ -60,11 +59,21 @@ public class JsonValueConverter : IJsonValueConverter
     {
         if (value is JsonElement je)
         {
+            // 统一走合并后的转换器链（自定义转换器在前），首个非 null 结果即采用。
+            // 此前仅数字分支走链，字符串/数组/对象等绕过链——导致 RegisterCustomConverter
+            // 对字符串等类型失效。现对任意类型均先尝试链，未命中再按 JsonElement 类型还原。
+            var converters = _allConverters;
+            foreach (var converter in converters)
+            {
+                var result = converter(je);
+                if (result != null)
+                    return result;
+            }
+
+            // 链未命中（默认转换器对该类型无匹配）：按原生类型还原
             return je.ValueKind switch
             {
-                // 直接遍历 _allConverters——ImmutableArray 不可变快照，无需加锁
-                // 用 foreach 而非 LINQ（避免迭代器分配）
-                JsonValueKind.Number => ConvertNumber(je),
+                JsonValueKind.Number => je.GetDecimal(),
                 JsonValueKind.True => true,
                 JsonValueKind.False => false,
                 JsonValueKind.String => je.GetString(),
@@ -76,19 +85,5 @@ public class JsonValueConverter : IJsonValueConverter
             };
         }
         return value;
-    }
-
-    /// <summary>数字转换——遍历转换器链，第一个非 null 结果即返回</summary>
-    private object? ConvertNumber(JsonElement je)
-    {
-        // 拍快照——原子读引用
-        var converters = _allConverters;
-        foreach (var converter in converters)
-        {
-            var result = converter(je);
-            if (result != null)
-                return result;
-        }
-        return je.GetDecimal();
     }
 }

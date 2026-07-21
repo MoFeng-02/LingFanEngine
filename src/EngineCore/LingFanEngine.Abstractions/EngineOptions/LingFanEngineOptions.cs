@@ -290,11 +290,23 @@ public class LingFanEngineOptions
     /// <summary>
     /// 根据当前平台获取目标帧率
     /// </summary>
+    /// <summary>
+    /// 运行时平台。默认 Unknown（自动检测）；宿主可在启动时显式设为 Desktop/Mobile 以覆盖自动检测（便于测试或特殊环境）。
+    /// </summary>
+    public RuntimePlatform RuntimePlatform { get; set; } = RuntimePlatform.Unknown;
+
+    /// <summary>
+    /// 根据当前平台获取目标帧率
+    /// </summary>
     public int GetTargetFps()
     {
-        if (OperatingSystem.IsAndroid() || OperatingSystem.IsIOS())
-            return MobileTargetFps;
-        return DesktopTargetFps;
+        bool isMobile = RuntimePlatform switch
+        {
+            RuntimePlatform.Mobile => true,
+            RuntimePlatform.Desktop => false,
+            _ => OperatingSystem.IsAndroid() || OperatingSystem.IsIOS()
+        };
+        return isMobile ? MobileTargetFps : DesktopTargetFps;
     }
 
     /// <summary>

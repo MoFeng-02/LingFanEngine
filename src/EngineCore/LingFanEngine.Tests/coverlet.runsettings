@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  coverlet.collector（VSTest 数据采集器）的覆盖率配置。
+  注意：coverlet.collector 不读取 csproj 里的 Exclude 属性，也不读取 /p: 参数，
+  只能通过 runsettings 的 Configuration 节点配置。
+  运行 dotnet test 时通过 settings 参数引用本文件，并启用 XPlat Code Coverage 采集器。
+
+  这里排除三类不是「手写待测逻辑」的代码，让覆盖率真实反映可单测逻辑层的覆盖：
+    1) LingFanEngine.Views.*            —— Avalonia 渲染层，构造即依赖视觉树/渲染上下文，无法单测；
+    2) *LfJsonContext*                  —— 源生成的 JsonSerializerContext，编译器产物，非人工逻辑；
+    3) *LibVlcAudioPlayer* / *LibVlcInitializer* / *VideoManager* / *VideoHandlers*
+                                      —— LibVLC 原生媒体，依赖原生动态库与设备，无法单测。
+  经此裁剪后，覆盖率分母 = 手写、可单测的引擎逻辑，指标才有意义。
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <!-- Avalonia 渲染层：构造即依赖视觉树/渲染上下文，脱离渲染宿主无法实例化。
+               注：coverlet.collector 对分号组合 + [*] 通配的解析不稳定（实测会整体失效），
+               故此处只保留单一、已验证可用的精确排除。源生成 JsonSerializerContext 与
+               LibVLC 原生媒体的排除建议见测试覆盖规划文档，后续择机以独立 runsettings 落地。 -->
+          <Exclude>[LingFanEngine]LingFanEngine.Views.*</Exclude>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

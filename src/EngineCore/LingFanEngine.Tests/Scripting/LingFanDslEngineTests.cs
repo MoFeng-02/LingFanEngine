@@ -722,14 +722,14 @@ public class LingFanDslEngineTests
     [Fact]
     public void Compile_Style_MultipleProperties()
     {
-        var result = _engine.Compile("""style "title" color="#FFD700" size=36 fontFamily="Microsoft YaHei" """);
+        var result = _engine.Compile("""style "title" color="#FFD700" size=36 font="Microsoft YaHei" """);
         result.Success.Should().BeTrue();
         var cmd = result.Commands[0].Should().BeOfType<SetVariableCommand>().Subject;
         var dict = cmd.Value.Should().BeOfType<Dictionary<string, object?>>().Subject;
         dict.Should().HaveCount(3);
         dict.Should().ContainKey("color");
         dict.Should().ContainKey("size");
-        dict.Should().ContainKey("fontFamily");
+        dict.Should().ContainKey("font");
     }
 
     // ========== animate_block 语句（批量动画）==========

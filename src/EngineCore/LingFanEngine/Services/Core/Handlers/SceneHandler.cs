@@ -20,6 +20,8 @@ public class SceneHandler : ICommandHandler<SceneCommand>, IDefaultCommandHandle
             ctx.DslExecutor?.ClearCheckpoints();  // Scene 命令是硬重置，清检查点
             ctx.ResetInteractionState();
             ctx.SceneStack?.Clear();
+            // 同为硬重置：清除 Menu 返回标记，防止后续 navigate 误判为"返回游戏"
+            ctx.State.Set(StateKeys.Scene.MenuReturnTo, (string?)null);
         }
         else
         {

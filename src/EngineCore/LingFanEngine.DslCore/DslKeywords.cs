@@ -134,7 +134,7 @@ public static class DslKeywords
         // debug 参数
         "level",
         // character / style 属性键
-        "side", "name", "color", "font", "size", "fontFamily",
+        "side", "name", "color", "font", "size",
         // shake 参数
         "intensity",
         // define / let 修饰符

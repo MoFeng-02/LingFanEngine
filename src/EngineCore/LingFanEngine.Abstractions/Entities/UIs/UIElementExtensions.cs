@@ -64,7 +64,7 @@ public static class UIElementExtensions
 
     public static UIElementEntity Font(this UIElementEntity e, string font)
     {
-        e.Properties["fontFamily"] = font;
+        e.Properties["font"] = font;
         return e;
     }
 

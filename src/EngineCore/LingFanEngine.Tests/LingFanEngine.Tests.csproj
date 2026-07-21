@@ -9,6 +9,12 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
 
+  <!--
+    覆盖率排除 Avalonia 渲染层 LingFanEngine.Views.* 的规则位于 coverlet.runsettings
+    （coverlet.collector 不读取本 csproj 的 MSBuild 属性，须用 runsettings 配置）。
+    运行方式见 coverlet.runsettings 文件头注释。
+  -->
+
   <ItemGroup>
     <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
@@ -23,6 +29,7 @@
   <ItemGroup>
     <ProjectReference Include="..\LingFanEngine\LingFanEngine.csproj" />
     <ProjectReference Include="..\LingFanEngine.Abstractions\LingFanEngine.Abstractions.csproj" />
+    <ProjectReference Include="..\LingFanEngine.DslCore\LingFanEngine.DslCore.csproj" />
   </ItemGroup>
 
 </Project>

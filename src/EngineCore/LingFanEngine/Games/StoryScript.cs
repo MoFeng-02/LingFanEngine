@@ -297,7 +297,7 @@ public abstract class StoryScript
                 ["color"] = color,
                 ["halign"] = halign,
                 ["valign"] = "top",
-                ["fontFamily"] = font
+                ["font"] = font
             },
             Order = order
         };

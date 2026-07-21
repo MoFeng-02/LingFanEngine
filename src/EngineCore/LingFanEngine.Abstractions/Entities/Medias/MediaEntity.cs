@@ -27,7 +27,7 @@ public class MediaEntity : BaseEntity
     /// </summary>
     public bool Loop { get; set; }
     /// <summary>
-    /// 音量（0.0 - 1.0），默认 1.0
+    /// 音量（0.0 - 1.0），默认 1.0（与 MediaData / StateInitializer 的视频音量默认一致）
     /// </summary>
-    public float Volume { get; set; }
+    public float Volume { get; set; } = 1.0f;
 }
