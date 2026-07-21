@@ -109,17 +109,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Compute version
-        id: version
-        shell: bash
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
       - name: Package template + generate manifest
         shell: bash
         run: |
           set -euo pipefail
-          VER="${{ steps.version.outputs.VERSION }}"
-          TAG="${{ github.ref_name }}"
+          # 模板版本独立于引擎 tag：仅在 src/Template/V1 内容变化时手动 bump
+          # src/Template/template-meta.json 的 version，避免每次引擎发版都抬高模板版本
+          # 导致所有 SDK 重复下载同一份没变过的模板。
+          META="src/Template/template-meta.json"
+          VER=$(jq -r '.version' "$META")
+          MIN_SDK=$(jq -r '.minSdkVersion' "$META")
+          TAG="${{ github.ref_name }}"   # 仅用于定位本次 Release 的 asset 下载地址
           TPL_DIR="src/Template/V1"
           ZIP="LingFanEngine.Template.zip"
 
@@ -135,13 +135,15 @@ jobs:
             "assetUrl": "https://github.com/MoFeng-02/LingFanEngine/releases/download/$TAG/$ZIP",
             "assetSha256": "$SHA",
             "publishedUtc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "minSdkVersion": "$VER",
+            "minSdkVersion": "$MIN_SDK",
             "releaseNotesUrl": "https://github.com/MoFeng-02/LingFanEngine/releases/tag/$TAG",
             "mirrors": [
               "https://gitee.com/MoFeng-02/LingFanEngine/releases/download/$TAG/$ZIP"
             ]
           }
           EOF
+
+          echo "模板版本=$VER（独立于引擎 tag $TAG）；minSdkVersion=$MIN_SDK；sha256=$SHA"
 
       - name: Upload template package
         uses: actions/upload-artifact@v4

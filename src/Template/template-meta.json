@@ -1,0 +1,5 @@
+{
+  "version": "1.0.0",
+  "minSdkVersion": "1.0.0",
+  "_comment": "模板版本的唯一来源，独立于引擎 tag。仅当 src/Template/V1 内容真正变化时才手动 bump version（避免每次引擎发版都抬高模板版本，导致 SDK 重复下载同一内容）。minSdkVersion 表示此模板要求的最低 SDK 版本。bump version 时请同步更新 TemplateDefaults.BuiltinVersion。"
+}
