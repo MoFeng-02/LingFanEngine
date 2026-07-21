@@ -56,6 +56,7 @@ public class TemplateService : ITemplateService
     {
         ".tmp",
         ".bak",
+        ".zip",
     };
 
     // C# 标识符正则：字母/下划线开头，后跟字母/数字/下划线
