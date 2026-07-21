@@ -41,5 +41,6 @@ public static class EngineUpdateDefaults
         "raw.githubusercontent.com",
         "github.com",
         "github.io",
+        "gitee.com",
     ];
 }

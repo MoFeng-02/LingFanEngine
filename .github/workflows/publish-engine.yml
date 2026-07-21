@@ -103,6 +103,54 @@ jobs:
             LingFanEngine.DLLs.zip
             updates/latest.json
 
+  publish-template:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute version
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Package template + generate manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          VER="${{ steps.version.outputs.VERSION }}"
+          TAG="${{ github.ref_name }}"
+          TPL_DIR="src/Template/V1"
+          ZIP="LingFanEngine.Template.zip"
+
+          # 打包模板目录（排除构建产物与 VCS）
+          (cd "$TPL_DIR" && zip -r "${{ github.workspace }}/$ZIP" . \
+            -x "*/bin/*" "*/obj/*" "*/.vs/*" "*/.git/*" "*.tmp" "*.bak")
+
+          SHA=$(sha256sum "$ZIP" | cut -d' ' -f1)
+
+          cat > updates/template-latest.json <<EOF
+          {
+            "version": "$VER",
+            "assetUrl": "https://github.com/MoFeng-02/LingFanEngine/releases/download/$TAG/$ZIP",
+            "assetSha256": "$SHA",
+            "publishedUtc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "minSdkVersion": "$VER",
+            "releaseNotesUrl": "https://github.com/MoFeng-02/LingFanEngine/releases/tag/$TAG",
+            "mirrors": [
+              "https://gitee.com/MoFeng-02/LingFanEngine/releases/download/$TAG/$ZIP"
+            ]
+          }
+          EOF
+
+      - name: Upload template package
+        uses: actions/upload-artifact@v4
+        with:
+          name: template-package
+          path: |
+            LingFanEngine.Template.zip
+            updates/template-latest.json
+
   publish-sdk-windows:
     runs-on: windows-latest
     steps:
@@ -124,7 +172,7 @@ jobs:
         run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${{ steps.version.outputs.VERSION }}
 
       - name: AOT publish SDK.Desktop (win-x64)
-        run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:Version=${{ steps.version.outputs.VERSION }}
+        run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:PackTemplate=true -p:Version=${{ steps.version.outputs.VERSION }}
 
       # Windows runner 默认无 Unix 版 zip 命令，改用 PowerShell 原生 Compress-Archive
       - name: Package
@@ -165,7 +213,7 @@ jobs:
         run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${{ steps.version.outputs.VERSION }}
 
       - name: AOT publish SDK.Desktop (linux-x64)
-        run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:Version=${{ steps.version.outputs.VERSION }}
+        run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:PackTemplate=true -p:Version=${{ steps.version.outputs.VERSION }}
 
       - name: Package
         shell: bash
@@ -199,7 +247,7 @@ jobs:
         run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${{ steps.version.outputs.VERSION }}
 
       - name: AOT publish SDK.Desktop (osx-arm64)
-        run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r osx-arm64 --self-contained true -p:PublishAot=true -p:Version=${{ steps.version.outputs.VERSION }}
+        run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r osx-arm64 --self-contained true -p:PublishAot=true -p:PackTemplate=true -p:Version=${{ steps.version.outputs.VERSION }}
 
       - name: Package
         shell: bash
@@ -214,7 +262,7 @@ jobs:
           path: LingFanEngine.SDK.Desktop-osx-arm64.zip
 
   release:
-    needs: [publish-engine, publish-sdk-windows, publish-sdk-linux, publish-sdk-macos]
+    needs: [publish-engine, publish-template, publish-sdk-windows, publish-sdk-linux, publish-sdk-macos]
     runs-on: ubuntu-latest
     # 仅 release job 需要写权限创建 Release；其余 job 继承仓库默认 token（含 actions 作用域，
     # 供 upload/download-artifact 正常调 API）。不在 workflow 顶层写 permissions，避免未列出作用域被降级为 none。
@@ -237,6 +285,8 @@ jobs:
           files: |
             artifacts/engine-package/LingFanEngine.DLLs.zip
             artifacts/engine-package/updates/latest.json
+            artifacts/template-package/LingFanEngine.Template.zip
+            artifacts/template-package/updates/template-latest.json
             artifacts/sdk-windows/LingFanEngine.SDK.Desktop-win-x64.zip
             artifacts/sdk-linux/LingFanEngine.SDK.Desktop-linux-x64.zip
             artifacts/sdk-macos/LingFanEngine.SDK.Desktop-osx-arm64.zip

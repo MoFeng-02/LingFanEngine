@@ -23,4 +23,10 @@ public class TemplateUpdateManifest
 
     /// <summary>更新说明 / Release 链接（可选）。</summary>
     public string ReleaseNotesUrl { get; set; } = "";
+
+    /// <summary>
+    /// 备用下载镜像（可选）。当 <see cref="AssetUrl"/> 下载失败时，SDK 会依次尝试此处列出的 URL。
+    /// <para>典型用途：GitHub Release 不可达时自动 fallback 到 Gitee Release。</para>
+    /// </summary>
+    public List<string> Mirrors { get; set; } = new();
 }

@@ -106,15 +106,39 @@ public class TemplateUpdateService : ITemplateUpdateService
             if (Directory.Exists(extractedDir)) Directory.Delete(extractedDir, recursive: true);
             PathHelper.EnsureDirectory(extractedDir);
 
-            // 1. 下载
-            var client = CreateClient();
-            using (var resp = await client.GetAsync(manifest.AssetUrl, HttpCompletionOption.ResponseHeadersRead, ct))
+            // 1. 下载：优先 AssetUrl，失败则依次尝试 Mirrors（GitHub → Gitee 等）
+            var urls = new List<string> { manifest.AssetUrl };
+            if (manifest.Mirrors is { Count: > 0 })
             {
-                resp.EnsureSuccessStatusCode();
-                await using var src = await resp.Content.ReadAsStreamAsync(ct);
-                await using var dst = File.Create(zipPath);
-                await src.CopyToAsync(dst, ct);
+                urls.AddRange(manifest.Mirrors.Where(u => !string.IsNullOrWhiteSpace(u)));
             }
+            urls = urls.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+            var lastException = (Exception?)null;
+            var client = CreateClient();
+            foreach (var url in urls)
+            {
+                try
+                {
+                    Log($"  正在从 {new Uri(url).Host} 下载...");
+                    using (var resp = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct))
+                    {
+                        resp.EnsureSuccessStatusCode();
+                        await using var src = await resp.Content.ReadAsStreamAsync(ct);
+                        await using var dst = File.Create(zipPath);
+                        await src.CopyToAsync(dst, ct);
+                    }
+                    lastException = null;
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    Log($"  下载失败（{new Uri(url).Host}）：{ex.Message}");
+                }
+            }
+            if (lastException != null)
+                throw new InvalidOperationException("所有模板下载源均不可用。", lastException);
             Log("  下载完成。");
 
             // 2. 整包 sha256 校验（防篡改）
