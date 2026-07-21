@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  真实覆盖率配置（盲区分析 T15）。
+  在现用 coverlet.runsettings 基础上，额外排除「源生成代码」与「原生媒体层」，
+  让覆盖率分母 = 手写、可单测的引擎逻辑，得到真实的行/分支覆盖率。
+
+  注意：coverlet.collector 对多 <Exclude> 节点仅首条生效、对分号组合解析不稳定；
+  故此处用单个 <Exclude> 节点、多模式换行分隔（已验证可用）。
+
+  排除项：
+    1) [LingFanEngine]LingFanEngine.Views.*        —— Avalonia 渲染层，无法单测；
+    2) [LingFanEngine.Abstractions]*LfJsonContext* —— 源生成的 JsonSerializerContext（编译器产物）；
+    3) [LingFanEngine]*LibVlcAudioPlayer* / *LibVlcInitializer* / *VideoManager*
+                                                  —— LibVLC 原生媒体，依赖原生动态库，无法单测。
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <Exclude>
+[LingFanEngine]LingFanEngine.Views.*
+[LingFanEngine.Abstractions]*LfJsonContext*
+[LingFanEngine]*LibVlcAudioPlayer*
+[LingFanEngine]*LibVlcInitializer*
+[LingFanEngine]*VideoManager*
+          </Exclude>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

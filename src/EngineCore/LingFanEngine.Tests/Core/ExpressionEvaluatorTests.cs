@@ -358,4 +358,73 @@ public class ExpressionEvaluatorTests
         _state.Set("gold", 100);
         DslExpressionEvaluator.EvaluateBool("gold >= 100 || gold < 0", _state).Should().BeTrue();
     }
+
+    // ====== 内置函数 min/max/abs/clamp 完整断言（此前仅 random 有测试）======
+
+    [Fact]
+    public void Evaluate_Min()
+    {
+        DslExpressionEvaluator.Evaluate("min(3, 7)", _state).Should().Be(3.0);
+        DslExpressionEvaluator.Evaluate("min(9, 2)", _state).Should().Be(2.0);
+    }
+
+    [Fact]
+    public void Evaluate_Max()
+    {
+        DslExpressionEvaluator.Evaluate("max(3, 7)", _state).Should().Be(7.0);
+        DslExpressionEvaluator.Evaluate("max(9, 2)", _state).Should().Be(9.0);
+    }
+
+    [Fact]
+    public void Evaluate_Abs()
+    {
+        DslExpressionEvaluator.Evaluate("abs(-5)", _state).Should().Be(5.0);
+        DslExpressionEvaluator.Evaluate("abs(5)", _state).Should().Be(5.0);
+    }
+
+    [Fact]
+    public void Evaluate_Clamp()
+    {
+        DslExpressionEvaluator.Evaluate("clamp(15, 0, 10)", _state).Should().Be(10.0);
+        DslExpressionEvaluator.Evaluate("clamp(-5, 0, 10)", _state).Should().Be(0.0);
+        DslExpressionEvaluator.Evaluate("clamp(5, 0, 10)", _state).Should().Be(5.0);
+    }
+
+    [Fact]
+    public void Evaluate_MinMax_WithVariables()
+    {
+        _state.Set("gold", 100);
+        DslExpressionEvaluator.Evaluate("min(gold, 50)", _state).Should().Be(50.0);
+        DslExpressionEvaluator.Evaluate("max(gold, 50)", _state).Should().Be(100.0);
+    }
+
+    // ====== 嵌套字典点分 key 边界（此前仅测扁平 player.name）======
+
+    [Fact]
+    public void Evaluate_NestedDict_DottedKey()
+    {
+        var player = new Dictionary<string, object?>
+        {
+            ["stats"] = new Dictionary<string, object?> { ["hp"] = 80, ["mp"] = 40 },
+            ["name"] = "玩家"
+        };
+        _state.Set("player", player);
+
+        DslExpressionEvaluator.Evaluate("player.stats.hp", _state).Should().Be(80);
+        DslExpressionEvaluator.Evaluate("player.stats.mp", _state).Should().Be(40);
+        DslExpressionEvaluator.Evaluate("player.name", _state).Should().Be("玩家");
+    }
+
+    [Fact]
+    public void ReplaceText_NestedDict_DottedKey()
+    {
+        var player = new Dictionary<string, object?>
+        {
+            ["stats"] = new Dictionary<string, object?> { ["hp"] = 80 }
+        };
+        _state.Set("player", player);
+
+        var result = ExpressionParser.Replace("{player.stats.hp}", _state);
+        result.Should().Be("80");
+    }
 }
