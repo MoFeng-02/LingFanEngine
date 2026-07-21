@@ -12,6 +12,11 @@
 	<PropertyGroup>
 		<ApplicationManifest>app.manifest</ApplicationManifest>
 		<UserSecretsId>43e249d1-eefd-4e91-8712-bba1ef17e417</UserSecretsId>
+		<!-- 应用默认图标（资源管理器/任务栏）；EXE 图标必须为 .ico，由 LingFanIcon_64x64.png 派生 -->
+		<ApplicationIcon>..\..\..\icons\LingFanIcon_64x64.ico</ApplicationIcon>
+		<!-- 显示名称与产品名（文件属性/任务栏/发布名统一为 LingFan Engine Sdk） -->
+		<AssemblyTitle>LingFan Engine Sdk</AssemblyTitle>
+		<AssemblyProduct>LingFan Engine Sdk</AssemblyProduct>
 	</PropertyGroup>
 
 	<ItemGroup>

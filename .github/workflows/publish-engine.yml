@@ -233,6 +233,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: LingFan Engine Sdk
           files: |
             artifacts/engine-package/LingFanEngine.DLLs.zip
             artifacts/engine-package/updates/latest.json

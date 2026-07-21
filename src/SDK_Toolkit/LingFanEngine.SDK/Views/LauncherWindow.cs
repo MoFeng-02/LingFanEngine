@@ -5,6 +5,7 @@ using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using System.IO;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.ViewModels;
 
@@ -41,6 +42,8 @@ public class LauncherWindow : Window
         DataContext = viewModel;
 
         Title = "灵泛引擎 SDK — 启动器";
+        // 应用默认图标（与 EXE ApplicationIcon 一致）
+        Icon = new WindowIcon(Path.Combine(AppContext.BaseDirectory, "Icons", "LingFanIcon_64x64.png"));
         Width = 900;
         Height = 600;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;

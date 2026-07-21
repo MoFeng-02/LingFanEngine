@@ -66,6 +66,8 @@ public class WorkspaceWindow : Window
         _session = services.GetRequiredService<IProjectSession>();
 
         Title = "灵泛引擎 SDK — 工作台";
+        // 应用默认图标（与 EXE ApplicationIcon 一致）
+        Icon = new WindowIcon(Path.Combine(AppContext.BaseDirectory, "Icons", "LingFanIcon_64x64.png"));
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Width = 1280;
         Height = 800;
