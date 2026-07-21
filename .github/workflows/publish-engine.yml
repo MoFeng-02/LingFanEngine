@@ -123,9 +123,9 @@ jobs:
           TPL_DIR="src/Template/V1"
           ZIP="LingFanEngine.Template.zip"
 
-          # 打包模板目录（排除构建产物与 VCS）
+          # 打包模板目录（排除构建产物、VCS 以及任何 zip 残留）
           (cd "$TPL_DIR" && zip -r "${{ github.workspace }}/$ZIP" . \
-            -x "*/bin/*" "*/obj/*" "*/.vs/*" "*/.git/*" "*.tmp" "*.bak")
+            -x "*/bin/*" "*/obj/*" "*/.vs/*" "*/.git/*" "*.zip" "*.tmp" "*.bak")
 
           SHA=$(sha256sum "$ZIP" | cut -d' ' -f1)
 

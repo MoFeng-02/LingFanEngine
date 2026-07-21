@@ -459,6 +459,8 @@ $RECYCLE.BIN/
 # 以及 SDK 模板资源目录（Template/V1/.../Resources/Media），导致 CI 编译失败 / 模板资源缺失。
 # 运行时存档与媒体输出均在 bin/ obj/ 下，已被上面的 [Bb]in/ [Oo]bj/ 规则覆盖，无需单独忽略。
 *.lfpack
+# SDK 模板打包产物（本地 build / SDK 嵌入时会生成），不应提交，防止 zip 套 zip
+src/Template/V1/template.zip
 /灵泛引擎需求文档
 /文档
 /开发任务清单
