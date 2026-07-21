@@ -10,7 +10,7 @@ public static class DslKeywords
     private static readonly HashSet<string> _uiElementTypes = new()
     {
         "text", "button", "image", "background", "portrait",
-        "panel", "vbox", "hbox", "dialog", "narrator", "speaker",
+        "panel", "vbox", "hbox", "grid", "dialog", "narrator", "speaker",
         "choice", "video", "container", "scrollview",
         "sprite", "live2d", "progressbar", "slider",
         "checkbox", "input", "label", "spacer", "divider",
