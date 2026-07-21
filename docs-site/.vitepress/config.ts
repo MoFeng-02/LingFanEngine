@@ -1,9 +1,11 @@
 import { defineConfig } from 'vitepress'
 
+// 部署到 GitHub Pages 项目站点（https://mofeng-02.github.io/LingFanEngine/），
+// 必须设置 base 为仓库名，否则所有 /assets/* 资源会指向根路径而 404。
+const base = '/LingFanEngine/'
+
 export default defineConfig({
-  // 部署到 GitHub Pages 项目站点（https://mofeng-02.github.io/LingFanEngine/），
-  // 必须设置 base 为仓库名，否则所有 /assets/* 资源会指向根路径而 404。
-  base: '/LingFanEngine/',
+  base,
   title: '灵泛引擎',
   description: '高性能跨平台视觉小说 / 互动叙事引擎',
   lang: 'zh-CN',
@@ -12,6 +14,8 @@ export default defineConfig({
 
   head: [
     ['meta', { name: 'theme-color', content: '#3c8772' }],
+    // 浏览器标签页图标（head 中的 link 不会自动加 base，需手动拼前缀）
+    ['link', { rel: 'icon', href: `${base}LingFanIcon_64x64.png`, type: 'image/png' }],
   ],
 
   markdown: {
@@ -23,6 +27,9 @@ export default defineConfig({
   },
 
   themeConfig: {
+    // 站点标识（侧边栏/导航栏左上角），VitePress 会自动加上 base 前缀
+    logo: '/LingFanIcon_64x64.png',
+
     nav: [
       { text: '快速入门', link: '/guide/00-什么是灵泛引擎', activeMatch: '/guide/' },
       { text: '完整教程', link: '/tutorial/00-准备工作', activeMatch: '/tutorial/' },
