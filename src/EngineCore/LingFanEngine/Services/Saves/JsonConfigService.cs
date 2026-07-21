@@ -27,6 +27,26 @@ public class JsonConfigService : IConfigService
     {
         if (_config.TryGetValue(key, out var val) && val is T typed)
             return typed;
+        // E1 修复：配置数字经 JsonValueConverter 还原为 int/double，取 float/decimal 等
+        // 跨数值类型时 `val is T` 不匹配会返回 default=0。此处做数值跨类型归一。
+        // AOT 安全：仅用 Convert.ToXxx + typeof(T) 比较，无反射调用；且排除 string 源，
+        // 避免字符串被误转成数值。
+        if (val is not string && val is IConvertible)
+        {
+            var t = typeof(T);
+            if (t == typeof(int)) return (T)(object)Convert.ToInt32(val);
+            if (t == typeof(long)) return (T)(object)Convert.ToInt64(val);
+            if (t == typeof(short)) return (T)(object)Convert.ToInt16(val);
+            if (t == typeof(byte)) return (T)(object)Convert.ToByte(val);
+            if (t == typeof(uint)) return (T)(object)Convert.ToUInt32(val);
+            if (t == typeof(sbyte)) return (T)(object)Convert.ToSByte(val);
+            if (t == typeof(ushort)) return (T)(object)Convert.ToUInt16(val);
+            if (t == typeof(ulong)) return (T)(object)Convert.ToUInt64(val);
+            if (t == typeof(float)) return (T)(object)Convert.ToSingle(val);
+            if (t == typeof(double)) return (T)(object)Convert.ToDouble(val);
+            if (t == typeof(decimal)) return (T)(object)Convert.ToDecimal(val);
+            if (t == typeof(char)) return (T)(object)Convert.ToChar(val);
+        }
         return default;
     }
 

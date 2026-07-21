@@ -49,6 +49,36 @@ public class JsonConfigServiceTests : IDisposable
         _service.Get<int>("__test_int").Should().Be(42);
     }
 
+    // ========== E1：数值跨类型归一（float/decimal 取值不再恒 0）==========
+
+    [Fact]
+    public void Get_Float_FromIntConfig_ReturnsValue()
+    {
+        _service.Set("__e1_f", 42);
+        _service.Get<float>("__e1_f").Should().Be(42f);
+    }
+
+    [Fact]
+    public void Get_Decimal_FromIntConfig_ReturnsValue()
+    {
+        _service.Set("__e1_d", 7);
+        _service.Get<decimal>("__e1_d").Should().Be(7m);
+    }
+
+    [Fact]
+    public void Get_Decimal_FromDoubleConfig_ReturnsValue()
+    {
+        _service.Set("__e1_d2", 3.5);
+        _service.Get<decimal>("__e1_d2").Should().Be(3.5m);
+    }
+
+    [Fact]
+    public void Get_Float_FromDoubleConfig_ReturnsValue()
+    {
+        _service.Set("__e1_f2", 2.5);
+        _service.Get<float>("__e1_f2").Should().Be(2.5f);
+    }
+
     [Fact]
     public void Set_String_RoundTrip()
     {

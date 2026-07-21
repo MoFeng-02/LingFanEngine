@@ -568,9 +568,60 @@ private readonly ITimeEventRegistry? _timeEventRegistry;
             {
                 Type = SaveEntryTypes.DictStringObject,
                 Value = dict.Keys.Cast<object>()
-                    .ToDictionary(k => k?.ToString() ?? "", k => dict[k])
+                    .ToDictionary(k => k?.ToString() ?? "", k => NormalizeForSave(dict[k]))
             },
+            // 枚举：存底层整数值，读档由 StateContainer.TryConvertValue 的枚举分支还原为原枚举（AOT 安全：typeof(T) 编译期已知）
+            System.Enum en => new SaveEntry
+            {
+                Type = SaveEntryTypes.Long,
+                Value = Convert.ToInt64(en)
+            },
+            // 其余可枚举（数组 / List<T> / HashSet<T> 等，非 IDictionary、非 List<UIElementEntity>）：
+            // 转 List<object?> 经 LfJsonContext.Default.ListObject 序列化为 JSON 串，无损往返（S1 修复：原先 ToString 吞数据）
+            System.Collections.IEnumerable seq => ToJsonEntry(seq),
             _ => new SaveEntry { Type = SaveEntryTypes.String, Value = value?.ToString() }
+        };
+    }
+
+    /// <summary>
+    /// 将任意可枚举对象序列化为 JSON 串（元素转 object? 后由 LfJsonContext.Default.ListObject 序列化）。
+    /// <para>用于 S1 修复：原先 IEnumerable 走 _ 兜底被 ToString 吞成字符串导致数据丢失。</para>
+    /// <para>序列化失败（如含未注册自定义 POCO 元素）降级为字符串，保证存档不崩。</para>
+    /// </summary>
+    private static SaveEntry ToJsonEntry(System.Collections.IEnumerable seq)
+    {
+        try
+        {
+            var list = seq.Cast<object?>().Select(NormalizeForSave).ToList();
+            var json = System.Text.Json.JsonSerializer.Serialize(list, Abstractions.Serialization.LfJsonContext.Default.ListObject);
+            return new SaveEntry { Type = SaveEntryTypes.Json, Value = json };
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[SaveDataService] ToJsonEntry 序列化失败，降级为字符串: {ex.Message}");
+            return new SaveEntry { Type = SaveEntryTypes.String, Value = seq?.ToString() };
+        }
+    }
+
+    /// <summary>
+    /// 将任意运行时值递归规范化为仅含基元 / string / enum / List&lt;object?&gt; / Dictionary&lt;string,object?&gt; 的对象图。
+    /// <para>该图的全部节点类型均已在 LfJsonContext 注册（List&lt;object?&gt;、Dictionary&lt;string,object?&gt;、基元），
+    /// 故可在 Native AOT 下零反射完整序列化；嵌套集合不再触发 NotSupportedException。</para>
+    /// <para>未知自定义 POCO（_ 分支）保留原对象，若未注册将在 ToJsonEntry 序列化时降级为字符串（不崩）。</para>
+    /// </summary>
+    private static object? NormalizeForSave(object? value)
+    {
+        return value switch
+        {
+            null => null,
+            string or Enum or bool or int or long or float or double or decimal => value,
+            // E2 修复：嵌套 DateTime/Guid 经 JSON 序列化会退化为字符串（JSON 无原生日期类型），
+            // 故在此包成类型标注字典，反序列化时由 JsonValueConverter.RestoreTypedMarker 还原原生类型。
+            System.DateTime dt => new Dictionary<string, object?> { ["__lf_dt"] = dt.ToString("o") },
+            System.Guid g => new Dictionary<string, object?> { ["__lf_guid"] = g.ToString() },
+            System.Collections.IDictionary dict => dict.Keys.Cast<object?>().ToDictionary(k => k?.ToString() ?? "", k => NormalizeForSave(dict[k])),
+            System.Collections.IEnumerable nested => nested.Cast<object?>().Select(NormalizeForSave).ToList(),
+            _ => value
         };
     }
 
@@ -579,6 +630,22 @@ private readonly ITimeEventRegistry? _timeEventRegistry;
     /// </summary>
     private object? FromSaveEntry(SaveEntry entry)
     {
+        // JSON 串存储的任意集合/嵌套结构：解析为 JsonElement 后经 JsonValueConverter 还原为
+        // List<object?> / Dictionary<string,object?>，确保 round-trip 不丢数据（S1 修复）
+        if (entry.Type == SaveEntryTypes.Json && entry.Value is string jsonStr)
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(jsonStr);
+                return _jsonConverter.Convert(doc.RootElement.Clone());
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SaveDataService] FromSaveEntry JSON 解析失败: {ex.Message}");
+                return jsonStr;
+            }
+        }
+
         if (entry.Value is System.Text.Json.JsonElement je)
         {
             return entry.Type switch
@@ -594,11 +661,36 @@ private readonly ITimeEventRegistry? _timeEventRegistry;
                 SaveEntryTypes.DateTime => je.TryGetDateTime(out var dt) ? dt : je.GetDateTime(),
                 SaveEntryTypes.Guid => je.TryGetGuid(out var g) ? g : je.GetGuid(),
                 SaveEntryTypes.ListUIElement => TryDeserializeUIElements(je),
-                SaveEntryTypes.DictStringObject => _jsonConverter.Convert(je),
+                SaveEntryTypes.DictStringObject => _jsonConverter.Convert(entry.Value),
+                SaveEntryTypes.Json => ParseJsonElement(je),
                 _ => _jsonConverter.Convert(je)
             };
         }
+        // 内存值（非 JsonElement）路径：DictStringObject 内存字典需经 Convert 还原嵌套类型标注（E2）。
+        // 写盘存档读回时 DictStringObject.Value 可能是 JsonElement（走上方 switch），内存 round-trip 则为原生 Dictionary。
+        if (entry.Type == SaveEntryTypes.DictStringObject)
+            return _jsonConverter.Convert(entry.Value);
         return entry.Value;
+    }
+
+    /// <summary>
+    /// 还原 SaveEntryTypes.Json：文件往返后 Value 为 JsonElement(String)（内含序列化的 JSON），
+    /// 取出内层 JSON 串再解析为 JsonElement 并经 JsonValueConverter 还原为 List&lt;object?&gt;/Dictionary。
+    /// </summary>
+    private object? ParseJsonElement(System.Text.Json.JsonElement je)
+    {
+        try
+        {
+            var inner = je.ValueKind == System.Text.Json.JsonValueKind.String ? je.GetString() : je.GetRawText();
+            if (string.IsNullOrEmpty(inner)) return null;
+            using var doc = System.Text.Json.JsonDocument.Parse(inner);
+            return _jsonConverter.Convert(doc.RootElement.Clone());
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[SaveDataService] FromSaveEntry(JSON) 解析失败: {ex.Message}");
+            return je.ValueKind == System.Text.Json.JsonValueKind.String ? je.GetString() : je.GetRawText();
+        }
     }
 
     /// <summary>

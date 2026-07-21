@@ -39,6 +39,7 @@ namespace LingFanEngine.Abstractions.Serialization;
 [JsonSerializable(typeof(HashSet<int>))]
 [JsonSerializable(typeof(HashSet<string>))]
 [JsonSerializable(typeof(List<UIElementEntity>))]
+[JsonSerializable(typeof(List<object?>))]
 [JsonSerializable(typeof(DialogHistoryEntry))]
 [JsonSerializable(typeof(List<DialogHistoryEntry>))]
 [JsonSerializable(typeof(GalleryEntry))]

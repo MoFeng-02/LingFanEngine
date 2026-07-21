@@ -8,14 +8,14 @@ namespace LingFanEngine.Abstractions.Entities.Events;
 public class TimeEventSaveState
 {
     /// <summary>已注册的事件 ID 集合（存档时已注册的，读档时重注册过滤用）</summary>
-    public HashSet<string> RegisteredIds { get; set; } = new();
+    public HashSet<string> RegisteredIds { get; set; } = [];
 
     /// <summary>已触发的单次事件 ID 集合（读档后不再注册）</summary>
-    public HashSet<string> FiredOneShotIds { get; set; } = new();
+    public HashSet<string> FiredOneShotIds { get; set; } = [];
 
     /// <summary>永久销毁的事件 ID 集合（读档后永不注册，即使代码再次执行 set_time_event）</summary>
-    public HashSet<string> DestroyedIds { get; set; } = new();
+    public HashSet<string> DestroyedIds { get; set; } = [];
 
     /// <summary>暂时销毁的事件 ID 集合（读档后不重注册，但可通过 restore_time_event 恢复）</summary>
-    public HashSet<string> SuspendedIds { get; set; } = new();
+    public HashSet<string> SuspendedIds { get; set; } = [];
 }

@@ -39,4 +39,9 @@ public static class SaveEntryTypes
     public const string Decimal = "decimal";
     public const string DateTime = "datetime";
     public const string Guid = "guid";
+    /// <summary>
+    /// 任意可枚举对象 / 嵌套结构的 JSON 序列化存储（AOT 零反射，元素转 object? 后由 LfJsonContext.Default.ListObject 序列化）。
+    /// 读档时解析为 JsonElement 并经 JsonValueConverter 还原为 List&lt;object?&gt; / Dictionary&lt;string,object?&gt;，避免静默丢失。
+    /// </summary>
+    public const string Json = "json";
 }

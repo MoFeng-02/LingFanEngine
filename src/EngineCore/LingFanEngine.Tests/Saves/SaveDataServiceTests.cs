@@ -236,6 +236,153 @@ public class SaveDataServiceTests
 
         state.Get<int>("hp").Should().Be(888);
     }
+
+    // ========== S1 修复：集合 / 枚举 / 字典 存档不丢数据 ==========
+    private enum TestColor { Red = 1, Green = 2, Blue = 4 }
+
+    [Fact]
+    public void BuildSaveData_Then_ApplySaveData_Enumerable_NotLost()
+    {
+        var state = new StateContainer();
+        state.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
+        state.Set("nums", new System.Collections.Generic.List<int> { 1, 2, 3 });
+        state.Set("arr", new int[] { 10, 20, 30 });
+        state.Set("flags", new System.Collections.Generic.HashSet<int> { 7, 8 });
+
+        var svc = CreateService(state);
+        var data = svc.BuildSaveData()!;
+        data.TypedState!["nums"].Type.Should().Be(SaveEntryTypes.Json);
+        data.TypedState!["arr"].Type.Should().Be(SaveEntryTypes.Json);
+        data.TypedState!["flags"].Type.Should().Be(SaveEntryTypes.Json);
+
+        state.Remove("nums"); state.Remove("arr"); state.Remove("flags");
+        svc.ApplySaveData(data);
+
+        var nums = state.Get<object>("nums") as System.Collections.Generic.List<object?>;
+        nums.Should().NotBeNull();
+        nums!.Should().HaveCount(3);
+        nums[0].Should().Be(1); nums[1].Should().Be(2); nums[2].Should().Be(3);
+
+        var arr = state.Get<object>("arr") as System.Collections.Generic.List<object?>;
+        arr.Should().NotBeNull();
+        arr![0].Should().Be(10); arr[2].Should().Be(30);
+
+        var flags = state.Get<object>("flags") as System.Collections.Generic.List<object?>;
+        flags.Should().NotBeNull();
+        flags!.Should().Contain(7);
+    }
+
+    [Fact]
+    public void BuildSaveData_Then_ApplySaveData_Enum_RoundTrips()
+    {
+        var state = new StateContainer();
+        state.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
+        state.Set("color", TestColor.Blue); // 装箱枚举
+
+        var svc = CreateService(state);
+        var data = svc.BuildSaveData()!;
+        data.TypedState!["color"].Type.Should().Be(SaveEntryTypes.Long);
+
+        state.Remove("color");
+        svc.ApplySaveData(data);
+
+        state.Get<TestColor>("color").Should().Be(TestColor.Blue);
+    }
+
+    [Fact]
+    public void BuildSaveData_Then_ApplySaveData_Dictionary_NotLost()
+    {
+        var state = new StateContainer();
+        state.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
+        state.Set("inv", new System.Collections.Generic.Dictionary<string, int> { ["sword"] = 1, ["shield"] = 2 });
+
+        var svc = CreateService(state);
+        var data = svc.BuildSaveData()!;
+        data.TypedState!["inv"].Type.Should().Be(SaveEntryTypes.DictStringObject);
+
+        state.Remove("inv");
+        svc.ApplySaveData(data);
+
+        var inv = state.Get<object>("inv") as System.Collections.Generic.Dictionary<string, object?>;
+        inv.Should().NotBeNull();
+        inv!["sword"].Should().Be(1);
+        inv["shield"].Should().Be(2);
+    }
+
+    [Fact]
+    public void BuildSaveData_Then_ApplySaveData_NestedEnumerable_NotLost()
+    {
+        var state = new StateContainer();
+        state.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
+        state.Set("matrix", new System.Collections.Generic.List<object?>
+        {
+            1,
+            "two",
+            new System.Collections.Generic.List<int> { 3, 4 },
+            new System.Collections.Generic.Dictionary<string, int> { ["k"] = 5 }
+        });
+
+        var svc = CreateService(state);
+        var data = svc.BuildSaveData()!;
+        data.TypedState!["matrix"].Type.Should().Be(SaveEntryTypes.Json);
+
+        state.Remove("matrix");
+        svc.ApplySaveData(data);
+
+        var matrix = state.Get<object>("matrix") as System.Collections.Generic.List<object?>;
+        matrix.Should().NotBeNull();
+        matrix!.Should().HaveCount(4);
+        matrix[0].Should().Be(1);
+        matrix[1].Should().Be("two");
+        (matrix[2] as System.Collections.Generic.List<object?>)!.Should().HaveCount(2);
+        (        (matrix[3] as System.Collections.Generic.Dictionary<string, object?>) !["k"]).Should().Be(5);
+    }
+
+    // ========== E2 修复：嵌套 DateTime/Guid 经 JSON 往返不退化成字符串 ==========
+    [Fact]
+    public void BuildSaveData_Then_ApplySaveData_NestedDateTimeGuid_PreservesType()
+    {
+        var dt = new DateTime(2026, 7, 21, 12, 0, 0, DateTimeKind.Utc);
+        var g = Guid.Parse("3F2504E0-4F89-41D3-9A0C-0305E82C3301");
+        var state = new StateContainer();
+        state.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
+        state.Set("log", new System.Collections.Generic.List<object?> { dt, g, "plain" });
+
+        var svc = CreateService(state);
+        var data = svc.BuildSaveData()!;
+
+        state.Remove("log");
+        svc.ApplySaveData(data);
+
+        var log = state.Get<object>("log") as System.Collections.Generic.List<object?>;
+        log.Should().NotBeNull();
+        log![0].Should().BeOfType<DateTime>();
+        log[0].Should().Be(dt);
+        log[1].Should().BeOfType<Guid>();
+        log[1].Should().Be(g);
+        log[2].Should().Be("plain");
+    }
+
+    [Fact]
+    public void BuildSaveData_Then_ApplySaveData_NestedDictionaryDateTime_PreservesType()
+    {
+        var dt = new DateTime(2026, 7, 21, 12, 0, 0, DateTimeKind.Utc);
+        var state = new StateContainer();
+        state.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
+        state.Set("meta", new System.Collections.Generic.Dictionary<string, object?> { ["when"] = dt, ["name"] = "x" });
+
+        var svc = CreateService(state);
+        var data = svc.BuildSaveData()!;
+
+        state.Remove("meta");
+        svc.ApplySaveData(data);
+
+        var meta = state.Get<object>("meta") as System.Collections.Generic.Dictionary<string, object?>;
+        meta.Should().NotBeNull();
+        meta!["when"].Should().BeOfType<DateTime>();
+        meta["when"].Should().Be(dt);
+        meta["name"].Should().Be("x");
+    }
 }
 
 /// <summary>

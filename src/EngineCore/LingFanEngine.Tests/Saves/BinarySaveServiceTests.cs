@@ -1,6 +1,11 @@
 using FluentAssertions;
+using LingFanEngine.Abstractions;
+using LingFanEngine.Abstractions.EngineOptions;
+using LingFanEngine.Abstractions.Entities.Enums;
+using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.Abstractions.Models;
 using LingFanEngine.Abstractions.Models.Saves;
+using LingFanEngine.Services.Core;
 using LingFanEngine.Services.Saves;
 using System.Security.Cryptography;
 using Xunit;
@@ -53,6 +58,32 @@ public class BinarySaveServiceTests : IDisposable
             SceneStackSnapshot = new(),
             Thumbnail = null
         };
+    }
+
+    // ========== S1 端到端：集合经 BinarySaveService 文件往返不丢 ==========
+    [Fact]
+    public async Task SaveLoad_RoundTrip_PreservesEnumerable_FullPipeline()
+    {
+        var state = new StateContainer();
+        state.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
+        state.Set("nums", new System.Collections.Generic.List<int> { 1, 2, 3 });
+
+        var saveData = new SaveDataService(state, new JsonValueConverter(), new LingFanEngineOptions(), _service, new SceneStack(state)).BuildSaveData()!;
+        saveData.TypedState!["nums"].Type.Should().Be(SaveEntryTypes.Json);
+
+        await _service.SaveAsync("slot_s1", saveData);
+        var loaded = await _service.LoadAsync("slot_s1");
+        loaded.Should().NotBeNull();
+
+        var state2 = new StateContainer();
+        new SaveDataService(state2, new JsonValueConverter(), new LingFanEngineOptions(), _service, new SceneStack(state2)).ApplySaveData(loaded!);
+
+        var nums = state2.Get<object>("nums") as System.Collections.Generic.List<object?>;
+        nums.Should().NotBeNull();
+        nums!.Should().HaveCount(3);
+        nums[0].Should().Be(1);
+        nums[1].Should().Be(2);
+        nums[2].Should().Be(3);
     }
 
     // ========== SaveAsync + LoadAsync 往返 ==========

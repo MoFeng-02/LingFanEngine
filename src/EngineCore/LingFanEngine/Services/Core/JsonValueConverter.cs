@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Text.Json;
 using LingFanEngine.Abstractions.Interfaces.Core;
 
@@ -79,11 +80,43 @@ public class JsonValueConverter : IJsonValueConverter
                 JsonValueKind.String => je.GetString(),
                 JsonValueKind.Null => null,
                 JsonValueKind.Array => je.EnumerateArray().Select(je2 => Convert(je2)).ToList(),
-                JsonValueKind.Object => je.EnumerateObject()
-                    .ToDictionary(p => p.Name, p => Convert(p.Value)),
+                JsonValueKind.Object => RestoreTypedMarker(je),
                 _ => value
             };
         }
+        // E2 修复：内存对象图递归还原（DictStringObject 等内存 Dictionary 存档路径），
+        // 识别 __lf_dt/__lf_guid 类型标注字典，还原嵌套 DateTime/Guid 为原生类型。
+        // 与 JsonElement 路径的 RestoreTypedMarker 对称；DateTime.TryParse/Guid.TryParse 为 AOT 友好 API。
+        if (value is System.Collections.IDictionary dict)
+        {
+            if (dict is Dictionary<string, object?> d)
+            {
+                if (d.TryGetValue("__lf_dt", out var dtv) && dtv is string dts
+                    && DateTime.TryParse(dts, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt))
+                    return dt;
+                if (d.TryGetValue("__lf_guid", out var gv) && gv is string gvs && Guid.TryParse(gvs, out var g))
+                    return g;
+            }
+            return dict.Keys.Cast<object?>().ToDictionary(k => k?.ToString() ?? "", k => Convert(dict[k]));
+        }
+        if (value is System.Collections.IEnumerable en and not string)
+            return en.Cast<object?>().Select(Convert).ToList();
         return value;
+    }
+
+    /// <summary>
+    /// E2 修复：识别嵌套 DateTime/Guid 类型标注包装（由 SaveDataService.NormalizeForSave 写入），
+    /// 还原为原生类型，避免嵌套 DateTime/Guid 经 JSON 往返后退化成字符串（值保留但类型丢失）。
+    /// <para>仅对含专用标注键的字典做还原，普通字典原样递归；DateTime.TryParse/Guid.TryParse 为 AOT 友好 API，无反射。</para>
+    /// </summary>
+    private object? RestoreTypedMarker(JsonElement je)
+    {
+        if (je.TryGetProperty("__lf_dt", out var dtEl) && dtEl.ValueKind == JsonValueKind.String
+            && DateTime.TryParse(dtEl.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt))
+            return dt;
+        if (je.TryGetProperty("__lf_guid", out var gEl) && gEl.ValueKind == JsonValueKind.String
+            && Guid.TryParse(gEl.GetString(), out var g))
+            return g;
+        return je.EnumerateObject().ToDictionary(p => p.Name, p => Convert(p.Value));
     }
 }

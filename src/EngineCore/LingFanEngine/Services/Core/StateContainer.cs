@@ -170,6 +170,26 @@ private object? Normalize(object? value)
         result = default;
         if (value == null) return false;
 
+        // 枚举：从底层整数值还原为 T（AOT 安全——typeof(T) 为编译期已知，Enum.ToObject/GetUnderlyingType 均为 BCL 非反射 API）
+        if (typeof(T).IsEnum)
+        {
+            try
+            {
+                if (value is IConvertible conv)
+                {
+                    var underlying = System.Enum.GetUnderlyingType(typeof(T));
+                    result = (T)System.Enum.ToObject(typeof(T),
+                        System.Convert.ChangeType(conv, underlying, System.Globalization.CultureInfo.InvariantCulture));
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[StateContainer] Enum 转换失败: {ex.Message}");
+            }
+            return false;
+        }
+
         // IConvertible → T（覆盖 short→int, int→double, int→long, double→int 等所有基元互转）
         // string→int 也由 IConvertible 处理（string 实现 IConvertible）
         if (value is IConvertible && typeof(T).IsPrimitive)
