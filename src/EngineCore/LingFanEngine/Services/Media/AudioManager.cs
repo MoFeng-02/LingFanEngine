@@ -270,22 +270,38 @@ public class AudioManager : IAudioManager
     private async Task LoadAndPlaySeAsync(IAudioPlayer player, string filePath, float volume)
     {
         var (playPath, isTemp) = ResolveAudioPath(filePath);
+        bool disposedByStop = false;
         try
         {
             await player.LoadAsync(playPath);
             await player.SetVolumeAsync(volume);
             ImmutableInterlocked.Update(ref _sePlayers, arr => arr.Add(player));
             await player.PlayAsync();
-            ImmutableInterlocked.Update(ref _sePlayers, arr => arr.Remove(player));
+            // 自然结束后移除——若已被 StopSeAsync 原子清空，Contains 返回 false → 由其负责 Dispose
+            if (_sePlayers.Contains(player))
+            {
+                ImmutableInterlocked.Update(ref _sePlayers, arr => arr.Remove(player));
+            }
+            else
+            {
+                disposedByStop = true;
+            }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[Audio] SE error: {ex.Message}");
+            // 异常退出时也检查——若已被 StopSeAsync 移除则由其负责 Dispose
+            if (!_sePlayers.Contains(player))
+                disposedByStop = true;
         }
         finally
         {
-            try { await player.DisposeAsync(); }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Audio] SE DisposeAsync failed: {ex.Message}"); }
+            // 仅在非 StopSeAsync 取消时自行 Dispose；取消退出时由 StopSeAsync 负责
+            if (!disposedByStop)
+            {
+                try { await player.DisposeAsync(); }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Audio] SE DisposeAsync failed: {ex.Message}"); }
+            }
             _fileReader?.ReleaseTempFile(playPath, isTemp);
         }
     }
@@ -379,7 +395,7 @@ public class AudioManager : IAudioManager
     {
         var oldPlayer = Interlocked.Exchange(ref _voicePlayer, null);
         var player = CreatePlayer();
-        _voicePlayer = player;
+        Interlocked.Exchange(ref _voicePlayer, player);
         _ = StopAndPlayVoiceAsync(oldPlayer, player, filePath, EffectiveVolume(volume));
     }
 
