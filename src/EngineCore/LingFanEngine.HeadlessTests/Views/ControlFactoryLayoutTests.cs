@@ -32,8 +32,6 @@ public class ControlFactoryLayoutTests
             => new[] { "zh-CN" };
     }
 
-    private sealed class HeadlessApp : Application { }
-
     private static ControlFactory CreateFactory()
         => new(new FakeI18n(), new StateContainer());
 
@@ -67,7 +65,7 @@ public class ControlFactoryLayoutTests
         //   col:1 → 第 2 列 → x≈300
         //   col:2 → 第 3 列 → x≈600
         // 若 col 被忽略，两子控件都会落在 x=0。
-        using var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessApp));
+        var session = HeadlessSession.Instance;
         var factory = CreateFactory();
         var gridEntity = Entity("grid",
             props: new() { ["columns"] = "*,*,*", ["rows"] = "auto" },
@@ -100,7 +98,7 @@ public class ControlFactoryLayoutTests
         //   row:0 → 第 1 行 → y≈0
         //   row:1 → 第 2 行 → y>0（= 第 1 行高度）
         // 若 row 被忽略，两子控件都会落在 y=0。
-        using var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessApp));
+        var session = HeadlessSession.Instance;
         var factory = CreateFactory();
         var gridEntity = Entity("grid",
             props: new() { ["columns"] = "*", ["rows"] = "auto,auto" },
@@ -130,7 +128,7 @@ public class ControlFactoryLayoutTests
     public void Grid_ColSpan_OccupiesMultipleColumns()
     {
         // 3 等列（900 宽 → 每列 300）。colspan:2 的子控件应拉伸占满 2 列宽 ≈ 600，x≈0。
-        using var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessApp));
+        var session = HeadlessSession.Instance;
         var factory = CreateFactory();
         var gridEntity = Entity("grid",
             props: new() { ["columns"] = "*,*,*", ["rows"] = "auto" },

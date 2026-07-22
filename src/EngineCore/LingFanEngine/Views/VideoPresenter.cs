@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
+using LingFanEngine.Abstractions.Interfaces.Media;
 
 namespace LingFanEngine.Views;
 
@@ -18,7 +19,8 @@ internal sealed class VideoPresenter : IVideoPresenter
     private Panel? _sceneRoot;
     private Grid? _outerGrid;
 
-    private MediaPlayer.Controls.GpuMediaPlayer? _videoPlayer;
+    private readonly IVideoPlayer _videoPlayer;
+    private MediaPlayer.Controls.GpuMediaPlayer? _gpu;
     private string _lastVideoPath = "";
     /// <summary>当前播放用的实际路径（可能是临时解密文件）</summary>
     private string _currentPlayPath = "";
@@ -31,9 +33,10 @@ internal sealed class VideoPresenter : IVideoPresenter
 
     private Border? _cutsceneMask;
 
-    public VideoPresenter(IStateContainer state, IEncryptedFileReader? fileReader = null)
+    public VideoPresenter(IStateContainer state, IVideoPlayer videoPlayer, IEncryptedFileReader? fileReader = null)
     {
         _state = state;
+        _videoPlayer = videoPlayer;
         _fileReader = fileReader;
     }
 
@@ -76,28 +79,29 @@ internal sealed class VideoPresenter : IVideoPresenter
                 _currentPlayPath = playPath;
                 _currentIsTemp = isTemp;
 
-                _videoPlayer = new MediaPlayer.Controls.GpuMediaPlayer
+                if (_videoPlayer.Control is MediaPlayer.Controls.GpuMediaPlayer gp)
                 {
-                    AutoPlay = _state.Get<bool>(StateKeys.Video.AutoPlay),
-                    Volume = 0,
-                    ZIndex = cutsceneActive ? 100 : 0,
-                };
+                    _gpu = gp;
+                    gp.AutoPlay = _state.Get<bool>(StateKeys.Video.AutoPlay);
+                    gp.Volume = 0;
+                    gp.ZIndex = cutsceneActive ? 100 : 0;
 
-                try
-                {
-                    _videoPlayer.Source = new Uri(System.IO.Path.GetFullPath(playPath));
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[VideoPresenter] 视频路径无效: {ex.Message}");
-                }
+                    try
+                    {
+                        gp.Source = new Uri(System.IO.Path.GetFullPath(playPath));
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[VideoPresenter] 视频路径无效: {ex.Message}");
+                    }
 
-                _sceneRoot?.Children.Add(_videoPlayer);
+                    _sceneRoot?.Children.Add(gp);
+                }
             }
             return;
         }
 
-        if (_videoPlayer == null || string.IsNullOrEmpty(videoPath))
+        if (_gpu == null || string.IsNullOrEmpty(videoPath))
         {
             var skipable = _state.Get<bool>(StateKeys.Video.CutsceneSkipable);
             UpdateCutsceneMask(cutsceneActive, skipable);
@@ -105,7 +109,7 @@ internal sealed class VideoPresenter : IVideoPresenter
         }
 
         // 同步 ZIndex（过场模式覆盖一切）
-        _videoPlayer.ZIndex = cutsceneActive ? 100 : 0;
+        _gpu.ZIndex = cutsceneActive ? 100 : 0;
 
         // 检测 IsFinished 被外部重置
         var currentIsFinished = _state.Get<bool>(StateKeys.Video.IsFinished);
@@ -122,9 +126,9 @@ internal sealed class VideoPresenter : IVideoPresenter
         if (shouldPlay != _lastVideoIsPlaying)
         {
             if (shouldPlay)
-                _videoPlayer.Play();
+                _gpu.Play();
             else if (isPaused)
-                _videoPlayer.Pause();
+                _gpu.Pause();
             _lastVideoIsPlaying = shouldPlay;
         }
 
@@ -132,13 +136,13 @@ internal sealed class VideoPresenter : IVideoPresenter
         var seekPos = _state.Get<double?>(StateKeys.Video.SeekPosition);
         if (seekPos.HasValue)
         {
-            _videoPlayer.Seek(TimeSpan.FromSeconds(seekPos.Value));
+            _gpu.Seek(TimeSpan.FromSeconds(seekPos.Value));
             _state.Set<object?>(StateKeys.Video.SeekPosition, null);
         }
 
         // 回写位置和时长
-        var currentPos = _videoPlayer.Position.TotalSeconds;
-        var currentDur = _videoPlayer.Duration.TotalSeconds;
+        var currentPos = _gpu.Position.TotalSeconds;
+        var currentDur = _gpu.Duration.TotalSeconds;
         if (Math.Abs(currentPos - _lastVideoPosition) > 0.05)
         {
             _state.Set(StateKeys.Video.Position, currentPos);
@@ -156,7 +160,7 @@ internal sealed class VideoPresenter : IVideoPresenter
             var loop = _state.Get<bool>(StateKeys.Video.Loop);
             if (loop)
             {
-                _videoPlayer.Seek(TimeSpan.Zero);
+                _gpu.Seek(TimeSpan.Zero);
             }
             else
             {
@@ -179,11 +183,11 @@ internal sealed class VideoPresenter : IVideoPresenter
 
     private void RemoveVideoPlayerFromTree()
     {
-        if (_videoPlayer != null)
+        if (_gpu != null)
         {
-            _videoPlayer.Stop();
-            _sceneRoot?.Children.Remove(_videoPlayer);
-            _videoPlayer = null;
+            _gpu.Stop();
+            _sceneRoot?.Children.Remove(_gpu);
+            _gpu = null;
         }
         // Phase 50：释放临时解密文件
         if (_currentIsTemp && !string.IsNullOrEmpty(_currentPlayPath))

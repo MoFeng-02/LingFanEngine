@@ -74,7 +74,7 @@ public partial class MainWindow : Window
                         var i18n = _services.GetRequiredService<II18nService>();
             var scReg = _services.GetRequiredService<ISceneRegistry>();
             var dialogBoxFactory = _services.GetService<LingFanEngine.Views.IDialogBoxFactory>();
-            var dialogRegistry = _services.GetService<LingFanEngine.Views.IDialogTemplateRegistry>();
+            var dialogRegistry = _services.GetRequiredService<LingFanEngine.Views.IDialogTemplateRegistry>();
             var options = _services.GetService<LingFanEngineOptions>() ?? new LingFanEngineOptions();
 
             // Phase 32: SceneView 模块化——从 DI 获取子模块

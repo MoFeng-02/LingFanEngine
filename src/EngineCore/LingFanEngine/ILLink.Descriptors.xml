@@ -1,0 +1,20 @@
+<linker>
+  <!--
+    AOT / 全裁剪(TrimMode=full) 下的互操作保留清单。
+    全裁剪会按可达性移除成员；LibVLC / GPU 后端的 P/Invoke 与
+    本引擎的 JsonAOT 序列化器若被裁掉，运行时会找不到 libvlc / GPU 互操作入口。
+    此文件由 Desktop/Mac/Linux 等 AOT 发布工程经 $(LfILLinkDescriptor) 引用。
+  -->
+
+  <!-- LibVLCSharp：P/Invoke 到 libvlc / libvlccore（音频与视频的 LibVLC 回退后端） -->
+  <assembly fullname="LibVLCSharp" preserve="all" />
+
+  <!-- MediaPlayer.Controls：原生后端选择 + GPU 纹理直传（AVFoundation / Media Foundation / FFmpeg / LibVLC） -->
+  <assembly fullname="MediaPlayer.Controls" preserve="all" />
+
+  <!-- 本引擎 Abstractions：JsonAOT 源生成序列化器(LfJsonContext)与状态键需保活 -->
+  <assembly fullname="LingFanEngine.Abstractions" preserve="all" />
+
+  <!-- 系统压缩（DLC ZIP 解包在 AOT 下所需） -->
+  <assembly fullname="System.IO.Compression" preserve="all" />
+</linker>

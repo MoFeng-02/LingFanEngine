@@ -152,4 +152,63 @@ public class DslExecutorTests
         host.DslExecutor.IsRunning.Should().BeFalse();
         host.State.Get<string>("player_name").Should().Be("__dsl_input__");
     }
+
+    [Fact]
+    public async Task CallAndReturn_ExecutesSubroutine_AndResumesAfterCall()
+    {
+        var host = new EngineTestHost();
+        var cmds = new List<ICommand>
+        {
+            new SetVariableCommand { Key = "main_before", Value = 1 }, // 0
+            new CallCommand { TargetLabel = "sub" },                   // 1 → 跳到 index 4，压栈返回点 2
+            new SetVariableCommand { Key = "main_after", Value = 1 },  // 2 ← return 落点
+            new EndCommand(),                                          // 3 提前终止，避免落入子过程
+            new SetVariableCommand { Key = "in_sub", Value = 1 },      // 4 (label "sub")
+            new ReturnCommand(),                                       // 5 弹栈 → 回到 index 2
+        };
+        var labels = new Dictionary<string, int> { ["sub"] = 4 };
+
+        await host.RunDslAndDriveAsync(cmds, labels);
+
+        host.DslExecutor.IsRunning.Should().BeFalse();
+        host.State.Get<int>("main_before").Should().Be(1);
+        host.State.Get<int>("in_sub").Should().Be(1);
+        host.State.Get<int>("main_after").Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Return_WithEmptyCallStack_TerminatesExecution()
+    {
+        var host = new EngineTestHost();
+        var cmds = new List<ICommand>
+        {
+            new SetVariableCommand { Key = "a", Value = 1 }, // 0
+            new ReturnCommand(),                             // 1 空调用栈 → 终止
+            new SetVariableCommand { Key = "b", Value = 1 }, // 2 不可达
+        };
+
+        await host.RunDslAndDriveAsync(cmds);
+
+        host.DslExecutor.IsRunning.Should().BeFalse();
+        host.State.Get<int>("a").Should().Be(1);
+        host.State.ContainsKey("b").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task EndCommand_TerminatesEarly_SkippingRemaining()
+    {
+        var host = new EngineTestHost();
+        var cmds = new List<ICommand>
+        {
+            new SetVariableCommand { Key = "a", Value = 1 }, // 0
+            new EndCommand(),                                // 1 终止
+            new SetVariableCommand { Key = "b", Value = 1 }, // 2 不可达
+        };
+
+        await host.RunDslAndDriveAsync(cmds);
+
+        host.DslExecutor.IsRunning.Should().BeFalse();
+        host.State.Get<int>("a").Should().Be(1);
+        host.State.ContainsKey("b").Should().BeFalse();
+    }
 }

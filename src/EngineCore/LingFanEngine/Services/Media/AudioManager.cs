@@ -137,6 +137,7 @@ public class AudioManager : IAudioManager
     private async Task LoadAndPlayBgmAsync(IAudioPlayer player, string filePath, float volume, bool loop)
     {
         var (playPath, isTemp) = ResolveAudioPath(filePath);
+        bool cancelledByStop = false;
         try
         {
             await player.LoadAsync(playPath);
@@ -153,8 +154,16 @@ public class AudioManager : IAudioManager
             }
             while (loop && !cts.IsCancellationRequested && IsPlayerActive(player));
 
+            // 若因 CTS 取消退出，说明 StopBgmAsync 触发——由其负责 Dispose
+            cancelledByStop = cts.IsCancellationRequested;
+
             // 原子移除
             ImmutableInterlocked.Update(ref _bgmPlayers, arr => arr.Remove(player));
+        }
+        catch (OperationCanceledException)
+        {
+            // StopBgmAsync 的 CTS 取消——由其负责 Dispose
+            cancelledByStop = true;
         }
         catch (Exception ex)
         {
@@ -162,18 +171,53 @@ public class AudioManager : IAudioManager
         }
         finally
         {
-            try { await player.DisposeAsync(); }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Audio] BGM DisposeAsync failed: {ex.Message}"); }
+            // 仅在非取消退出时自行 Dispose；取消退出时由 StopBgmAsync 负责 Dispose
+            if (!cancelledByStop)
+            {
+                try { await player.DisposeAsync(); }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Audio] BGM DisposeAsync failed: {ex.Message}"); }
+            }
             _fileReader?.ReleaseTempFile(playPath, isTemp);
         }
     }
 
     /// <summary>
-    /// BGM 交叉淡入队列：先停旧 BGM，再播新 BGM
+    /// BGM 交叉淡入队列：旧 BGM 淡出后切换到新 BGM
+    /// <para>简化版 crossfade：先逐步降低旧 BGM 音量到 0，再 stop + play 新 BGM。</para>
+    /// <para>真正的并行交叉淡入淡出需要每 player 独立 CTS（后续可迭代）。</para>
     /// </summary>
     public async Task QueueBgmAsync(string path, float volume, double crossFadeDuration)
     {
+        if (crossFadeDuration <= 0)
+        {
+            // 无渐变——直接 stop + play
+            await StopBgmAsync();
+            PlayBgm(path, volume);
+            return;
+        }
+
+        // 拍快照旧 BGM players
+        var oldPlayers = _bgmPlayers;
+        var currentBgmVol = EffectiveVolume(BgmVolume);
+
+        // 淡出旧 BGM（逐步降低音量到 0）
+        var steps = 10;
+        var stepDelayMs = (int)(crossFadeDuration * 1000 / steps);
+        for (int i = steps - 1; i >= 0; i--)
+        {
+            var factor = (float)i / steps;
+            foreach (var p in oldPlayers)
+            {
+                try { await p.SetVolumeAsync(currentBgmVol * factor); }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Audio] QueueBgm fade-out SetVolumeAsync failed: {ex.Message}"); }
+            }
+            await Task.Delay(stepDelayMs);
+        }
+
+        // 淡出完成，stop 旧 BGM
         await StopBgmAsync();
+
+        // 播放新 BGM（以目标音量开始）
         PlayBgm(path, volume);
     }
 
@@ -406,18 +450,10 @@ public class AudioManager : IAudioManager
         var bgmPlayers = _bgmPlayers;
         var sePlayers = _sePlayers;
         var voice = _voicePlayer;
-        foreach (var bgm in bgmPlayers) _ = bgm.PlayAsync().ContinueWith(t =>
-        {
-            if (t.IsFaulted) System.Diagnostics.Debug.WriteLine($"[Audio] ResumeAll BGM PlayAsync failed: {t.Exception?.GetBaseException().Message}");
-        }, TaskContinuationOptions.OnlyOnFaulted);
-        if (voice != null) _ = voice.PlayAsync().ContinueWith(t =>
-        {
-            if (t.IsFaulted) System.Diagnostics.Debug.WriteLine($"[Audio] ResumeAll Voice PlayAsync failed: {t.Exception?.GetBaseException().Message}");
-        }, TaskContinuationOptions.OnlyOnFaulted);
-        foreach (var se in sePlayers) _ = se.PlayAsync().ContinueWith(t =>
-        {
-            if (t.IsFaulted) System.Diagnostics.Debug.WriteLine($"[Audio] ResumeAll SE PlayAsync failed: {t.Exception?.GetBaseException().Message}");
-        }, TaskContinuationOptions.OnlyOnFaulted);
+        // 使用 ResumeAsync 而非 PlayAsync——避免创建新 TCS 导致原 PlayAsync 的 Task 变孤儿
+        foreach (var bgm in bgmPlayers) await bgm.ResumeAsync();
+        if (voice != null) await voice.ResumeAsync();
+        foreach (var se in sePlayers) await se.ResumeAsync();
     }
 
     /// <summary>

@@ -29,6 +29,12 @@
 		<DebugSymbols>false</DebugSymbols>
 	</PropertyGroup>
 
+	<!-- 共享：AOT 裁剪保留清单（LibVLC / MediaPlayer.Controls / JsonAOT 互操作）。
+	     绝对路径由根目录推导，所有 AOT 发布工程经 $(LfILLinkDescriptor) 引用，避免脆弱相对路径。 -->
+	<PropertyGroup>
+		<LfILLinkDescriptor>$(MSBuildThisFileDirectory)src\EngineCore\LingFanEngine\ILLink.Descriptors.xml</LfILLinkDescriptor>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<!-- README 文件放到包根目录 -->
 		<None Include="..\..\..\README.md" Pack="true" PackagePath="" />

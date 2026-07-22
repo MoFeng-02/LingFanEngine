@@ -130,6 +130,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IVideoManager>(sp => new VideoManager(
             sp.GetRequiredService<IStateContainer>()
         ));
+        services.AddSingleton<IVideoPlayer>(_ => CreateVideoPlayerFactory()());
         services.AddSingleton<LanguageService>();
         services.AddSingleton<IConfigService, JsonConfigService>();
 
@@ -224,6 +225,7 @@ public static class ServiceCollectionExtensions
         sp.GetService<II18nService>()));
         services.AddSingleton<Views.IVideoPresenter>(sp => new Views.VideoPresenter(
             sp.GetRequiredService<IStateContainer>(),
+            sp.GetRequiredService<IVideoPlayer>(),
             sp.GetService<IEncryptedFileReader>()));
         services.AddSingleton<Views.IAnimationApplier, Views.AnimationApplier>();
         services.AddSingleton<ISaveDataService>(sp => new SaveDataService(
@@ -397,5 +399,22 @@ public static class ServiceCollectionExtensions
                 return new NullAsyncAudioPlayer();
             return new LibVlcAudioPlayer(libVLC);
         };
+    }
+
+    /// <summary>
+    /// 创建视频播放器工厂——根据平台选择 GpuMediaPlayer 包装实现或空操作实现。
+    /// <para><b>Desktop</b>（Windows/macOS/Linux）：GpuMediaPlayerVideoPlayer 包装 MediaPlayer.Controls.GpuMediaPlayer，
+    /// 库按 OS 自动选后端（Windows→MediaFoundation / macOS→AVFoundation / Linux→FFmpeg 或 LibVLC）。</para>
+    /// <para><b>Browser/WASM</b>：无 GpuMediaPlayer 后端，降级为空操作。视频由宿主外部处理（如 HTML &lt;video&gt; 直出）。</para>
+    /// <para><b>Android/iOS</b>：无 GpuMediaPlayer 后端，降级为空操作。宿主可注入自定义 IVideoPlayer
+    /// 实现（如基于 LibVLCSharp 的播放器）以恢复视频功能；不注入则视频不可用但不崩溃。</para>
+    /// </summary>
+    private static Func<IVideoPlayer> CreateVideoPlayerFactory()
+    {
+        // Browser/WASM 和移动端无 GpuMediaPlayer 后端 → NullVideoPlayer（Control=null，VideoPresenter 优雅跳过）
+        if (OperatingSystem.IsBrowser() || OperatingSystem.IsAndroid() || OperatingSystem.IsIOS())
+            return () => new Views.NullVideoPlayer();
+        // Desktop：GpuMediaPlayer 按 OS 自动选原生后端
+        return () => new Views.GpuMediaPlayerVideoPlayer();
     }
 }

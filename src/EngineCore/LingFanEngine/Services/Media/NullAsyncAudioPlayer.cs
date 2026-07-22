@@ -31,6 +31,13 @@ public sealed class NullAsyncAudioPlayer : IAudioPlayer
         return Task.CompletedTask;
     }
 
+    public Task ResumeAsync(CancellationToken ct = default)
+    {
+        if (_state == PlaybackState.Paused)
+            _state = PlaybackState.Playing;
+        return Task.CompletedTask;
+    }
+
     public Task StopAsync(CancellationToken ct = default)
     {
         _state = PlaybackState.Stopped;

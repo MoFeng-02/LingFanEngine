@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  View 层覆盖率配置（Task #6，仅本地自评用，不并入主基线、不进 CI 门禁）。
+  在 coverlet.real.runsettings 基础上「放开」对 LingFanEngine.Views.* 的排除，
+  使 ControlFactory / DialogBox / SceneView / OverlayRenderer / InteractionBinder 等
+  View 类计入覆盖率分母，用于度量 headless / Tier A 契约测试对 View 层的覆盖提升。
+
+  保留排除项（仍不可单测）：
+    1) [LingFanEngine.Abstractions]*LfJsonContext* —— 源生成的 JsonSerializerContext；
+    2) [LingFanEngine]*LibVlcAudioPlayer* / *LibVlcInitializer* / *VideoManager*
+                                                  —— LibVLC 原生媒体，依赖原生动态库；
+    3) [LingFanEngine]*GpuMediaPlayer* 相关走第三方控件，headless 无法覆盖（如出现在分母噪声可再补）。
+
+  注意：coverlet.collector 对多 Exclude 节点仅首条生效，故用单节点多模式换行。
+  用法：dotnet test 后接 settings 参数指向本文件。
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <Exclude>
+[LingFanEngine.Abstractions]*LfJsonContext*
+[LingFanEngine]*LibVlcAudioPlayer*
+[LingFanEngine]*LibVlcInitializer*
+[LingFanEngine]*VideoManager*
+          </Exclude>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

@@ -4,7 +4,8 @@ namespace LingFanEngine.Services.Media;
 
 /// <summary>
 /// LibVLC 跨平台初始化器——线程安全单例
-/// <para>Core.Initialize() 需在平台入口调用（App.axaml.cs / Program.cs）。</para>
+/// <para>Core.Initialize() 在引擎 DI 注册阶段由 CreateAudioPlayerFactory() 自动调用（仅一次）。</para>
+/// <para>宿主也可在平台入口（App.axaml.cs / Program.cs）提前调用以更早完成初始化，重复调用安全。</para>
 /// <para>LibVLC 实例全局共享，所有播放器复用同一引擎实例。</para>
 /// <para>Browser/WASM 平台不支持 LibVLC，降级为 NullAsyncAudioPlayer。</para>
 /// <para>Phase 64：Lazy&lt;T&gt; 替代手写 lock 单例——框架保证线程安全延迟初始化。</para>
@@ -35,7 +36,8 @@ public static class LibVlcInitializer
     });
 
     /// <summary>
-    /// 初始化 Core（平台入口调用，仅一次）
+    /// 初始化 Core（自动调用，仅一次）
+    /// <para>由 CreateAudioPlayerFactory() 在 DI 注册阶段调用；宿主也可提前调用，重复调用安全。</para>
     /// <para>在 Browser/WASM 平台自动跳过。</para>
     /// </summary>
     public static void InitializeCore()

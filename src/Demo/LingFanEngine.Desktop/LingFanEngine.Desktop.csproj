@@ -1,6 +1,5 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
-		<OutputType>Exe</OutputType>
 		<TargetFramework>net10.0</TargetFramework>
 		<!--If you are willing to use platform-specific APIs, use conditional compilation.
     See https://docs.avaloniaui.net/docs/guides/platforms/platform-specific-code/dotnet for more details.-->
@@ -45,5 +44,10 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\LingFanEngine.Entry\LingFanEngine.Entry.csproj" />
+	</ItemGroup>
+
+	<!-- AOT 裁剪保留清单：LibVLC / MediaPlayer.Controls / JsonAOT 互操作 -->
+	<ItemGroup>
+		<TrimmerRootDescriptor Include="$(LfILLinkDescriptor)" Condition="Exists('$(LfILLinkDescriptor)')" />
 	</ItemGroup>
 </Project>

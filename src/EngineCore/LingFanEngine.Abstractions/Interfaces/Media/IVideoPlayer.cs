@@ -1,40 +1,23 @@
 namespace LingFanEngine.Abstractions.Interfaces.Media;
 
 /// <summary>
-/// 异步视频播放器抽象接口。
-/// <para>继承 IAudioPlayer：视频播放器天然具备音频能力。</para>
-/// <para>引擎不提供默认实现，开发者需自行接入（LibVLC / FFmpeg / AVPlayer 等）。</para>
-/// <para>注意：不应将 IVideoPlayer 实例用作 BGM——AudioManager 管理的是独立 IAudioPlayer。</para>
+/// 视频播放器抽象接口（控件模型包装）。
+/// <para>引擎不在此提供实现；Desktop 由 LingFanEngine.Views 内的 GpuMediaPlayerVideoPlayer 包装
+/// MediaPlayer.Controls.GpuMediaPlayer 实现（库按 OS 自动选后端：Windows→MediaFoundation /
+/// macOS→AVFoundation / Linux→FFmpeg 或 LibVLC）。</para>
+/// <para>Browser/WASM、Android、iOS 平台无 GpuMediaPlayer 后端，引擎默认注入 NullVideoPlayer
+/// （Control 返回 null，VideoPresenter 优雅跳过）。宿主可注册自定义 IVideoPlayer 实现恢复视频功能：</para>
+/// <list type="bullet">
+/// <item>Browser/WASM：使用 HTML &lt;video&gt; 直出</item>
+/// <item>Android/iOS：使用 LibVLCSharp 自定义实现</item>
+/// </list>
+/// <para>音视频分离架构：视频播放器永久静音（Volume=0），音频走独立的 AudioManager。</para>
 /// </summary>
-public interface IVideoPlayer : IAudioPlayer
+public interface IVideoPlayer
 {
-    /// <summary>获取视频元数据（分辨率、帧率、时长、像素格式）</summary>
-    ValueTask<VideoInfo> GetVideoInfoAsync();
-
-    /// <summary>绑定渲染目标（桌面端窗口句柄 / 移动端 Surface）</summary>
-    Task BindOutputTargetAsync(IVideoOutputTarget target, CancellationToken ct = default);
-
     /// <summary>
-    /// 帧数据拉流——IAsyncEnumerable 天然支持背压。
-    /// UI 渲染慢 → 循环自然阻塞 → 上游不生产多余帧
+    /// 承载视频渲染的视觉控件句柄（Desktop = GpuMediaPlayer；非 Avalonia / 测试环境返回 null）。
+    /// 使用者（VideoPresenter）应做 <c>if (Control is Control c) ...</c> 守卫，null 时跳过可视树挂载。
     /// </summary>
-    IAsyncEnumerable<VideoFrame> ReadFramesAsync(CancellationToken ct = default);
-}
-
-/// <summary>视频元数据</summary>
-public readonly record struct VideoInfo(
-    int Width, int Height, double FrameRate, TimeSpan Duration, PixelFormat Format);
-
-/// <summary>视频帧（零拷贝，只传指针）</summary>
-public readonly record struct VideoFrame(
-    IntPtr DataPtr, int Width, int Height, int Stride,
-    PixelFormat Format, TimeSpan Timestamp);
-
-/// <summary>像素格式</summary>
-public enum PixelFormat { Unknown, Bgra32, Yuv420p, Nv12 }
-
-/// <summary>视频渲染目标抽象</summary>
-public interface IVideoOutputTarget
-{
-    IntPtr NativeHandle { get; }
+    object? Control { get; }
 }

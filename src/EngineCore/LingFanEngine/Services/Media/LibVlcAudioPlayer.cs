@@ -118,6 +118,17 @@ public sealed class LibVlcAudioPlayer : IAudioPlayer
     }
 
     /// <inheritdoc/>
+    public Task ResumeAsync(CancellationToken ct = default)
+    {
+        if (_player == null) return Task.CompletedTask;
+        // 仅在暂停状态下恢复；非暂停状态为空操作（避免重复播放）
+        if (_state != PlaybackState.Paused) return Task.CompletedTask;
+        _player.SetPause(false);
+        _state = PlaybackState.Playing;
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc/>
     public Task StopAsync(CancellationToken ct = default)
     {
         if (_player == null) return Task.CompletedTask;

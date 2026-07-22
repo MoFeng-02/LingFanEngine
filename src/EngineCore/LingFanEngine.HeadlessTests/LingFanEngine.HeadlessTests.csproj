@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- 与 LingFanEngine.Tests 一致：抑制 xUnit1051（取消令牌提示型分析器）。 -->
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Avalonia.Headless" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LingFanEngine\LingFanEngine.csproj" />
+    <ProjectReference Include="..\LingFanEngine.Abstractions\LingFanEngine.Abstractions.csproj" />
+    <ProjectReference Include="..\LingFanEngine.DslCore\LingFanEngine.DslCore.csproj" />
+  </ItemGroup>
+
+  <!-- 链接共享 fake（FakeCommandPipeline 等）：仅源码共享，不引用整套 Tests 程序集，
+       避免把主套件 890 项测试也带进本进程（否则重蹈全局状态污染）。 -->
+  <ItemGroup>
+    <Compile Include="..\LingFanEngine.Tests\Fakes\TestFakes.cs" Link="Fakes\TestFakes.cs" />
+  </ItemGroup>
+
+</Project>

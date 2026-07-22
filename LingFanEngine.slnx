@@ -10,11 +10,14 @@
       <Deploy />
     </Project>
     <Project Path="E:/Project/Engine/src/Demo/Test.Windows/Test.Windows.csproj" />
+    <Project Path="src/Demo/Test.Linux/Test.Linux.csproj" />
+    <Project Path="src/Demo/Test.MacOS/Test.MacOS.csproj" />
   </Folder>
   <Folder Name="/EngineCore/">
     <Project Path="E:/Project/Engine/src/EngineCore/LingFanEngine.Abstractions/LingFanEngine.Abstractions.csproj" />
     <Project Path="E:/Project/Engine/src/EngineCore/LingFanEngine.DslCore/LingFanEngine.DslCore.csproj" />
     <Project Path="E:/Project/Engine/src/EngineCore/LingFanEngine.Tests/LingFanEngine.Tests.csproj" />
+    <Project Path="E:/Project/Engine/src/EngineCore/LingFanEngine.HeadlessTests/LingFanEngine.HeadlessTests.csproj" />
     <Project Path="E:/Project/Engine/src/EngineCore/LingFanEngine/LingFanEngine.csproj" />
   </Folder>
   <Folder Name="/SDK_Toolkit/">

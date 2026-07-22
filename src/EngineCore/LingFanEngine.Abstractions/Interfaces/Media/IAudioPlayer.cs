@@ -16,6 +16,14 @@ public interface IAudioPlayer : IAsyncDisposable
     /// <summary>暂停播放</summary>
     Task PauseAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// 恢复暂停的播放。
+    /// <para>仅在 Paused 状态下有效；Stopped/Finished 状态下调用为空操作。</para>
+    /// <para>与 PlayAsync 不同：ResumeAsync 不会创建新的播放会话或重置播放位置，
+    /// 而是让已暂停的播放器从暂停位置继续，原 PlayAsync 返回的 Task 继续等待自然结束。</para>
+    /// </summary>
+    Task ResumeAsync(CancellationToken ct = default);
+
     /// <summary>停止播放并释放解码器资源</summary>
     Task StopAsync(CancellationToken ct = default);
 

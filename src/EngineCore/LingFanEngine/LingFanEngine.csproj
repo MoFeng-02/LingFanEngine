@@ -22,9 +22,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<!-- 防止裁剪器删除 JsonAOT 序列化器 -->
+		<!-- 防止裁剪器删除 JsonAOT 序列化器 / 媒体互操作（保留清单见 ILLink.Descriptors.xml） -->
 		<!--<TrimmerRootAssembly Include="LingFanEngine.Abstractions" />-->
-		<!--<TrimmerRootDescriptor Include="$(MSBuildProjectDirectory)\ILLink.Descriptors.xml" Condition="Exists('$(MSBuildProjectDirectory)\ILLink.Descriptors.xml')" />-->
+		<TrimmerRootDescriptor Include="$(LfILLinkDescriptor)" Condition="Exists('$(LfILLinkDescriptor)')" />
 
 		<!-- 保留 System.IO.Compression（DLC ZIP 操作在 AOT 下所需） -->
 		<!--<TrimmerRootAssembly Include="System.IO.Compression" />-->

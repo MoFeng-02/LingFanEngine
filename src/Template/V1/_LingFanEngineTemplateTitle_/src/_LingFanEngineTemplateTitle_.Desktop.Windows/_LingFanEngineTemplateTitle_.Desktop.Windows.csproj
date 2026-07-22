@@ -13,8 +13,20 @@
 	  <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="VideoLAN.LibVLC.Windows" />
+  </ItemGroup>
+
 	<ItemGroup>
 		<ProjectReference Include="..\_LingFanEngineTemplateTitle_.Desktop\_LingFanEngineTemplateTitle_.Desktop.csproj" />
 	</ItemGroup>
+
+	<!-- AOT 裁剪保留清单：LibVLC / MediaPlayer.Controls / JsonAOT 互操作 -->
+	<ItemGroup>
+		<TrimmerRootDescriptor Include="$(LfILLinkDescriptor)" Condition="Exists('$(LfILLinkDescriptor)')" />
+	</ItemGroup>
+
+	<!-- 自包含 AOT：捆绑原生 libvlc（Linux 无 NuGet，依赖系统 apt install libvlc-dev） -->
+	
 
 </Project>
