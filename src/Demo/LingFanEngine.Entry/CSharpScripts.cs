@@ -180,7 +180,7 @@ public static class CSharpScripts
         // ========== 视频命令 ==========
 
         cmdService.RegisterCommand("do_play_video", (_, _) =>
-        { pipeline.SendAsync(new PlayVideoCommand { Path = "Video/sample.mp4", Volume = 0.8f }); return Task.CompletedTask; });
+        { pipeline.SendAsync(new PlayVideoCommand { Path = "Video/m1.mp4", Volume = 0.8f }); return Task.CompletedTask; });
         cmdService.RegisterCommand("do_stop_video", (_, _) =>
         { pipeline.SendAsync(new StopVideoCommand()); return Task.CompletedTask; });
         cmdService.RegisterCommand("do_pause_video", (_, _) =>

@@ -35,6 +35,7 @@ scene "title_main" type=menu
   button "CG鉴赏" x=50% y=67% width=200 height=40 color="#FFAAFF" cmd="open_gallery" halign=center
   button "沙盒模式" x=25% y=80% width=160 height=38 color="#FFAA88" nav="sandbox" halign=center
   button "模板演示" x=50% y=80% width=160 height=38 color="#88FF88" nav="dialog_templates" halign=center
+  button "音视频演示" x=75% y=80% width=160 height=38 color="#88CCFF" nav="video_demo" halign=center
   button "退出游戏" x=75% y=80% width=160 height=38 color="#FF8888" cmd="do_exit" halign=center
   text "Space/Enter=推进  Esc=关闭面板  右键=快捷菜单  滚轮=回溯/前进  Ctrl+S=存档  Ctrl+L=读档" x=50% y=92% size=11 color="#555555" halign=center font="Consolas"
 

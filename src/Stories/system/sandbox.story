@@ -19,9 +19,10 @@ scene "sandbox" type=menu
   button "子过程测试" x=35% y=62% width=140 height=40 color="#AA88FF" nav="sb_call" halign=center
   button "回溯测试" x=55% y=62% width=140 height=40 color="#AAFFAA" nav="sb_rollback" halign=center
   button "BGM 测试" x=75% y=62% width=140 height=40 color="#FFCCAA" nav="sb_bgm" halign=center
-  button "角色模板" x=15% y=72% width=140 height=40 color="#FFAAFF" nav="sb_character" halign=center
-  button "等待测试" x=35% y=72% width=140 height=40 color="#AAFFAA" nav="sb_wait" halign=center
-  button "对话框模板" x=55% y=72% width=140 height=40 color="#88FFFF" nav="dialog_templates" halign=center
+  button "音视频演示" x=15% y=72% width=140 height=40 color="#88CCFF" nav="video_demo" halign=center
+  button "角色模板" x=35% y=72% width=140 height=40 color="#FFAAFF" nav="sb_character" halign=center
+  button "等待测试" x=55% y=72% width=140 height=40 color="#AAFFAA" nav="sb_wait" halign=center
+  button "对话框模板" x=75% y=72% width=140 height=40 color="#88FFFF" nav="dialog_templates" halign=center
   button "返回标题" x=50% y=80% width=160 height=42 color="#FF8888" nav="title_main" halign=center
 
 // == 变量操作 =================================================
