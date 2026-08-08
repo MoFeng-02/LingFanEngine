@@ -5,9 +5,9 @@ using LingFanEngine.Abstractions.Interfaces.Media;
 namespace LingFanEngine.Services.Media;
 
 /// <summary>
-/// 视频管理器——通过 StateContainer 状态键驱动 SceneView 中的 GpuMediaPlayer 控件
+/// 视频管理器——通过 StateContainer 状态键(__video_*)驱动视频呈现。原生平台经 seam(IVideoPlayer/IVideoPresenter)接入 LingFan.Media；WASM/Browser 经引擎 HTML 输出直出 &lt;video&gt;/&lt;audio&gt; 标签。
 /// <para>不直接持有 UI 控件，所有操作通过写入 __video_* 状态键完成。</para>
-/// <para>SceneView 每帧读取这些状态键，创建/更新/销毁 GpuMediaPlayer 控件。</para>
+/// <para>SceneView 每帧读取这些状态键，经 IVideoPlayer 创建/更新/销毁视频播放实例（后端无关）。</para>
 /// <para>视频结束检测：SceneView 回写 IsFinished=true，VideoManager 每帧检查并触发 OnFinished 事件。</para>
 /// </summary>
 public class VideoManager : IVideoManager

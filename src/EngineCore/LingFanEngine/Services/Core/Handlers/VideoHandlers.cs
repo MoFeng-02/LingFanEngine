@@ -5,7 +5,7 @@ namespace LingFanEngine.Services.Core.Handlers;
 
 /// <summary>
 /// 播放视频命令处理器
-/// <para>通过 VideoManager 写入状态键，驱动 SceneView 中的 GpuMediaPlayer 控件。</para>
+/// <para>通过 VideoManager 写入状态键，驱动视频呈现。原生平台经 seam 接入 LingFan.Media；WASM/Browser 经引擎 HTML 输出直出 &lt;video&gt;/&lt;audio&gt; 标签。</para>
 /// </summary>
 public class PlayVideoHandler : ICommandHandler<PlayVideoCommand>, IDefaultCommandHandler
 {

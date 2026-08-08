@@ -15,7 +15,7 @@ namespace LingFanEngine.Tests.Fakes;
 /// <para>
 /// 直接用真实 <see cref="StateContainer"/> + 真实 <see cref="AsyncWaitService"/>(共享同一 state)
 /// + 真实(或 fake) <see cref="CommandPipeline"/>，手工 new 四个重组件，避免整锅 DI 拉入
-/// Avalonia 调度器与 LibVLC。
+/// Avalonia 调度器与 miniaudio/WebView 媒体后端。
 /// </para>
 /// <para>
 /// 等待机制是「谓词 + StateContainer.ValueChanged 事件驱动」：组件调用 IAsyncWaitService.WaitForAsync

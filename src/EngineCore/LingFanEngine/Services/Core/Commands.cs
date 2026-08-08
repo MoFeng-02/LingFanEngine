@@ -275,7 +275,7 @@ public readonly record struct StopAmbientCommand : ICommand
 
 /// <summary>
 /// 播放视频命令
-/// <para>由 VideoManager 处理，写入状态键驱动 SceneView 中的 GpuMediaPlayer 控件。</para>
+/// <para>由 VideoManager 处理，写入状态键驱动视频呈现。原生平台经 seam 接入 LingFan.Media；WASM/Browser 经引擎 HTML 输出直出 &lt;video&gt;/&lt;audio&gt; 标签。</para>
 /// </summary>
 public readonly record struct PlayVideoCommand : ICommand
 {

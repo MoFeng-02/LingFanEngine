@@ -160,7 +160,10 @@ say "文本" speaker="说话者" clickable=true template="xxx"
 nvl           # 进入 NVL 模式
 nvl clear     # 清空文本，仍在 NVL
 nvl exit      # 退出 NVL，恢复 ADV
+nvl auto      # 进入 NVL 并开启「作用域自动推进」：Say 像看书一样逐句自动翻页，直到 nvl exit 自动停止
 ```
+
+> **`nvl auto` 作用域语义**：开启后引擎自动推进 NVL 内的每条 Say（间隔由 `auto_speed` 控制，默认 3 秒），遇到 `menu` / `input` 等决策点会自然停下等待玩家选择；执行 `nvl exit` 时自动关闭自动模式，不会污染后续 ADV 对话。这与全局 `auto` 命令的区别在于：`auto` 是全局开关，需手动再敲一次关闭；`nvl auto` 把自动推进的作用域精确绑定到 NVL 段。
 
 ### window
 
@@ -169,6 +172,28 @@ window show   # 强制显示对话框
 window hide   # 强制隐藏
 window auto   # 自动模式
 ```
+
+## 等待与暂停
+
+### wait
+
+```dsl
+wait 2              # 等待 2 秒（创建回溯检查点）
+wait 1.5 skipable  # 等待 1.5 秒，期间玩家可点击立即跳过
+```
+
+`wait` 会创建一个回溯检查点（无论是否带 `skipable`）。`skipable` 形式在等待期间允许玩家点击立即继续；非 `skipable` 形式必须等满时长。
+
+### pause
+
+```dsl
+pause          # 暂停并等待玩家点击继续（创建回溯检查点）
+pause hard     # 硬暂停：等待点击，且不可被 skip 模式绕过
+```
+
+`pause` 会创建一个回溯检查点，并一直等待玩家点击才继续。`hard` 修饰符表示强制暂停（skip 模式也不能跳过）。
+
+> 注意：`pause` 的等待以「玩家点击」为结束条件，而非计时；即便写作 `pause 3`，当前实现仍会等待点击（时长参数被忽略）。如需定时恢复，用 `wait N`。
 
 ## 流程控制
 
@@ -202,6 +227,15 @@ call "subroutine"
 # 子过程内
 return
 ```
+
+### label
+
+```dsl
+label start:        # 定义标签（冒号可省略）
+jump "start"        # 跳转到标签
+```
+
+标签是 `jump` / `call` / `menu` 跳转的目标。`scene` 与 `label` 名字全局唯一。
 
 ### call_screen
 
@@ -337,6 +371,23 @@ animate "tag" property value [duration=N] [easing=EaseOutQuad]
 
 示例：`animate "tag" x 80 duration=1.0 easing=EaseOutQuad`
 
+### animate_block
+
+```dsl
+animate_block "target" x=100 y=200 opacity=0.5 duration=1.0 easing=EaseOutQuad
+```
+
+对指定目标（tag）批量设置多个动画属性，等价于把多条 `animate` 合并到同一时间轴。`duration` / `easing` 作用于整组属性。
+
+### style
+
+```dsl
+style "panel" background="#202030" border=2 corner=8
+style dialog border=1 color="#FFFFFF"
+```
+
+定义或覆盖 UI 元素的样式属性（键值对）。属性名同 `animate` 的取值域（`x` / `y` / `opacity` / `rotate` / `scale` 等），可带引号名或裸名。
+
 ### shake
 
 ```dsl
@@ -438,6 +489,14 @@ set_time_event "id" HOUR [minute=N] [day=N] [once=true|false] [weekdays="Mon,Tue
 unregister_time_event "id"
 ```
 
+### restore_time_event
+
+```dsl
+restore_time_event "id"
+```
+
+恢复此前被 `unregister_time_event` 注销的时间事件（按 id 重新启用其调度）。
+
 ### time_pause / time_resume / skip_time
 
 ```dsl
@@ -455,12 +514,16 @@ time_event day=N hour=N target="label" once=true
 ## 播放控制
 
 ```dsl
+auto                 # 切换自动播放模式（与 skip 互斥）：开启后 Say 完成后等待 auto_speed 秒自动推进
+skip                 # 切换跳过模式（与 auto 互斥）：开启后快速略过对话等待
 auto_speed N         # 自动播放间隔（秒）
 no_skip              # 禁用跳过
 force_skip           # 强制跳过
 video_skipable true|false   # 视频可跳过
 video_auto_nav "scene"      # 视频结束后自动导航到场景
 ```
+
+> 自动推进对所有 `say` / `wait` / `pause` 等待生效；在 NVL 模式下与累积文本配合，可实现「看书式逐句翻页」。若只想在 NVL 段内自动、出 NVL 即停，优先使用 `nvl auto`（作用域自动），而非手动成对开关 `auto`。
 
 ## 解锁系统
 

@@ -546,14 +546,15 @@ public static class DslStatementParser
             Level = level.HasValue ? level.Value : null
         };
 
-/// <summary>nvl / nvl clear / nvl exit</summary>
+/// <summary>nvl / nvl clear / nvl exit / nvl auto</summary>
 private static readonly Parser<char, DslStatement> _nvl =
     from _1 in String("nvl")
-    from sub in Try(_ws.Then(String("clear"))).Or(Try(_ws.Then(String("exit")))).Optional()
+    from sub in Try(_ws.Then(String("clear"))).Or(Try(_ws.Then(String("exit")))).Or(Try(_ws.Then(String("auto")))).Optional()
     select (DslStatement)new NvlStmt
     {
         IsClear = sub.HasValue && sub.Value == "clear",
         IsExit = sub.HasValue && sub.Value == "exit",
+        IsAuto = sub.HasValue && sub.Value == "auto",
     };
 
     /// <summary>input "prompt" store "key" [options=[...]]</summary>

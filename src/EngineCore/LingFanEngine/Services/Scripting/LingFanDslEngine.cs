@@ -1131,7 +1131,7 @@ Duration = t.Duration ?? 0.5
                 Level = d.Level ?? "Info"
             },
 
-            NvlStmt n => new NvlCommand { IsClear = n.IsClear, IsExit = n.IsExit },
+            NvlStmt n => new NvlCommand { IsClear = n.IsClear, IsExit = n.IsExit, IsAuto = n.IsAuto },
 
             // 角色定义——存储到 __characters[key] 字典
             CharacterStmt ch => new SetVariableCommand

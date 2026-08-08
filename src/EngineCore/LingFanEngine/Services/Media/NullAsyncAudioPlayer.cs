@@ -5,7 +5,7 @@ namespace LingFanEngine.Services.Media;
 /// <summary>
 /// 空音频播放器——引擎默认实现，不输出任何声音。
 /// <para>开发者可实现 IAudioPlayer 并注入到 AudioManager 构造函数以接入真实音频后端。</para>
-/// <para>Browser/WASM 等不支持 LibVLC 的平台自动降级为此实现。</para>
+/// <para>当前全平台默认实现——原生音频后端暂缓实现，DSL 音频命令与 AudioManager 状态机照常工作，无声音输出。</para>
 /// </summary>
 public sealed class NullAsyncAudioPlayer : IAudioPlayer
 {

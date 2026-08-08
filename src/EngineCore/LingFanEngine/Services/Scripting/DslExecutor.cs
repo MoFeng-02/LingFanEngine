@@ -32,6 +32,14 @@ public class DslExecutor : IDslExecutor
     private readonly IEngineLogger _logger;
     private IStoryRegistry? _storyRegistry;
 
+    /// <summary>检查点列表锁——保护 List&lt;RollbackCheckpoint&gt; 的并发访问
+    /// （DSL 线程 CreateCheckpoint vs Pipeline 线程 Rollback/Rollforward）</summary>
+    private readonly object _checkpointLock = new();
+
+    /// <summary>脏键追踪接口（若 StateContainer 实现了 IDirtyTracking 则非 null）
+    /// 用于检查点增量深拷贝：仅拷贝变更过的键，未变更键复用上一检查点的深拷贝</summary>
+    private readonly IDirtyTracking? _dirtyTracking;
+
     /// <summary>异步执行取消令牌（线程安全——使用 Interlocked.Exchange 原子替换）</summary>
     private CancellationTokenSource? _cts;
     /// <summary>当前运行中的执行任务（线程安全——使用 Interlocked.Exchange 原子替换）</summary>
@@ -52,6 +60,8 @@ public class DslExecutor : IDslExecutor
         StateKeys.Playback.SkipActive,
         StateKeys.Playback.AutoActive,
         StateKeys.Playback.AutoTimer,
+        // 「nvl auto」作用域标记同样是播放模式状态，回溯不应恢复（与 AutoActive 同列）
+        StateKeys.Nvl.AutoScoped,
     };
 
     /// <summary>C# 场景回溯回调（由 GameLoop 设置，回溯到 C# 场景时调用）</summary>
@@ -63,6 +73,7 @@ public class DslExecutor : IDslExecutor
         IEngineLoggerFactory? loggerFactory = null)
     {
         _state = state;
+        _dirtyTracking = state as IDirtyTracking;
         _pipeline = pipeline;
         _options = options ?? new LingFanEngineOptions();
         // waitService 可为 null（仅测试场景——测试不执行 RunAsync 中的交互等待方法）
@@ -204,11 +215,23 @@ public class DslExecutor : IDslExecutor
                         var cps = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
                         if (cps == null || cps.Count == 0 || cps[^1].CommandIndex != currentIndex)
                         {
-                            _state.Set(StateKeys.Dialog.Text, "");
-                            _state.Set(StateKeys.Dialog.Speaker, "");
-                            _state.Set(StateKeys.Dialog.Complete, false);
-                            CreateCheckpoint(currentIndex, "scene_idle");
-                            AdvanceRollbackFrontier();
+                            // NVL 模式：scene_idle 检查点不改 Nvl.Text（与末句累积文本完全相同），
+                            // 若照常创建会制造"尾部视觉重复检查点"，破坏 Rollback 的 frontier 索引算术——
+                            // 首下回退会落到"全展示"而非上一句，且后续回退全部指向同一全展示状态。
+                            // 跳过它：末句检查点已代表"全展示"场景。仍推进 frontier 使其指向末句，
+                            // 同时修复 CurrentIndex 与 checkpoints.Count 因混合非交互命令产生的偏差。
+                            if (IsNvlSceneIdleRedundant(cps))
+                            {
+                                AdvanceRollbackFrontier();
+                            }
+                            else
+                            {
+                                _state.Set(StateKeys.Dialog.Text, "");
+                                _state.Set(StateKeys.Dialog.Speaker, "");
+                                _state.Set(StateKeys.Dialog.Complete, false);
+                                CreateCheckpoint(currentIndex, "scene_idle");
+                                AdvanceRollbackFrontier();
+                            }
                         }
                     }
                     _state.Set(StateKeys.Rollback.IsActive, false);
@@ -225,26 +248,50 @@ public class DslExecutor : IDslExecutor
 
                     case ShowDialogCommand dialog:
                     {
-                        if (!_state.Get<bool>(StateKeys.Rollback.IsReplay))
-                            CreateCheckpoint(currentIndex, StateKeys.Dsl.WaitingTypes.Dialog);
-
-                        await _pipeline.SendAsync(cmd, ct);
-                        _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Dialog);
-
-                        await WaitForDialogComplete(ct);
-                        if (ct.IsCancellationRequested) return;
-
-                        _state.Set(StateKeys.Dsl.WaitingType, "");
-                        // 重置 Clickable——防止 say clickable=true 的状态泄漏到后续非 say 命令
-                        _state.Set(StateKeys.Dialog.Clickable, false);
-                        // Phase 37: 重置 Noskip——防止 say noskip=true 的状态泄漏
-                        _state.Set(StateKeys.Dialog.Noskip, false);
-
-                        var isRollback = _state.Get<bool>(StateKeys.Rollback.IsActive);
-                        if (isRollback && CanRollforward())
+                        if (_state.Get<bool>(StateKeys.Rollback.IsReplay))
                         {
-                            if (Rollforward())
-                                return;
+                            // 回溯重放：状态已从检查点恢复，跳过命令执行（不发 pipeline）。
+                            // 只需等待用户点击前进——Dialog.Text 已从检查点恢复正确。
+                            // 必须设置 WaitingType=Dialog：否则 UpdateDialogMask 判定遮罩不可见
+                            // （遮罩仅在 WaitingType∈{Dialog,WaitSkipable,Pause} 且 !Clickable 时显示），
+                            // 导致回溯浏览 say 时对话模态遮罩缺失（用户报告的"Say 遮罩消失"）。
+                            _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Dialog);
+                            _state.Set(StateKeys.Dialog.Complete, false);
+                            await WaitForDialogComplete(ct);
+                            if (ct.IsCancellationRequested) return;
+                            _state.Set(StateKeys.Dsl.WaitingType, "");
+
+                            if (CanRollforward())
+                            {
+                                if (Rollforward())
+                                    return;
+                            }
+                            // 没有更多检查点了，退出回放模式，继续正常执行
+                        }
+                        else
+                        {
+                            // 正常执行：发送命令 → handler 累积 → 等待点击
+                            await _pipeline.SendAsync(cmd, ct);
+                            _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Dialog);
+
+                            // 清除陈旧的 Dialog.Complete——防止上一句的用户点击（双击/快速点击/键盘）
+                            // 残留的 true 被 WaitForDialogComplete 消费，导致跳过本句等待。
+                            // DialogBox._clickConsumed 处理最常见的对话框点击场景，
+                            // 此处作为 defense-in-depth 覆盖 SceneView 点击和键盘快捷键。
+                            _state.Set(StateKeys.Dialog.Complete, false);
+
+                            await WaitForDialogComplete(ct);
+                            if (ct.IsCancellationRequested) return;
+
+                            _state.Set(StateKeys.Dsl.WaitingType, "");
+                            // 重置 Clickable——防止 say clickable=true 的状态泄漏到后续非 say 命令
+                            _state.Set(StateKeys.Dialog.Clickable, false);
+                            // Phase 37: 重置 Noskip——防止 say noskip=true 的状态泄漏
+                            _state.Set(StateKeys.Dialog.Noskip, false);
+
+                            // 检查点创建移到用户点击后（捕获用户所见状态）
+                            // 而非命令执行前——NVL 累积模式下执行前状态缺少本次文本。
+                            CreateCheckpoint(currentIndex, StateKeys.Dsl.WaitingTypes.Dialog);
                         }
 
                         _state.Set(StateKeys.Rollback.IsActive, false);
@@ -364,15 +411,16 @@ public class DslExecutor : IDslExecutor
                         _state.Set(StateKeys.Menu.DslTargets, "");
                         _state.Set(StateKeys.Menu.DslTexts, "");
 
-                        var isRollback = _state.Get<bool>(StateKeys.Rollback.IsActive);
-                        if (isRollback && CanRollforward())
-                        {
-                            if (Rollforward())
-                                return;
-                        }
+                        // menu 是分支决策命令：回溯重放中玩家重新选择必须开辟新时间线。
+                        // 绝不能走 Rollforward()——那会沿"第一次选择"的旧时间线前进、
+                        // 完全忽略玩家的新 selectedIdx（用户报告的"回溯后仍是第一次选的项"根因）。
+                        var wasReplayMenu = _state.Get<bool>(StateKeys.Rollback.IsReplay);
                         _state.Set(StateKeys.Rollback.IsActive, false);
                         _state.Set(StateKeys.Rollback.IsReplay, false);
-                        AdvanceRollbackFrontier();
+                        if (wasReplayMenu)
+                            TruncateForwardCheckpoints(); // 丢弃旧分支的前向检查点
+                        else
+                            AdvanceRollbackFrontier();
 
                         if (selectedIdx >= 0 && selectedIdx < menu.Options.Count)
                         {
@@ -414,15 +462,15 @@ public class DslExecutor : IDslExecutor
                         _state.Set(StateKeys.Input.DslStore, "");
                         _state.Set<object>(StateKeys.Input.Options, Array.Empty<string>());
 
-                        var isRollback = _state.Get<bool>(StateKeys.Rollback.IsActive);
-                        if (isRollback && CanRollforward())
-                        {
-                            if (Rollforward())
-                                return;
-                        }
+                        // input 与 menu 同理是决策命令：回溯重放中玩家的新输入必须开辟新时间线，
+                        // 不能 Rollforward() 沿旧时间线前进而丢弃新输入。
+                        var wasReplayInput = _state.Get<bool>(StateKeys.Rollback.IsReplay);
                         _state.Set(StateKeys.Rollback.IsActive, false);
                         _state.Set(StateKeys.Rollback.IsReplay, false);
-                        AdvanceRollbackFrontier();
+                        if (wasReplayInput)
+                            TruncateForwardCheckpoints();
+                        else
+                            AdvanceRollbackFrontier();
 
                         if (!string.IsNullOrEmpty(input.StoreKey))
                             _state.Set(input.StoreKey, inputValue);
@@ -629,6 +677,26 @@ public class DslExecutor : IDslExecutor
                         _state.Set(StateKeys.Dsl.CurrentIndex, currentIndex + 1);
                         break;
 
+                    case NvlCommand nvlCmd:
+                    {
+                        // nvl 非交互命令（enter/clear/exit）。
+                        // 仅 nvl clear 建立检查点："清零 NVL" 是一个有意义的叙事节点——
+                        // 否则从 nvl clear 后的 say 回退会直接跳回清理前的多行块，跳过"已清空"状态
+                        // （用户报告的 NVL 回退"多点几次/回到错的位置"根因）。
+                        // 重放(IsReplay)时跳过 SendAsync：快照已含正确的 Nvl.Text，
+                        // 重跑 handler 会错误地清/改文本（RestoreCheckpointState 已恢复目标状态）。
+                        if (!_state.Get<bool>(StateKeys.Rollback.IsReplay))
+                        {
+                            await _pipeline.SendAsync(cmd, ct);
+                            if (nvlCmd.IsClear)
+                                CreateCheckpoint(currentIndex, "nvl_clear");
+                        }
+                        _state.Set(StateKeys.Rollback.IsActive, false);
+                        _state.Set(StateKeys.Rollback.IsReplay, false);
+                        _state.Set(StateKeys.Dsl.CurrentIndex, currentIndex + 1);
+                        break;
+                    }
+
                     default:
                         await _pipeline.SendAsync(cmd, ct);
                         _state.Set(StateKeys.Dsl.CurrentIndex, currentIndex + 1);
@@ -730,6 +798,7 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
             case ShowDialogCommand:
                 await _pipeline.SendAsync(cmd, ct);
                 _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Dialog);
+                _state.Set(StateKeys.Dialog.Complete, false);
                 await WaitForDialogComplete(ct);
                 _state.Set(StateKeys.Dsl.WaitingType, "");
                 _state.Set(StateKeys.Dialog.Clickable, false);
@@ -831,12 +900,9 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
 
     private async Task WaitForDialogComplete(CancellationToken ct)
     {
-        // Fast path
-        if (_state.Get<bool>(StateKeys.Dialog.Complete))
-        {
-            _state.Set(StateKeys.Dialog.Complete, false);
-            return;
-        }
+        // Fast path 已移除——防止陈旧的 Dialog.Complete=true（来自上一句交互的残留点击）
+        // 被直接消费，导致跳过当前句的等待。
+        // 调用方在调用前已清除 Dialog.Complete=false，WaitForAsync 的 fast path 会正确处理。
 
         try
         {
@@ -990,73 +1056,140 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
 
     // ========== 统一线性回溯时间线（Phase 16/16.1）==========
 
+    /// <summary>
+    /// 计算回退目标检查点索引。
+    /// <para>无有效目标（已在最前 / 目标为场景重放 csharp_scene 检查点）时返回 -1。</para>
+    /// </summary>
+    private int ComputeRollbackTarget()
+    {
+        var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
+        if (checkpoints == null || checkpoints.Count == 0) return -1;
+        var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
+        if (currentPos <= 0) return -1;
+
+        var targetPos = currentPos - 1;
+        // 当前位于 frontier 末端：末位检查点存储的是"当前可见状态"，需再跳过它一步。
+        if (currentPos >= checkpoints.Count)
+            targetPos--;
+
+        if (targetPos < 0) return -1;
+
+        // C# 场景检查点（csharp_scene）允许回退——回退到此 = 场景级回溯（重跑整个 StoryScript.RunAsync）。
+        // C# 场景内部的 SayAsync/ShowMenuAsync 不创建逐句检查点，故其回溯精度天然为场景级，符合设计。
+        // 【历史】曾在此拒绝回退到 csharp_scene 以防"NVL 逐句回退击穿到场景级"，但那是误判：
+        // NVL 是 DSL 脚本场景，根本不产生 csharp_scene 检查点（仅 C# StoryScript 场景入口才创建，
+        // 见 NavigateHandler.HandleScriptEntry）；NVL 尾部冗余的真正修复是 IsNvlSceneIdleRedundant
+        // 创建期抑制。该护栏纯属过度防御，反而掐死了 C# 场景的合法回溯，现移除。
+        return targetPos;
+    }
+
     /// <inheritdoc/>
     public bool CanRollback()
     {
-        var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
-        var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
-        return checkpoints != null && checkpoints.Count > 0 && currentPos > 0;
+        lock (_checkpointLock)
+        {
+            return ComputeRollbackTarget() >= 0;
+        }
     }
 
     /// <inheritdoc/>
     public bool CanRollforward()
     {
-        var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
-        var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
-        return checkpoints != null && currentPos >= 0 && currentPos < checkpoints.Count;
+        lock (_checkpointLock)
+        {
+            var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
+            var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
+            return checkpoints != null && currentPos >= 0 && currentPos < checkpoints.Count;
+        }
     }
 
     /// <inheritdoc/>
     public bool RollbackTo(int targetPos)
     {
-        var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
-        if (checkpoints == null || targetPos < 0 || targetPos >= checkpoints.Count) return false;
+        lock (_checkpointLock)
+        {
+            var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
+            if (checkpoints == null || targetPos < 0 || targetPos >= checkpoints.Count) return false;
 
-        var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
-        if (targetPos >= currentPos) return false;
+            var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
+            if (targetPos >= currentPos) return false;
 
-        RestoreAndRestart(checkpoints[targetPos], targetPos, checkpoints.Count);
-        return true;
+            RestoreAndRestart(checkpoints[targetPos], targetPos, checkpoints.Count);
+            return true;
+        }
     }
 
     /// <inheritdoc/>
     public bool Rollback()
     {
-        var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
-        var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
-        if (checkpoints == null || currentPos <= 0) return false;
+        lock (_checkpointLock)
+        {
+            var targetPos = ComputeRollbackTarget();
+            if (targetPos < 0) return false;
 
-        var targetPos = currentPos - 1;
-        RestoreAndRestart(checkpoints[targetPos], targetPos, checkpoints.Count);
-        return true;
+            var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
+            if (checkpoints == null) return false;
+
+            RestoreAndRestart(checkpoints[targetPos], targetPos, checkpoints.Count);
+            return true;
+        }
     }
 
     /// <inheritdoc/>
     public bool Rollforward()
     {
-        var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
-        var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
-        if (checkpoints == null || currentPos < 0 || currentPos >= checkpoints.Count) return false;
-
-        var targetPos = currentPos + 1;
-
-        if (targetPos >= checkpoints.Count)
+        lock (_checkpointLock)
         {
-            RestoreAndRestart(checkpoints[^1], checkpoints.Count, checkpoints.Count);
+            var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
+            var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
+            if (checkpoints == null || currentPos < 0 || currentPos >= checkpoints.Count) return false;
+
+            var targetPos = currentPos + 1;
+
+            if (targetPos >= checkpoints.Count)
+            {
+                RestoreAndRestart(checkpoints[^1], checkpoints.Count, checkpoints.Count);
+                return true;
+            }
+
+            RestoreAndRestart(checkpoints[targetPos], targetPos, checkpoints.Count);
             return true;
         }
-
-        RestoreAndRestart(checkpoints[targetPos], targetPos, checkpoints.Count);
-        return true;
     }
 
     // ========== 检查点内部实现 ==========
 
     private void AdvanceRollbackFrontier()
     {
-        var cps = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
-        if (cps != null && cps.Count > 0)
+        lock (_checkpointLock)
+        {
+            var cps = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
+            if (cps != null && cps.Count > 0)
+                _state.Set(StateKeys.Rollback.CurrentIndex, cps.Count);
+        }
+    }
+
+    /// <summary>
+    /// 决策命令（menu/input）回溯重放后玩家做出新选择时调用：
+    /// 丢弃当前决策检查点之后的旧时间线检查点（新决策使旧分支失效），并将前沿设到末端。
+    /// <para>currentPos 指向刚重放的决策命令检查点本身（回溯时由 RestoreAndRestart 设置），
+    /// 保留 [0..currentPos]（含决策检查点），截断其后旧分支——后续命令的 CreateCheckpoint 会 append 新分支。</para>
+    /// </summary>
+    private void TruncateForwardCheckpoints()
+    {
+        lock (_checkpointLock)
+        {
+            var cps = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
+            if (cps == null || cps.Count == 0) return;
+            var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
+            if (currentPos >= 0 && currentPos + 1 < cps.Count)
+            {
+                cps.RemoveRange(currentPos + 1, cps.Count - currentPos - 1);
+                _state.Set(StateKeys.Rollback.Checkpoints, cps);
+            }
+            // 前沿指向截断后的末端（frontier），后续 CreateCheckpoint 直接 append
             _state.Set(StateKeys.Rollback.CurrentIndex, cps.Count);
+        }
     }
 
     private void RestoreAndRestart(RollbackCheckpoint cp, int targetPos, int totalCheckpoints)
@@ -1069,6 +1202,12 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
         cts?.Cancel();
         cts?.Dispose();
         Interlocked.Exchange(ref _runTask, null);
+
+        // 清空管道中的陈旧命令——防止回溯前已 SendAsync 但 GameLoop 尚未处理的命令
+        // 在 RestoreCheckpointState 之后被 GameLoop 处理，污染已恢复的状态。
+        // 必须在 RestoreCheckpointState 之前调用：此时 GameLoop 即使读到陈旧命令，
+        // 也只是修改回溯前的状态（即将被 RestoreCheckpointState 覆盖），不会影响正确性。
+        _pipeline.Clear();
 
         RestoreCheckpointState(cp);
 
@@ -1092,6 +1231,13 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
         _state.Set(StateKeys.Rollback.CurrentIndex, targetPos);
         _state.Set(StateKeys.Rollback.IsActive, targetPos < totalCheckpoints - 1);
         _state.Set(StateKeys.Rollback.IsReplay, true);
+
+        // 清除脏键：RestoreCheckpointState 的 Set 已标记所有恢复键为脏，
+        // 但恢复后的值与目标检查点的快照一致（RestoreCheckpointState 从该检查点深拷贝而来）。
+        // 下一个 CreateCheckpoint 可安全复用目标检查点的深拷贝，无需再次全量深拷贝。
+        // 新 RunAsync 中命令产生的 Set 会重新标记脏键，确保增量追踪正确。
+        if (_dirtyTracking != null)
+            _dirtyTracking.GetSnapshotAndClearDirty();
 
         if (cp.CommandIndex < 0 && cp.InteractionType == "csharp_scene")
         {
@@ -1125,38 +1271,55 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
         var currentType = _state.Get<int>(StateKeys.Scene.CurrentType);
         if ((SceneType)currentType != SceneType.Game) return;
 
-        var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints) ?? new List<RollbackCheckpoint>();
-        var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
-
-        if (currentPos >= 0 && currentPos + 1 < checkpoints.Count)
-            checkpoints.RemoveRange(currentPos + 1, checkpoints.Count - currentPos - 1);
-
-        var snapshot = new Dictionary<string, object?>();
-        foreach (var (k, v) in _state.GetSnapshot())
+        lock (_checkpointLock)
         {
-            if (s_rollbackKeys.Contains(k)) continue;
-            snapshot[k] = DeepCopyMutable(k, v);
+            var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints) ?? new List<RollbackCheckpoint>();
+            var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
+
+            if (currentPos >= 0 && currentPos + 1 < checkpoints.Count)
+                checkpoints.RemoveRange(currentPos + 1, checkpoints.Count - currentPos - 1);
+
+            var snapshot = CreateIncrementalSnapshot(checkpoints);
+
+            checkpoints.Add(new RollbackCheckpoint
+            {
+                CommandIndex = -1,
+                SceneName = sceneName,
+                InteractionType = "csharp_scene",
+                StateSnapshot = snapshot
+            });
+
+            var maxCps = _options.MaxRollbackCheckpoints;
+            while (checkpoints.Count > maxCps) checkpoints.RemoveAt(0);
+
+            _state.Set(StateKeys.Rollback.Checkpoints, checkpoints);
+            _state.Set(StateKeys.Rollback.CurrentIndex, checkpoints.Count);
+            _state.Set(StateKeys.Rollback.IsActive, false);
+            _state.Set(StateKeys.Rollback.IsReplay, false);
         }
+    }
 
-        checkpoints.Add(new RollbackCheckpoint
-        {
-            CommandIndex = -1,
-            SceneName = sceneName,
-            InteractionType = "csharp_scene",
-            StateSnapshot = snapshot
-        });
-
-        var maxCps = _options.MaxRollbackCheckpoints;
-        while (checkpoints.Count > maxCps) checkpoints.RemoveAt(0);
-
-        _state.Set(StateKeys.Rollback.Checkpoints, checkpoints);
-        _state.Set(StateKeys.Rollback.CurrentIndex, checkpoints.Count);
-        _state.Set(StateKeys.Rollback.IsActive, false);
-        _state.Set(StateKeys.Rollback.IsReplay, false);
+    /// <summary>
+    /// NVL 模式下，scene_idle 检查点是否为"冗余视觉重复"——其 Nvl.Text 与上一检查点完全相同。
+    /// <para>仅当 NVL 激活、上一检查点存在、且当前累积 Nvl.Text 等于上一检查点的 Nvl.Text 时成立
+    /// （scene_idle 块只清空 Dialog.Text/Speaker，从不改动 Nvl.Text，故末句与 scene_idle 视觉一致）。</para>
+    /// </summary>
+    private bool IsNvlSceneIdleRedundant(List<RollbackCheckpoint>? cps)
+    {
+        if (!_state.Get<bool>(StateKeys.Nvl.Active)) return false;
+        if (cps == null || cps.Count == 0) return false;
+        var currentNvl = _state.Get<string>(StateKeys.Nvl.Text) ?? "";
+        if (!cps[^1].StateSnapshot.TryGetValue(StateKeys.Nvl.Text, out var prevNvl) || prevNvl is not string prevStr)
+            return false;
+        return string.Equals(currentNvl, prevStr, StringComparison.Ordinal);
     }
 
     private void CreateCheckpoint(int commandIndex, string interactionType = StateKeys.Dsl.WaitingTypes.Dialog)
     {
+        // 线程安全：如果 CTS 已取消（回溯/停止中），不要创建过期检查点
+        var cts = _cts;
+        if (cts == null || cts.IsCancellationRequested) return;
+
         // Phase 60: 小说世界模式禁用逐句回溯——时间锚点存档是唯一的"历史"
         if (_options.EnableTimeSystem) return;
 
@@ -1169,48 +1332,113 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
         if ((SceneType)currentType != SceneType.Game)
             return;
 
-        var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints) ?? new List<RollbackCheckpoint>();
-        var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
-
-        if (currentPos >= 0 && currentPos + 1 < checkpoints.Count)
+        lock (_checkpointLock)
         {
-            checkpoints.RemoveRange(currentPos + 1, checkpoints.Count - currentPos - 1);
-        }
+            // 双重检查：获锁后再次确认未取消（可能在等待锁期间被回溯取消）
+            cts = _cts;
+            if (cts == null || cts.IsCancellationRequested) return;
 
+            var checkpoints = _state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints) ?? new List<RollbackCheckpoint>();
+            var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
+
+            if (currentPos >= 0 && currentPos + 1 < checkpoints.Count)
+            {
+                checkpoints.RemoveRange(currentPos + 1, checkpoints.Count - currentPos - 1);
+            }
+
+            var snapshot = CreateIncrementalSnapshot(checkpoints);
+
+            var sceneName = _state.Get<string>(StateKeys.Scene.CurrentName) ?? "";
+
+            checkpoints.Add(new RollbackCheckpoint
+            {
+                CommandIndex = commandIndex,
+                SceneName = sceneName,
+                InteractionType = interactionType,
+                StateSnapshot = snapshot
+            });
+
+            var maxCps = _options.MaxRollbackCheckpoints;
+            while (checkpoints.Count > maxCps)
+                checkpoints.RemoveAt(0);
+
+            _state.Set(StateKeys.Rollback.Checkpoints, checkpoints);
+            _state.Set(StateKeys.Rollback.CurrentIndex, checkpoints.Count - 1);
+            _state.Set(StateKeys.Rollback.IsActive, false);
+            _state.Set(StateKeys.Rollback.IsReplay, false);
+
+            if (interactionType == StateKeys.Dsl.WaitingTypes.Dialog)
+            {
+                var seenKey = $"{sceneName}:{commandIndex}";
+                var seen = _state.Get<HashSet<string>>(StateKeys.Playback.SeenSayIndices) ?? [];
+                seen.Add(seenKey);
+                _state.Set(StateKeys.Playback.SeenSayIndices, seen);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 创建增量状态快照——仅深拷贝脏键，未变更键复用上一检查点的深拷贝。
+    /// <para>若 IDirtyTracking 不可用（StateContainer 未实现该接口），回退到全量深拷贝。</para>
+    /// <para>安全性：检查点的 StateSnapshot 创建后不可变；RestoreCheckpointState 恢复时会再次深拷贝，
+    /// 因此多个检查点共享同一深拷贝引用是安全的。</para>
+    /// </summary>
+    private Dictionary<string, object?> CreateIncrementalSnapshot(List<RollbackCheckpoint> checkpoints)
+    {
         var snapshot = new Dictionary<string, object?>();
-        foreach (var (k, v) in _state.GetSnapshot())
+
+        // 获取上一检查点的快照（用于复用未变更键的深拷贝）
+        Dictionary<string, object?>? prevSnapshot = checkpoints.Count > 0
+            ? checkpoints[^1].StateSnapshot
+            : null;
+
+        if (_dirtyTracking != null && prevSnapshot != null)
         {
-            if (s_rollbackKeys.Contains(k))
-                continue;
-            snapshot[k] = DeepCopyMutable(k, v);
+            // 增量模式：原子获取快照+脏键（写锁保证一致性）
+            var (currentSnapshot, dirtyKeys) = _dirtyTracking.GetSnapshotAndClearDirty();
+            var dirtySet = dirtyKeys as HashSet<string> ?? new HashSet<string>(dirtyKeys, StringComparer.Ordinal);
+
+            foreach (var (k, v) in currentSnapshot)
+            {
+                if (s_rollbackKeys.Contains(k))
+                    continue;
+
+                if (dirtySet.Contains(k) || !prevSnapshot.ContainsKey(k))
+                {
+                    // 脏键或新键 → 深拷贝当前值
+                    snapshot[k] = DeepCopyMutable(k, v);
+                }
+                else
+                {
+                    // 非脏键且上一检查点有此键 → 复用上一检查点的深拷贝
+                    snapshot[k] = prevSnapshot[k];
+                }
+            }
+        }
+        else
+        {
+            // 回退模式：全量深拷贝（IDirtyTracking 不可用或首检查点无前驱）
+            IReadOnlyDictionary<string, object?> currentSnapshot;
+            if (_dirtyTracking != null)
+            {
+                // 首检查点：仍通过 IDirtyTracking 获取快照并清除脏键（保持脏键状态一致）
+                var (snap, _) = _dirtyTracking.GetSnapshotAndClearDirty();
+                currentSnapshot = snap;
+            }
+            else
+            {
+                currentSnapshot = _state.GetSnapshot();
+            }
+
+            foreach (var (k, v) in currentSnapshot)
+            {
+                if (s_rollbackKeys.Contains(k))
+                    continue;
+                snapshot[k] = DeepCopyMutable(k, v);
+            }
         }
 
-        var sceneName = _state.Get<string>(StateKeys.Scene.CurrentName) ?? "";
-
-        checkpoints.Add(new RollbackCheckpoint
-        {
-            CommandIndex = commandIndex,
-            SceneName = sceneName,
-            InteractionType = interactionType,
-            StateSnapshot = snapshot
-        });
-
-        var maxCps = _options.MaxRollbackCheckpoints;
-        while (checkpoints.Count > maxCps)
-            checkpoints.RemoveAt(0);
-
-        _state.Set(StateKeys.Rollback.Checkpoints, checkpoints);
-        _state.Set(StateKeys.Rollback.CurrentIndex, checkpoints.Count - 1);
-        _state.Set(StateKeys.Rollback.IsActive, false);
-        _state.Set(StateKeys.Rollback.IsReplay, false);
-
-        if (interactionType == StateKeys.Dsl.WaitingTypes.Dialog)
-        {
-            var seenKey = $"{sceneName}:{commandIndex}";
-            var seen = _state.Get<HashSet<string>>(StateKeys.Playback.SeenSayIndices) ?? [];
-            seen.Add(seenKey);
-            _state.Set(StateKeys.Playback.SeenSayIndices, seen);
-        }
+        return snapshot;
     }
 
     private void RestoreCheckpointState(RollbackCheckpoint cp)
@@ -1300,9 +1528,12 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
     /// <inheritdoc/>
     public void ClearCheckpoints()
     {
-        _state.Set(StateKeys.Rollback.Checkpoints, new List<RollbackCheckpoint>());
-        _state.Set(StateKeys.Rollback.CurrentIndex, -1);
-        _state.Set(StateKeys.Rollback.IsActive, false);
-        _state.Set(StateKeys.Rollback.IsReplay, false);
+        lock (_checkpointLock)
+        {
+            _state.Set(StateKeys.Rollback.Checkpoints, new List<RollbackCheckpoint>());
+            _state.Set(StateKeys.Rollback.CurrentIndex, -1);
+            _state.Set(StateKeys.Rollback.IsActive, false);
+            _state.Set(StateKeys.Rollback.IsReplay, false);
+        }
     }
 }

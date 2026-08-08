@@ -734,6 +734,9 @@ public const string SeenSayIndices = "__seen_say_indices";
 
         /// <summary>NVL 已积累的条目数 (int)</summary>
         public const string Count = "__nvl_count";
+
+        /// <summary>「nvl auto」作用域自动推进标记 (bool)。由 nvl auto 开启、nvl exit 时自动关闭；属播放模式状态，回溯/存档均隔离。</summary>
+        public const string AutoScoped = "__nvl_auto_scoped";
     }
 
     // ==================== 角色定义 ====================

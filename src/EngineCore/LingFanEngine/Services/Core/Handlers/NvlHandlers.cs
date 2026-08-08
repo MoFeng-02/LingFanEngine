@@ -26,6 +26,15 @@ public class NvlHandler : ICommandHandler<NvlCommand>, IDefaultCommandHandler
             ctx.State.Set(StateKeys.Dialog.Text, "");
             ctx.State.Set(StateKeys.Dialog.Speaker, "");
             ctx.State.Set(StateKeys.Dialog.Complete, false);
+
+            // 「nvl auto」作用域收尾：若由 nvl auto 开启的自动推进，退出 NVL 时一并关闭，
+            // 避免污染后续 ADV 对话（作用域语义：进 NVL 自动开、出 nvl exit 自动停）。
+            if (ctx.State.Get<bool>(StateKeys.Nvl.AutoScoped))
+            {
+                ctx.State.Set(StateKeys.Playback.AutoActive, false);
+                ctx.State.Set(StateKeys.Playback.AutoTimer, 0.0);
+                ctx.State.Set(StateKeys.Nvl.AutoScoped, false);
+            }
         }
         else if (cmd.IsClear)
         {
@@ -38,6 +47,7 @@ public class NvlHandler : ICommandHandler<NvlCommand>, IDefaultCommandHandler
             ctx.State.Set(StateKeys.Dialog.Text, "");
             ctx.State.Set(StateKeys.Dialog.Speaker, "");
             ctx.State.Set(StateKeys.Dialog.Complete, false);
+            // 注意：nvl clear 不触碰 AutoScoped/AutoActive——作用域自动推进在 clear 后继续有效
         }
         else
         {
@@ -50,6 +60,20 @@ public class NvlHandler : ICommandHandler<NvlCommand>, IDefaultCommandHandler
                 ctx.State.Set(StateKeys.Nvl.Speakers, "");
             if (!ctx.State.ContainsKey(StateKeys.Nvl.Count))
                 ctx.State.Set(StateKeys.Nvl.Count, 0);
+
+            // 「nvl auto」= 进入 NVL 并开启作用域自动推进：
+            // 1) 打开自动模式（与 skip 互斥，转自动时关 skip）
+            // 2) 标记 AutoScoped，使 nvl exit 能自动收尾
+            // 3) 退出回溯浏览态（开启自动意味着用户要继续前进）
+            if (cmd.IsAuto)
+            {
+                ctx.State.Set(StateKeys.Playback.AutoActive, true);
+                ctx.State.Set(StateKeys.Playback.AutoTimer, 0.0);
+                ctx.State.Set(StateKeys.Playback.SkipActive, false);
+                ctx.State.Set(StateKeys.Nvl.AutoScoped, true);
+                ctx.State.Set(StateKeys.Rollback.IsActive, false);
+                ctx.State.Set(StateKeys.Rollback.IsReplay, false);
+            }
         }
     }
 }

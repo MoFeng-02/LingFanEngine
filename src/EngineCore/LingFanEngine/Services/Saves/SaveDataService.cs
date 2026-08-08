@@ -291,6 +291,7 @@ private readonly ITimeEventRegistry? _timeEventRegistry;
         _state.Set(StateKeys.Playback.SkipActive, false);
         _state.Set(StateKeys.Playback.AutoActive, false);
         _state.Set(StateKeys.Playback.AutoTimer, 0.0);
+        _state.Set(StateKeys.Nvl.AutoScoped, false);
 
         // 4. 清除回溯检查点（读档后从当前状态重新开始积累）
         _dslExecutor?.ClearCheckpoints();
@@ -538,6 +539,7 @@ private readonly ITimeEventRegistry? _timeEventRegistry;
         or StateKeys.Debug.Visible
         or StateKeys.Nvl.Active or StateKeys.Nvl.Text
         or StateKeys.Nvl.Speakers or StateKeys.Nvl.Count
+        or StateKeys.Nvl.AutoScoped
         => true,
         _ => key.Contains(StateKeys.Animation.Prefix),
     };

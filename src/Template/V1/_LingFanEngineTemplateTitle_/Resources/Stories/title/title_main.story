@@ -30,6 +30,7 @@ scene "title_main" type=menu
   button "对话历史" x=20 y=360 width=180 height=44 color="#FFAAFF" cmd="open_history" halign=left valign=top
   button "CG 鉴赏" x=20 y=414 width=180 height=44 color="#FFAAFF" cmd="open_gallery" halign=left valign=top
   button "关于" x=20 y=468 width=180 height=44 color="#AAAAAA" nav="about" halign=left valign=top
+  button "功能巡演" x=20 y=514 width=180 height=44 color="#FFAAFF" nav="showcase" halign=left valign=top
   button "退出游戏" x=20 y=560 width=180 height=44 color="#FF8888" cmd="do_exit" halign=left valign=top
 
   // ── 右侧主内容区 ──

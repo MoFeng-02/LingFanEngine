@@ -60,6 +60,8 @@ public class FakeCommandPipeline : ICommandPipeline
         return false;
     }
 
+    public void Clear() => Sent.Clear();
+
     public void Complete() { }
 }
 

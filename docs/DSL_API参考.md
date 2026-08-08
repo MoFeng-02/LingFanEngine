@@ -916,7 +916,7 @@ video "Videos/intro.mp4" volume=0.8 loop=false autoplay=true
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `volume` | 1.0 | 音量（0~1，但 GpuMediaPlayer 静音，音频走 AudioManager） |
+| `volume` | 1.0 | 音量（0~1，但视频槽位静音，音频走 AudioManager） |
 | `loop` | false | 是否循环播放 |
 | `autoplay` | true | 是否自动播放 |
 

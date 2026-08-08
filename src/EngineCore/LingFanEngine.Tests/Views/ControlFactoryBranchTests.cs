@@ -17,7 +17,7 @@ namespace LingFanEngine.Tests.Views;
 /// B1-b：ControlFactory Tier A 盲区测试（无宿主）。
 /// <para>覆盖 font/grid 之外的元素类型分支、ApplyLayout 定位数学、ApplyCommonProps 通用属性。
 /// 刻意绕开需 Avalonia 服务定位器的 new Cursor(Hand)（button/choice 分支与 cursor 属性）
-/// 与需原生后端的 video/GpuMediaPlayer 分支——这两者留待 B2/手动层。</para>
+/// 与需 WebView 后端的 video 分支——这两者留待 B2/手动层。</para>
 /// <para>图片分支用不存在的文件路径：LoadSource 非 avares 路径走 fire-and-forget 异步且 File.Exists=false 时提前返回，无副作用。</para>
 /// </summary>
 public class ControlFactoryBranchTests

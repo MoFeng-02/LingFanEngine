@@ -22,6 +22,11 @@ public interface ICommandPipeline
     bool TryRead(out ICommand command);
 
     /// <summary>
+    /// 清空管道中所有待处理命令（回溯时调用，防止陈旧命令被 GameLoop 处理）
+    /// </summary>
+    void Clear();
+
+    /// <summary>
     /// 管道中待处理的命令数量
     /// </summary>
     int Count { get; }

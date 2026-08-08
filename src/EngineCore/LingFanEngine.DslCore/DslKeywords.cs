@@ -144,7 +144,7 @@ public static class DslKeywords
         // for 循环结构
         "in",
         // nvl 子命令
-        "clear", "exit",
+        "clear", "exit", "auto",
         // scene 头属性键
         "type", "layout",
         // time_event / set_time_event 参数

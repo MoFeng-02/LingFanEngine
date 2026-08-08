@@ -902,6 +902,17 @@ public class LingFanDslEngineTests
     }
 
     [Fact]
+    public void Compile_Nvl_Auto_SetsIsAuto()
+    {
+        var result = _engine.Compile("nvl auto");
+        result.Success.Should().BeTrue();
+        var cmd = result.Commands[0].Should().BeOfType<NvlCommand>().Subject;
+        cmd.IsAuto.Should().BeTrue();
+        cmd.IsExit.Should().BeFalse();
+        cmd.IsClear.Should().BeFalse();
+    }
+
+    [Fact]
     public void Compile_Debug_WithLevel()
     {
         var result = _engine.Compile("""debug "test message" level=Warning """);

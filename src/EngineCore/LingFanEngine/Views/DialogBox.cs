@@ -22,6 +22,14 @@ public class DialogBox : UserControl, IDialogBox
     private readonly DialogEngine _engine;
     private string? _lastSideImage;
 
+    /// <summary>点击消费标志——防止陈旧点击重复设置 Dialog.Complete。
+    /// <para>用户点击完成 say N 后，IsComplete 仍为 true（直到下一句 SetText 重置打字机）。
+    /// 若用户在窗口期内再次点击（双击/快速点击），会重复设置 Dialog.Complete = true，
+    /// 被 DslExecutor.WaitForDialogComplete 的 fast path 直接消费，跳过下一句的等待。</para>
+    /// <para>此标志在 SetText 时重置（新文本加载=点击重新生效），在 PointerPressed 中检查。</para>
+    /// <para>线程安全：PointerPressed 和 SetText 都在 UI 线程执行，无需同步。</para>
+    private bool _clickConsumed;
+
     /// <summary>打字机速度（字符/秒）——委托 DialogEngine</summary>
     public double TypeSpeed
     {
@@ -103,12 +111,20 @@ public class DialogBox : UserControl, IDialogBox
             if (!_root.IsVisible) return;
             if (IsPausedByTag && !IsComplete) { _engine.ResumeFromPause(); return; }
             if (!IsComplete) { SkipToEnd(); }
-            else { _state.Set(StateKeys.Dialog.Complete, true); _state.Set(StateKeys.Dialog.WaitingSayComplete, true); }
+            else if (!_clickConsumed)
+            {
+                _clickConsumed = true;
+                _state.Set(StateKeys.Dialog.Complete, true);
+                _state.Set(StateKeys.Dialog.WaitingSayComplete, true);
+            }
         };
     }
 
     public void SetText(string text, string? speaker = null)
     {
+        // 重置点击消费标志——新文本加载，点击重新生效
+        _clickConsumed = false;
+
         // Phase 24: 更新侧脸图
         UpdateSideImage();
 

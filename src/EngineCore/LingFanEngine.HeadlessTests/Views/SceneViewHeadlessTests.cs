@@ -22,7 +22,7 @@ namespace LingFanEngine.Tests.Views;
 /// <para>用 HeadlessUnitTestSession 提供真实 Avalonia 布局服务（IFontManagerImpl 等），构建真实场景视觉树，
 /// 断言 RebuildScene 真的产出 _sceneRoot/_transitionOverlay/_scaleWrapper/_outerGrid，以及
 /// UpdateTransition / UpdateShake / UpdateLayoutScale 三个渲染方法真的改写视觉属性。</para>
-/// <para>隔离：注入 fake IOverlayRenderer/IVideoPresenter/IAnimationApplier/IInteractionBinder（避免 GpuMediaPlayer 与
+/// <para>隔离：注入 fake IOverlayRenderer/IVideoPresenter/IAnimationApplier/IInteractionBinder（避免 WebView 视频后端与
 /// new Cursor(Hand)）；dialogBoxFactory/dialogRegistry 留 null → 回退真实 DialogBox（安全，仅属性）。
 /// 引擎零改动、AOT 安全、仅测试工程引用 Headless。</para>
 /// </summary>

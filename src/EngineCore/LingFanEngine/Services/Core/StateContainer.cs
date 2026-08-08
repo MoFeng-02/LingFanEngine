@@ -10,10 +10,15 @@ namespace LingFanEngine.Services.Core;
 /// 若不存在则遍历 player → hp 嵌套字典。Set("player.hp", 100) 同理更新嵌套字典。</para>
 /// <para>系统键（__ 前缀）使用下划线分隔，不受影响。</para>
 /// </summary>
-public class StateContainer : IStateContainer
+public class StateContainer : IStateContainer, IDirtyTracking
 {
     private readonly ConcurrentDictionary<string, object?> _store = new(StringComparer.Ordinal);
     private readonly IJsonValueConverter? _jsonConverter;
+
+    // ========== IDirtyTracking：脏键追踪 ==========
+    // 写锁保护「写值+标脏」原子性，确保 GetSnapshotAndClearDirty 看到的快照与脏键一致
+    private readonly object _writeLock = new();
+    private readonly HashSet<string> _dirtyKeys = new(StringComparer.Ordinal);
 
     /// <summary>
     /// 值变更事件——Set 写入成功后触发
@@ -32,13 +37,22 @@ public class StateContainer : IStateContainer
     /// <inheritdoc/>
     public void Set<T>(string key, T value)
     {
-        // 支持点分路径：若 key 含 '.' 且父级字典已存在，则更新嵌套字典中的叶节点
-        if (key.Contains('.') && TrySetPath(key, value))
+        // IDirtyTracking：写锁保护「写值+标脏」原子性
+        lock (_writeLock)
         {
-            ValueChanged?.Invoke(key, value);
-            return;
+            // 支持点分路径：若 key 含 '.' 且父级字典已存在，则更新嵌套字典中的叶节点
+            if (key.Contains('.') && TrySetPath(key, value))
+            {
+                // 点分路径：标脏顶层键（GetSnapshot 返回的是顶层键）
+                _dirtyKeys.Add(key.Substring(0, key.IndexOf('.')));
+            }
+            else
+            {
+                _store[key] = value;
+                _dirtyKeys.Add(key);
+            }
         }
-        _store[key] = value;
+        // 事件在锁外触发——避免回调中再次 Set 导致死锁
         ValueChanged?.Invoke(key, value);
     }
 
@@ -143,7 +157,35 @@ public class StateContainer : IStateContainer
     }
 
     /// <inheritdoc/>
-    public void Clear() => _store.Clear();
+    public void Clear()
+    {
+        lock (_writeLock)
+        {
+            _store.Clear();
+            _dirtyKeys.Clear();
+        }
+    }
+
+    // ========== IDirtyTracking 实现 ==========
+
+    /// <inheritdoc/>
+    public (IReadOnlyDictionary<string, object?> Snapshot, IReadOnlyCollection<string> DirtyKeys) GetSnapshotAndClearDirty()
+    {
+        lock (_writeLock)
+        {
+            // 原子快照——与 Set 的写操作互斥，确保快照中的值与脏键一致
+            var pairs = _store.ToArray();
+            var dict = new Dictionary<string, object?>(pairs.Length, StringComparer.Ordinal);
+            foreach (var (k, v) in pairs)
+                dict[k] = v;
+
+            // 原子获取并清除脏键
+            var dirty = _dirtyKeys.ToArray();
+            _dirtyKeys.Clear();
+
+            return (dict, dirty);
+        }
+    }
 
     // ========== 嵌套字典路径支持 ==========
 

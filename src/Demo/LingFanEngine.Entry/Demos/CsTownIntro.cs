@@ -34,7 +34,7 @@ public class CsTownIntro : StoryScript
 
         // 提供导航按钮：进入 DSL 场景
         AddButton("进入小镇（DSL 场景）", 200, 500, 280, 44,
-            nav: "town_entrance", color: "#88CCFF", halign: "center");
+            nav: "prologue", color: "#88CCFF", halign: "center");
 
         // 清除对话状态，让按钮可交互
         Ctrl.Set(StateKeys.Dialog.Text, "");

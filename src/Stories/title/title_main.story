@@ -28,7 +28,7 @@ scene "title_main" type=menu
   text "灵泛引擎 DSL 演示" x=50% y=19% size=18 color="#AAAAAA" halign=center font="Microsoft YaHei"
   text "{player.name} · 金币: {player.gold} · HP: {player.hp}/{player.maxHp}" x=50% y=25% size=14 color="#666666" halign=center font="Consolas"
   // 主菜单按钮：halign=center 使按钮中心对齐到 x 位置
-  button "开始故事" x=50% y=35% width=240 height=48 color="#88CCFF" nav="prologue" halign=center
+  button "开始故事" x=50% y=35% width=240 height=48 color="#88CCFF" nav="cs_town_intro" halign=center
   button "继续游戏" x=50% y=43% width=240 height=44 color="#88FF88" cmd="continue_game" halign=center
   button "读取存档" x=50% y=51% width=200 height=40 color="#FFCC88" cmd="open_load" halign=center
   button "设置" x=50% y=59% width=200 height=40 color="#AA88FF" cmd="open_settings" halign=center
@@ -52,4 +52,4 @@ label prologue:
   nvl clear
   say "你站在小镇入口，雾气在脚边翻涌。" speaker="旁白"
   say "前方是一座陌生的城镇，空气中弥漫着潮湿的木头气味。" speaker="旁白"
-  navigate "cs_town_intro"
+  navigate "town_entrance"

@@ -12,7 +12,7 @@ namespace LingFanEngine.Tests.Handlers;
 /// <summary>
 /// Voice 播放集成测试（盲区验证 T11）。
 /// <para>headless 无音频设备，验证 DSL 语音流经 handler 到媒体桩(IAudioManager)的正确路由与时序，
-/// 不验证真实声卡输出（那是 LibVlc 媒体层的职责，由真实设备端到端保证）。</para>
+/// 不验证真实声卡输出（那是 miniaudio 媒体层的职责，由真实设备端到端保证）。</para>
 /// <para>覆盖：say voice= 行内语音、独立 voice= 语句、stop_voice、单轨原子替换（每句播各自语音，
 /// 替换由媒体层完成、handler 不在换句时多发 StopVoice）。</para>
 /// </summary>

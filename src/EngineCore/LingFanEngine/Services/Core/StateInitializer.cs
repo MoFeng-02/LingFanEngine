@@ -88,6 +88,8 @@ if (!state.ContainsKey(StateKeys.Playback.AutoActive))
             state.Set(StateKeys.Nvl.Speakers, "");
         if (!state.ContainsKey(StateKeys.Nvl.Count))
             state.Set(StateKeys.Nvl.Count, 0);
+        if (!state.ContainsKey(StateKeys.Nvl.AutoScoped))
+            state.Set(StateKeys.Nvl.AutoScoped, false);
 
         // 打字机完成标记（�?Skip/Auto 模式检测）
         if (!state.ContainsKey(StateKeys.Dialog.TypewriterDone))

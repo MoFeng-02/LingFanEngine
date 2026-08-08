@@ -62,9 +62,11 @@ public class LingFanEngineOptions
     // ── 性能配置 ──
 
     /// <summary>
-    /// 桌面目标帧率（默认 120）
+    /// 桌面目标帧率（默认 60）
+    /// <para>VN 引擎 60 FPS 足够——文字/立绘/过渡动画无需更高帧率，且 CPU 占用最低。</para>
+    /// <para>设为更高值（90/120）会因自旋限流导致 CPU 占用升高，且超过显示器刷新率的帧率无实际收益。</para>
     /// </summary>
-    public int DesktopTargetFps { get; set; } = 120;
+    public int DesktopTargetFps { get; set; } = 60;
 
     /// <summary>
     /// 移动端目标帧率（默认 60）

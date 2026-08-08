@@ -1,9 +1,10 @@
 namespace LingFanEngine.Abstractions.Interfaces.Media;
 
 /// <summary>
-/// 异步音频播放器抽象接口（基础标准）。
+/// 异步音频播放器抽象接口（基础标准，适配 seam）。
 /// <para>所有 I/O 操作异步执行。引擎默认提供 NullAsyncAudioPlayer（空操作）。</para>
-/// <para>平台实现者实现此接口接入真实后端（NAudio / FMOD / SDL2-mixer / WebAudio 等）。</para>
+/// <para>未来由 LingFan.Media 适配器实现本接口（复用其 <c>IMediaPlayer</c> 音频管线 / AudioMixer），
+/// 引擎不再内部实现音频后端。</para>
 /// </summary>
 public interface IAudioPlayer : IAsyncDisposable
 {

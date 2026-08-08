@@ -453,29 +453,16 @@ internal sealed class ControlFactory : IControlFactory
 
             case "video":
             {
-                var source = props.GetValueOrDefault("source")?.ToString()
-                    ?? props.GetValueOrDefault("path")?.ToString()
-                    ?? props.GetValueOrDefault("src")?.ToString() ?? "";
-                if (string.IsNullOrEmpty(source)) return null;
-
+                // 桌面视频后端暂缓实现：build video 只返回一个透明占位控件维持布局槽位，保证 DSL 布局契约不破坏。
+                // 真实的背景/过场视频渲染走 VideoManager 的 __video_* 状态机 → IVideoPlayer（当前为 NullVideoPlayer 空操作）。
+                // （未来接入原生后端后：可在此创建后端 slot 并按布局边界 SetBounds。）
                 var opacity = ParseOpacity(props);
-                var videoControl = new MediaPlayer.Controls.GpuMediaPlayer
+                return new Border
                 {
                     Opacity = opacity,
-                    AutoPlay = true,
-                    Volume = 0,
+                    Background = Brushes.Transparent,
+                    IsHitTestVisible = false,
                 };
-
-                try
-                {
-                    videoControl.Source = new Uri(System.IO.Path.GetFullPath(source));
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[ControlFactory] 视频路径无法解析: {ex.Message}");
-                }
-
-                return videoControl;
             }
 
             default:

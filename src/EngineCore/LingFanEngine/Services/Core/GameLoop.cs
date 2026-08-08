@@ -18,6 +18,8 @@ namespace LingFanEngine.Services.Core;
 /// 游戏主循环实现（后台线程 + 可配置帧率）
 /// <para>帧循环在后台线程运行，通过 IUIThreadDispatcher.Post 触发 SceneView 更新。</para>
 /// <para>帧率由 TargetFps 控制（0=不限，15~600=限制），使用 Stopwatch 自旋 + Task.Delay 混合节流。</para>
+/// <para>Windows 平台启动时激活 HighResolutionTimer（timeBeginPeriod(1)）提升 Task.Delay 精度至 ~1ms，
+/// 大幅减少高帧率模式下的自旋 CPU 浪费。其他平台定时器精度已足够，no-op。</para>
 /// </summary>
 public class GameLoop : IGameLoop
 {
@@ -278,8 +280,12 @@ public class GameLoop : IGameLoop
         if (IsRunning)
             return Task.CompletedTask;
 
+        // 激活高精度定时器（Windows: timeBeginPeriod(1)，其他平台 no-op）
+        // 让 Task.Delay 精度从 ~15.6ms 提升到 ~1ms，大幅减少自旋浪费的 CPU
+        HighResolutionTimer.Activate();
+
         _stopCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        // 在后台线程运行主循环
+        // 在后台线程运行主循环（音频引擎在循环入口初始化，确保所有 JAJ 操作不碰 UI 线程）
         _loopTask = Task.Run(() => RunLoopAsync(_stopCts.Token), _stopCts.Token);
         return Task.CompletedTask;
     }
@@ -293,6 +299,8 @@ public class GameLoop : IGameLoop
             try { await _loopTask; } catch (OperationCanceledException) { }
         }
         _pipeline.Complete();
+        // 循环已停止，释放高精度定时器（引用计数 -1，归零时恢复系统默认分辨率）
+        HighResolutionTimer.Deactivate();
     }
 
     private async Task RunLoopAsync(CancellationToken ct)
@@ -304,10 +312,19 @@ public class GameLoop : IGameLoop
         var lastFrameTime = 0.0;
         var timeTickInterval = _options.SecondsPerGameMinute;
 
-        // Windows 系统定时器默认分辨率 ~15.6ms，Task.Delay 的最小睡眠也是一个滴答。
-        // 对 120 FPS（8.33ms/帧）使用 Task.Delay 会超睡到 15.6ms，把实际帧率拖回 ~60 FPS。
-        // 解决方案：仅当剩余时间 > 16ms 时才用 Task.Delay，否则用 Thread.Sleep(0) + 自旋。
-        var delayThresholdTicks = 16 * Stopwatch.Frequency / 1000; // 16ms
+        // 根据平台定时器精度决定何时用 Task.Delay 让出 CPU vs 自旋等待。
+        // Windows 默认定时器分辨率 ~15.6ms，Task.Delay 最小睡眠也是一个滴答，
+        //   对高帧率（120 FPS = 8.33ms/帧）使用 Task.Delay 会超睡到 15.6ms，拖低帧率。
+        //   timeBeginPeriod(1) 激活后精度提升到 ~1ms，阈值降至 3ms。
+        // Linux/macOS/Android/iOS 原生定时器精度已 ~1ms，阈值 3ms。
+        // WASM setTimeout 最小钳位 ~4ms，阈值 6ms。
+        var delayThresholdTicks = HighResolutionTimer.DelayPrecisionMs * Stopwatch.Frequency / 1000;
+        // 自旋安全边际——Task.Delay 提前返回的缓冲时间。
+        // Desktop 2ms（精度优先）/ Mobile 1ms（省电优先）/ WASM 4ms（精度差需更大缓冲）
+        var spinMarginMs = HighResolutionTimer.SpinMarginMs;
+        // 自旋让出频率——每 N 次自旋 Thread.Sleep(0) 一次。
+        // Desktop 16 / Mobile 4（频繁让出减发热）/ WASM 8
+        var spinYieldInterval = HighResolutionTimer.SpinYieldInterval;
 
         try
         {
@@ -374,7 +391,7 @@ public class GameLoop : IGameLoop
 
                 // 触发帧回调（投递到 UI 线程执行 SceneView.Update）
                 // 帧跳过逻辑：如果上一帧的 UI 更新尚未完成，跳过本次投递。
-                // GameLoop 在后台线程以 120 FPS 更新状态，UI 线程按自身节奏读取最新状态。
+                // GameLoop 在后台线程以 TargetFps 更新状态，UI 线程按自身节奏读取最新状态。
                 // 这避免了 Dispatcher.Post 队列堆积导致的动画抖动。
                 if (_uiFrameAction != null && !_uiFramePending)
                 {
@@ -401,10 +418,10 @@ public class GameLoop : IGameLoop
                     }
                     else
                     {
-                        // fallback：无调度器时同步执行（测试场景）
+                        // ⚠️ 无调度器时绝不执行 UI 帧回调——NativeWebView 等 UI 控件的创建必须在
+                        // STA UI 线程完成。在 MTA 后台线程创建会导致 RPC_E_CHANGED_MODE。
+                        // 直接跳过此帧，重置 pending 标志防止状态泄漏。
                         _uiFramePending = false;
-                        try { _uiFrameAction(delta); }
-                        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[GameLoop] UI frame action failed (fallback): {ex.Message}"); }
                     }
                 }
                 else if (_uiFrameAction != null)
@@ -424,12 +441,12 @@ public class GameLoop : IGameLoop
                     {
                         var spinEnd = stopwatch.ElapsedTicks + remainingTicks;
 
-                        // 仅当剩余时间 > 16ms（Windows 系统定时器分辨率）时才用 Task.Delay。
-                        // 对高帧率（120/144 FPS，帧时间 6.9~8.3ms）使用 Task.Delay 会超睡到 15.6ms，
-                        // 把实际帧率拖回 ~60 FPS。
+                        // 仅当剩余时间 > delayThresholdTicks 时才用 Task.Delay。
+                        // 高精度定时器激活时阈值=3ms，Task.Delay 精度 ~1ms，高帧率也能高效让出 CPU。
+                        // 未激活时阈值=16ms（系统默认定时器分辨率），避免超睡。
                         if (remainingTicks > delayThresholdTicks)
                         {
-                            var delayMs = (remainingTicks * 1000L) / Stopwatch.Frequency - 2;
+                            var delayMs = (remainingTicks * 1000L) / Stopwatch.Frequency - spinMarginMs;
                             if (delayMs > 1)
                             {
                                 await Task.Delay((int)delayMs, ct);
@@ -439,10 +456,11 @@ public class GameLoop : IGameLoop
                         // 剩余时间用 Thread.Sleep(0) + 自旋等待达到精确帧率。
                         // Thread.Sleep(0) 让出 CPU 时间片给同优先级线程，但不进入 15.6ms 系统定时器睡眠。
                         // Thread.SpinWait(1) 做亚毫秒级精确等待。
+                        // 移动端 spinYieldInterval=4（频繁让出减发热），桌面端=16（效率优先）。
                         var spinCount = 0;
                         while (stopwatch.ElapsedTicks < spinEnd && !ct.IsCancellationRequested)
                         {
-                            if (++spinCount % 16 == 0)
+                            if (++spinCount % spinYieldInterval == 0)
                                 Thread.Sleep(0); // 定期让出 CPU，避免 100% 占用
                             else
                                 Thread.SpinWait(1);
@@ -755,6 +773,9 @@ public class GameLoop : IGameLoop
         // 停止主循环
         try { _stopCts?.Cancel(); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[GameLoop] Dispose Cancel failed: {ex.Message}"); }
         try { if (_loopTask != null && !_loopTask.IsCompleted) _loopTask.Wait(2000); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[GameLoop] Dispose Wait failed: {ex.Message}"); }
+
+        // 安全网：确保高精度定时器被释放（StopAsync 未调用时的兜底）
+        HighResolutionTimer.Deactivate();
 
         // 释放停止 CTS
         _stopCts?.Dispose();

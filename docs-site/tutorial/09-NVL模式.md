@@ -51,6 +51,23 @@ say "回到 ADV 模式。" speaker="旁白"   // 底部条对话框
 | `nvl` | 进入 NVL 模式 |
 | `nvl clear` | 清空文本，仍在 NVL 模式 |
 | `nvl exit` | 退出 NVL 模式，恢复 ADV |
+| `nvl auto` | 进入 NVL 并开启「作用域自动推进」 |
+
+## NVL 自动推进（nvl auto）
+
+`nvl auto` 等价于「`nvl` + 开启自动播放」，让 NVL 内的每条 `say` 像看书一样逐句自动翻页（间隔由 `auto_speed` 控制，默认 3 秒）：
+
+```dsl
+nvl auto
+say "第一段。" speaker="旁白"
+say "第二段。" speaker="旁白"
+nvl exit        // 退出时自动关闭自动模式
+say "回到 ADV。" speaker="旁白"   // 不会被自动推进，需手动点击
+```
+
+**作用域语义**：自动模式的作用域被精确绑定到本次 NVL 段——执行 `nvl exit` 时引擎自动关闭自动模式，**不会污染**后续的 ADV 对话。这与全局 `auto` 命令的区别在于：`auto` 是全局开关，需手动再敲一次 `auto` 关闭；`nvl auto` 则「进段自动开、出段自动停」。
+
+遇到 `menu` / `input` 等决策点时，自动推进会自然停下等待玩家选择，选择后继续自动推进。
 
 ## NVL 与模板
 

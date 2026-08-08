@@ -39,7 +39,7 @@ label ending_power:
   say "力量是诱人的，但它从来不问代价。" speaker="吟游诗人"
   say "【坏结局：力量之主】" speaker="系统"
   say "故事到此结束。返回标题可重新开始。" speaker="系统"
-  scene "title_main"
+  navigate "title_main"
 
 // == 好结局：封印力量 ==========================================
 label ending_seal:
@@ -58,7 +58,7 @@ label ending_seal:
   say "星辰碎片的力量不会消失，它只是回到了它该在的地方。" speaker="吟游诗人"
   say "【好结局：封印者】" speaker="系统"
   say "故事到此结束。返回标题可重新开始。" speaker="系统"
-  scene "title_main"
+  navigate "title_main"
 
 // == 普通结局：转身离开 ========================================
 label ending_leave:
@@ -74,4 +74,4 @@ label ending_leave:
   say "迷雾小镇依旧是那个迷雾小镇，日复一日。" speaker="吟游诗人"
   say "【普通结局：过客】" speaker="系统"
   say "故事到此结束。返回标题可重新开始。" speaker="系统"
-  scene "title_main"
+  navigate "title_main"

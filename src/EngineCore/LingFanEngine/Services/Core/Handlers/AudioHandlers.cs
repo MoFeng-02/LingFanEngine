@@ -1,5 +1,6 @@
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
+using LingFanEngine.Services.Media;
 
 namespace LingFanEngine.Services.Core.Handlers;
 

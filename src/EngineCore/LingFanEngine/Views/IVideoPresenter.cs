@@ -3,7 +3,8 @@ using Avalonia.Controls;
 namespace LingFanEngine.Views;
 
 /// <summary>
-/// 视频呈现接口——同步状态键到 GpuMediaPlayer 控件，管理视频播放器生命周期。
+/// 视频呈现接口——同步状态键到视频后端，管理视频播放器生命周期（当前默认实现为 <see cref="NullVideoPresenter"/> 空操作）。
+/// <para>只依赖 IVideoPlayer 接口，不感知后端具体类型；更换渲染后端（如未来原生+VLC/FFmpeg）时本接口及实现零改动。</para>
 /// </summary>
 public interface IVideoPresenter
 {

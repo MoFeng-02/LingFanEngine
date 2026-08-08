@@ -44,6 +44,13 @@ public partial class SceneView : UserControl, ISceneRenderer
     // ── 状态追踪 ──
     private string _lastSceneName = "";
     private string _lastDialogText = "";
+
+    /// <summary>对话点击消费标志——防止陈旧点击/按键重复设置 Dialog.Complete。
+    /// <para>与 DialogBox._clickConsumed 同理：用户完成 say N 后，IsComplete 仍为 true，
+    /// 窗口期内的再次点击会重复设 Dialog.Complete=true，被下一句的等待消费。</para>
+    /// <para>此标志覆盖 SceneView 的场景背景点击、对话遮罩点击、键盘快捷键。</para>
+    /// <para>在 UpdateDialog 时重置（新文本加载=点击重新生效）。</para>
+    private bool _dialogClickConsumed;
     private string _lastLanguage = "";
     private bool _layoutDirty;
     private string _currentLayoutMode = "grid";
@@ -108,16 +115,21 @@ public partial class SceneView : UserControl, ISceneRenderer
             {
                 if (_dialogBoxIF != null && !_dialogBoxIF.IsComplete)
                     _dialogBoxIF.SkipToEnd();
-                else
+                else if (!_dialogClickConsumed)
                 {
+                    _dialogClickConsumed = true;
                     _state.Set(StateKeys.Dialog.WaitingSayComplete, true);
                     _state.Set(StateKeys.Dialog.Complete, true);
                 }
             }
             else if (e.Key == Avalonia.Input.Key.Escape)
             {
-                _state.Set(StateKeys.Dialog.WaitingSayComplete, true);
-                _state.Set(StateKeys.Dialog.Complete, true);
+                if (!_dialogClickConsumed)
+                {
+                    _dialogClickConsumed = true;
+                    _state.Set(StateKeys.Dialog.WaitingSayComplete, true);
+                    _state.Set(StateKeys.Dialog.Complete, true);
+                }
             }
             else if (e.Key == Avalonia.Input.Key.F5)
                 _pipeline.SendAsync(new SaveLoadCommand { SlotId = "quicksave", IsSave = true });
@@ -297,6 +309,8 @@ public partial class SceneView : UserControl, ISceneRenderer
 
         rootPanel.PointerPressed += (_, _) =>
         {
+            if (_dialogClickConsumed) return;
+            _dialogClickConsumed = true;
             _state.Set(StateKeys.Dialog.WaitingSayComplete, true);
             _state.Set(StateKeys.Dialog.Complete, true);
         };
@@ -367,6 +381,8 @@ public partial class SceneView : UserControl, ISceneRenderer
         };
         _dialogMask.PointerPressed += (_, _) =>
         {
+            if (_dialogClickConsumed) return;
+            _dialogClickConsumed = true;
             _state.Set(StateKeys.Dialog.WaitingSayComplete, true);
             _state.Set(StateKeys.Dialog.Complete, true);
         };
@@ -505,6 +521,9 @@ public partial class SceneView : UserControl, ISceneRenderer
 
     private void UpdateDialog(string text)
     {
+        // 重置点击消费标志——新文本加载，点击/按键重新生效
+        _dialogClickConsumed = false;
+
         // Phase 65: 模板注册表可用时，按名解析并切换
         if (_dialogRegistry != null && _dialogRegistry.GetDefault() != null)
         {

@@ -1,14 +1,14 @@
 // ============================================================
 // 音视频播放演示
-// 视频：Video/m1.mp4（GpuMediaPlayer 后端）
-// 音频：Audio/crickets_night01.mp3 / Audio/chest_drawer_open.mp3（LibVLC 后端）
+// 视频：Video/m1.mp4（WebView 单实例视频后端）
+// 音频：Audio/crickets_night01.mp3 / Audio/chest_drawer_open.mp3（JAJ MiniAudioEx 后端）
 // ============================================================
 
 // == 音视频演示菜单 =============================================
 scene "video_demo" type=menu
   image "Images/door_zoom.jpg" x=0 y=0 width=100% height=100% opacity=0.3
   text "音视频演示" x=50% y=8% size=36 color="#FFD700" halign=center font="Microsoft YaHei"
-  text "测试 GpuMediaPlayer + LibVLC 音频集成" x=50% y=14% size=16 color="#AAAAAA" halign=center font="Microsoft YaHei"
+  text "测试 WebView 视频 + JAJ MiniAudioEx 音频集成" x=50% y=14% size=16 color="#AAAAAA" halign=center font="Microsoft YaHei"
   // 视频测试
   text "—— 视频 ——" x=50% y=22% size=18 color="#88CCFF" halign=center font="Microsoft YaHei"
   button "播放视频" x=25% y=30% width=200 height=40 color="#88CCFF" nav="vd_play" halign=center

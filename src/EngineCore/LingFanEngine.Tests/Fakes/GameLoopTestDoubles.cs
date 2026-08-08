@@ -9,7 +9,7 @@ namespace LingFanEngine.Tests.Fakes;
 /// <summary>
 /// GameLoop 集成测试所需的轻量 fake / spy 集合。
 /// GameLoop 构造函数依赖众多子服务，这里只实现「能跑通主循环」的最小子集，
-/// 不引入 Avalonia / LibVLC 等渲染层。所有副作用均为 no-op，仅记录必要调用。
+/// 不引入 Avalonia / miniaudio / WebView 等渲染与媒体层。所有副作用均为 no-op，仅记录必要调用。
 /// </summary>
 
 /// <summary>记录所有被分发的命令——用于验证 GameLoop「消费管道 + 分发」闭环。</summary>

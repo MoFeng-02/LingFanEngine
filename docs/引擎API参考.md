@@ -927,7 +927,7 @@ public interface IAudioManager : IDisposable
 
 场景切换时按 `autoStop` 标记（`null` = 跟随 `LingFanEngineOptions.DefaultAutoStopBgm`）决定是否停 BGM/Voice，SE 允许跨场景。
 
-音频后端使用 LibVLCSharp（跨平台），Browser/WASM 自动降级为 NullAsyncAudioPlayer。
+音频后端使用 JAJ.Packages.MiniAudioEx（miniaudio 生态，原生库随包自带、AOT 友好），Browser/WASM 自动降级为 WasmAudioPlayer（WebView + Web Audio）或 NullAsyncAudioPlayer。
 
 ---
 
@@ -935,7 +935,9 @@ public interface IAudioManager : IDisposable
 
 ### IVideoManager
 
-通过 StateContainer 状态键驱动 SceneView 中的 GpuMediaPlayer 控件。
+通过 StateContainer 状态键驱动 SceneView 中的 WebView 视频后端（全局唯一 NativeWebView 承载多槽位 `<video>`）。
+
+> **⚠️ 后端说明：WebView 是临时方案。** 视频渲染采用双抽象——`IVideoPlayer`（逻辑面，特性层只认它）+ `IVideoBackend`（渲染后端 seam）。当前后端为 `WebViewVideoBackend`（包裹单例 `IWebViewService`），未来将替换为原生控件后端（原生渲染 + VLC/FFmpeg 解码）。替换时仅新增 `NativeVideoBackend : IVideoBackend`，`IVideoPlayer`/`VideoPresenter`/`VideoManager` 及所有上层 API 一行不动。
 
 ```csharp
 public interface IVideoManager
@@ -973,7 +975,7 @@ public interface IVideoManager
 
 ### 音视频分离架构
 
-GpuMediaPlayer 永久静音（`Volume=0`），视频纯视觉，音频走 AudioManager。播放结束检测由 SceneView 回写 `IsFinished=true`，VideoManager 每帧 `PollFinished()` 检查并触发 `OnFinished` 事件。
+WebView 内 `<video>` 槽位永久静音（`muted`），视频纯视觉，音频走 AudioManager。播放结束检测由视频后端回写 `IsFinished=true`，VideoManager 每帧 `PollFinished()` 检查并触发 `OnFinished` 事件。
 
 ---
 

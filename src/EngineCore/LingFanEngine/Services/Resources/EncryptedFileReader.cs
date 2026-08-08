@@ -68,16 +68,44 @@ public class EncryptedFileReader : IEncryptedFileReader
     /// <inheritdoc/>
     public (string path, bool isTemp) TryDecryptToFile(string path)
     {
-        if (!File.Exists(path)) return (path, false);
+        // 与引擎其它资源（story/image）保持一致：相对路径优先以 AppContext.BaseDirectory 为基准解析，
+        // 而非依赖进程 CWD。否则从 Visual Studio 以项目目录为工作目录（F5）启动时，
+        // CWD ≠ BaseDirectory，媒体文件会找不到并静默失败（视频后端不抛异常，只是不出画面）。
+        var resolved = ResolveMediaPath(path);
+        if (!File.Exists(resolved)) return (path, false);
 
-        var data = File.ReadAllBytes(path);
-        if (!IsLfenEncrypted(data)) return (path, false);
+        var data = File.ReadAllBytes(resolved);
+        if (!IsLfenEncrypted(data)) return (resolved, false);
 
         // 解密到临时文件
         var plain = Decrypt(data);
-        var tempPath = Path.Combine(_tempDir, $"{Path.GetFileNameWithoutExtension(path)}_{Guid.NewGuid():N}{Path.GetExtension(path)}");
+        var tempPath = Path.Combine(_tempDir, $"{Path.GetFileNameWithoutExtension(resolved)}_{Guid.NewGuid():N}{Path.GetExtension(resolved)}");
         File.WriteAllBytes(tempPath, plain);
         return (tempPath, true);
+    }
+
+    /// <summary>
+    /// 解析媒体（视频/音频）相对路径为绝对路径。
+    /// <para>解析顺序：绝对且存在 → BaseDirectory/相对 → BaseDirectory/../../../../相对（开发期目录结构）→ 原样 CWD 兜底。</para>
+    /// </summary>
+    private string ResolveMediaPath(string path)
+    {
+        if (Path.IsPathRooted(path) && File.Exists(path)) return path;
+
+        var baseDir = System.AppContext.BaseDirectory;
+        var candidates = new[]
+        {
+            Path.Combine(baseDir, path),
+            Path.Combine(baseDir, "..", "..", "..", "..", path),
+            path,
+        };
+        foreach (var candidate in candidates)
+        {
+            var full = Path.GetFullPath(candidate);
+            if (File.Exists(full)) return full;
+        }
+        // 都不存在时返回 BaseDirectory 下的兜底绝对路径（便于后续报错信息明确）
+        return Path.GetFullPath(Path.Combine(baseDir, path));
     }
 
     /// <inheritdoc/>

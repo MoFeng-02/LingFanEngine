@@ -13,12 +13,8 @@
 		<ProjectReference Include="..\LingFanEngine.Desktop\LingFanEngine.Desktop.csproj" />
 	</ItemGroup>
 
-	<ItemGroup>
-		<!-- 自包含 AOT：Windows 捆绑原生 libvlc（Mac 走 VideoLAN.LibVLC.Mac；Linux 无 NuGet，依赖系统 apt install libvlc-dev） -->
-		<PackageReference Include="VideoLAN.LibVLC.Windows" />
-	</ItemGroup>
 
-	<!-- AOT 裁剪保留清单：LibVLC / MediaPlayer.Controls / JsonAOT 互操作 -->
+	<!-- AOT 裁剪保留清单：JsonAOT 互操作 -->
 	<ItemGroup>
 		<TrimmerRootDescriptor Include="$(LfILLinkDescriptor)" Condition="Exists('$(LfILLinkDescriptor)')" />
 	</ItemGroup>

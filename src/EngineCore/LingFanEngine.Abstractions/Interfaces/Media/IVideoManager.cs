@@ -2,7 +2,7 @@ namespace LingFanEngine.Abstractions.Interfaces.Media;
 
 /// <summary>
 /// 视频管理器接口
-/// <para>管理视频播放生命周期，通过 StateContainer 状态键驱动 SceneView 中的 GpuMediaPlayer 控件。</para>
+/// <para>管理视频播放生命周期，通过 StateContainer 状态键（__video_*）驱动视频呈现层（当前为 NullVideoPresenter 空实现，无画面输出；未来由 LingFan.Media 适配器 VideoView 驱动真实画面）。</para>
 /// <para>VideoManager 不直接持有 UI 控件——遵循"List 和 Dict 驱动一切"的引擎哲学。</para>
 /// </summary>
 public interface IVideoManager

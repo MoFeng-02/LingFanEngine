@@ -61,6 +61,7 @@ public class ResetGameStateHandler : ICommandHandler<ResetGameStateCommand>, IDe
         ctx.State.Set(StateKeys.Playback.SkipActive, false);
         ctx.State.Set(StateKeys.Playback.AutoActive, false);
         ctx.State.Set(StateKeys.Playback.AutoTimer, 0.0);
+        ctx.State.Set(StateKeys.Nvl.AutoScoped, false);
 
         // 8. 重置交互状态
         ctx.ResetInteractionState();

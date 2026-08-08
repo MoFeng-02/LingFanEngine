@@ -108,6 +108,15 @@ public class CommandPipeline : ICommandPipeline, IDisposable
     }
 
     /// <inheritdoc/>
+    public void Clear()
+    {
+        while (_channel.Reader.TryRead(out _))
+        {
+            Interlocked.Decrement(ref _count);
+        }
+    }
+
+    /// <inheritdoc/>
     public void Complete()
     {
         _channel.Writer.TryComplete();

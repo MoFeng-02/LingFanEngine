@@ -354,6 +354,9 @@ public sealed partial class NvlStmt : DslStatement
 
     /// <summary>退出 NVL 模式并清空累积文本（恢复 ADV 模式）</summary>
     public bool IsExit { get; init; }
+
+    /// <summary>进入 NVL 模式并开启作用域自动推进（出 nvl exit 时自动关闭）</summary>
+    public bool IsAuto { get; init; }
 }
 
 /// <summary>

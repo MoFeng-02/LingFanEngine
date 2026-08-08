@@ -10,6 +10,7 @@ using LingFanEngine.Services.Core.Handlers;
 using LingFanEngine.Services.Entry;
 using LingFanEngine.Services.Logging;
 using LingFanEngine.Services.Logging.Context;
+using LingFanEngine.Views;
 using LingFanEngine.Services.Events;
 using LingFanEngine.Services.Media;
 using LingFanEngine.Services.Platform;
@@ -121,16 +122,22 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IEncryptionKeyProvider, NullEncryptionKeyProvider>();
         services.AddSingleton<IEncryptedFileReader>(sp => new EncryptedFileReader(
             sp.GetService<IEncryptionKeyProvider>()));
+        // 音频播放：原生音频后端暂缓实现（原 JAJ.Packages.MiniAudioEx 因首帧初始化卡顿已移除）。
+        // 全平台注册 NullAsyncAudioPlayer 空操作——DSL audio/bgm/se/voice 命令与 AudioManager 状态机照常工作，无声音输出。
+        // 未来接入原生音频后端：实现 IAudioPlayer 并在此替换工厂即可，上层零改动。
         services.AddSingleton<IAudioManager>(sp => new AudioManager(
             sp.GetRequiredService<ICommandPipeline>(),
             sp.GetRequiredService<IStateContainer>(),
-            CreateAudioPlayerFactory(),
+            static () => new NullAsyncAudioPlayer(),
             sp.GetService<IEncryptedFileReader>()
         ));
         services.AddSingleton<IVideoManager>(sp => new VideoManager(
             sp.GetRequiredService<IStateContainer>()
         ));
-        services.AddSingleton<IVideoPlayer>(_ => CreateVideoPlayerFactory()());
+        // 视频逻辑面：桌面视频后端暂缓实现（原 WebView 后端因 COM 公寓冲突已移除）。
+        // 全平台注册 NullVideoPlayer 空操作——DSL video 命令与 VideoManager 状态机照常工作，无画面输出。
+        // 未来接入原生后端（VLC/FFmpeg）：新增 IVideoPlayer 实现并在此替换注册即可，上层零改动。
+        services.AddSingleton<IVideoPlayer>(_ => new Views.NullVideoPlayer());
         services.AddSingleton<LanguageService>();
         services.AddSingleton<IConfigService, JsonConfigService>();
 
@@ -214,7 +221,7 @@ public static class ServiceCollectionExtensions
         // Phase 65: 对话框模板注册表（UI 层注册具体模板，SceneView 按名消费）
         services.TryAddSingleton<Views.IDialogTemplateRegistry, Views.DialogTemplateRegistry>();
 
-        // Phase 32: SceneView 模块化——注册子模块接口（Phase 50：VideoPresenter 注入 IEncryptedFileReader）
+        // Phase 32: SceneView 模块化——注册子模块接口
         services.AddSingleton<Views.IControlFactory, Views.ControlFactory>();
         services.AddSingleton<Views.IInteractionBinder>(sp => new Views.InteractionBinder(
             sp.GetRequiredService<IStateContainer>(),
@@ -223,10 +230,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Views.IOverlayRenderer>(sp => new Views.OverlayRenderer(
         sp.GetRequiredService<IStateContainer>(),
         sp.GetService<II18nService>()));
-        services.AddSingleton<Views.IVideoPresenter>(sp => new Views.VideoPresenter(
-            sp.GetRequiredService<IStateContainer>(),
-            sp.GetRequiredService<IVideoPlayer>(),
-            sp.GetService<IEncryptedFileReader>()));
+        // 视频呈现器：桌面视频后端暂缓期间注册空实现（接线契约保留，SceneView/入口零改动）
+        services.AddSingleton<Views.IVideoPresenter, Views.NullVideoPresenter>();
         services.AddSingleton<Views.IAnimationApplier, Views.AnimationApplier>();
         services.AddSingleton<ISaveDataService>(sp => new SaveDataService(
             sp.GetRequiredService<IStateContainer>(),
@@ -377,44 +382,4 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>
-    /// 创建音频播放器工厂——根据平台选择 LibVLC 或 NullAsyncAudioPlayer
-    /// <para>LibVLC 不可用时（Browser/WASM 或初始化失败）降级为空操作播放器。</para>
-    /// </summary>
-    private static Func<IAudioPlayer> CreateAudioPlayerFactory()
-    {
-        // 确保 Core 已初始化
-        LibVlcInitializer.InitializeCore();
-
-        if (!LibVlcInitializer.IsAvailable)
-        {
-            // Browser/WASM 或 LibVLC 初始化失败——降级为空操作
-            return () => new NullAsyncAudioPlayer();
-        }
-
-        return () =>
-        {
-            var libVLC = LibVlcInitializer.GetLibVLC();
-            if (libVLC == null)
-                return new NullAsyncAudioPlayer();
-            return new LibVlcAudioPlayer(libVLC);
-        };
-    }
-
-    /// <summary>
-    /// 创建视频播放器工厂——根据平台选择 GpuMediaPlayer 包装实现或空操作实现。
-    /// <para><b>Desktop</b>（Windows/macOS/Linux）：GpuMediaPlayerVideoPlayer 包装 MediaPlayer.Controls.GpuMediaPlayer，
-    /// 库按 OS 自动选后端（Windows→MediaFoundation / macOS→AVFoundation / Linux→FFmpeg 或 LibVLC）。</para>
-    /// <para><b>Browser/WASM</b>：无 GpuMediaPlayer 后端，降级为空操作。视频由宿主外部处理（如 HTML &lt;video&gt; 直出）。</para>
-    /// <para><b>Android/iOS</b>：无 GpuMediaPlayer 后端，降级为空操作。宿主可注入自定义 IVideoPlayer
-    /// 实现（如基于 LibVLCSharp 的播放器）以恢复视频功能；不注入则视频不可用但不崩溃。</para>
-    /// </summary>
-    private static Func<IVideoPlayer> CreateVideoPlayerFactory()
-    {
-        // Browser/WASM 和移动端无 GpuMediaPlayer 后端 → NullVideoPlayer（Control=null，VideoPresenter 优雅跳过）
-        if (OperatingSystem.IsBrowser() || OperatingSystem.IsAndroid() || OperatingSystem.IsIOS())
-            return () => new Views.NullVideoPlayer();
-        // Desktop：GpuMediaPlayer 按 OS 自动选原生后端
-        return () => new Views.GpuMediaPlayerVideoPlayer();
-    }
 }

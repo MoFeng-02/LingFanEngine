@@ -22,7 +22,7 @@ public interface IGameLoop : IDisposable
     bool IsRunning { get; }
 
     /// <summary>
-    /// 目标帧率（移动端 60，桌面端 120）
+    /// 目标帧率（移动端 60，桌面端 60）
     /// </summary>
     int TargetFps { get; set; }
 

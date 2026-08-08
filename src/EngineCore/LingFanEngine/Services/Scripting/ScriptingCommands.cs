@@ -760,6 +760,9 @@ public readonly record struct NvlCommand : ICommand
     /// <summary>是否为退出操作（退出 NVL 模式并清空文本，恢复 ADV 模式）</summary>
     public bool IsExit { get; init; }
 
+    /// <summary>是否为「进入 NVL 并开启作用域自动推进」操作（出 nvl exit 时自动关闭）</summary>
+    public bool IsAuto { get; init; }
+
     public NvlCommand() { }
 }
 
