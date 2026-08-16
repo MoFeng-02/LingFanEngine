@@ -110,6 +110,28 @@ public sealed class DslSymbolIndex
         return set;
     }
 
+    /// <summary>返回所有变量名及其作用域（B32）：define→全局、let/local→局部、仅 set（create-or-set）→全局。
+    /// 跨文件合并时 define 优先为全局；其余按「出现即局部」计入局部。供补全候选标注作用域徽标。</summary>
+    public IReadOnlyDictionary<string, SymbolScope> GetVariablesWithScope()
+    {
+        var scopes = new Dictionary<string, SymbolScope>(StringComparer.Ordinal);
+        foreach (var kvp in _byFile)
+        {
+            foreach (var o in kvp.Value)
+            {
+                if (o.Kind != SymbolKind.Variable || o.Role != SymbolRole.Definition) continue;
+                if (o.IsDeclaration) scopes[o.Name] = SymbolScope.Global;                 // define 全局，覆盖一切
+                else if (o.Scope == SymbolScope.Local)
+                {
+                    if (!scopes.TryGetValue(o.Name, out var cur) || cur != SymbolScope.Global)
+                        scopes[o.Name] = SymbolScope.Local;                              // let/local → 局部
+                }
+                else scopes.TryAdd(o.Name, SymbolScope.Global);                          // 仅 set → 全局
+            }
+        }
+        return scopes;
+    }
+
     /// <summary>对某文件做诊断：未定义引用 + 重复定义。</summary>
     public IReadOnlyList<Diagnostic> GetDiagnostics(string filePath)
     {
@@ -134,7 +156,13 @@ public sealed class DslSymbolIndex
         {
             if (o.Role != SymbolRole.Reference) continue;
             if (o.Name.Contains('.')) continue;
-            var fb = o.Kind == SymbolKind.Label ? SymbolKind.Scene : (SymbolKind?)null;
+            var fb = o.Kind switch
+            {
+                SymbolKind.Label => SymbolKind.Scene,
+                SymbolKind.Scene => SymbolKind.Label,
+                SymbolKind.Func => SymbolKind.Label,
+                _ => (SymbolKind?)null,
+            };
             if (Resolve(o.Kind, fb, o.Name) is null)
                 result.Add(new Diagnostic(DiagnosticSeverity.Error,
                     $"未定义的{o.Kind}「{o.Name}」", new Location(filePath, o.Offset, o.Length)));
@@ -149,7 +177,15 @@ public sealed class DslSymbolIndex
     {
         if (o.Role == SymbolRole.Definition)
         {
-            if (!_definitions.ContainsKey(o.Key)) _definitions[o.Key] = o;
+            // 同一符号可能既 define 又 set（set 也以 Definition 角色入索引以便变量名被识别）。
+            // 「定义站点」优先取声明式（define / let / local，IsDeclaration=true），
+            // 使跳转定义 / 悬停稳定落在真正的声明处，而非被靠前的 set 覆盖。
+            // 关键修正（B35）：声明式出现时一律覆盖既有条目——包括「跨文件移动」场景下
+            // 旧文件定义尚未被移除、_definitions 仍指向旧位置的情况。否则新文件先索引、
+            // 旧文件后删除时会丢失新定义（或残留旧位置），导致「移动 define 后仍指向旧位置」。
+            // set（IsDeclaration=false）永不覆盖 define（IsDeclaration=true），顺序无关。
+            if (!_definitions.TryGetValue(o.Key, out var existing) || o.IsDeclaration || !existing.IsDeclaration)
+                _definitions[o.Key] = o;
         }
         else
         {
@@ -206,7 +242,30 @@ public sealed class DslSymbolIndex
             var lineTokens = new DslToken[count];
             for (var k = 0; k < count; k++) lineTokens[k] = tokens[start + k];
 
-            ProcessLine(filePath, lineTokens, source, occurrences);
+            var lineStart = lineStarts[lineIdx];
+            var lineText = source.Slice(lineStart, lineEnd - lineStart).ToString();
+            ProcessLine(filePath, lineTokens, source, lineText, lineStart, occurrences);
+        }
+
+        // 作用域修正（B32）：set 赋值的作用域应跟随其目标变量的「声明作用域」，而非一律 Global。
+        // 先在本文件声明中推导各变量作用域（define→全局、let/local→局部、仅 set→全局），
+        // 再把 set 出现的作用域对齐到该声明作用域，使索引忠实反映 define/set/let/local 的区别。
+        var declScope = new Dictionary<string, SymbolScope>(StringComparer.Ordinal);
+        foreach (var o in occurrences)
+        {
+            if (o.Kind != SymbolKind.Variable || o.Role != SymbolRole.Definition) continue;
+            if (o.IsDeclaration) declScope[o.Name] = SymbolScope.Global;          // define 全局，覆盖一切
+            else if (o.Scope == SymbolScope.Local) declScope[o.Name] = SymbolScope.Local; // let/local → 局部（覆盖仅 set 的全局）
+            else declScope.TryAdd(o.Name, SymbolScope.Global);                    // 仅 set → 全局（仅当尚未设定）
+        }
+        for (var i = 0; i < occurrences.Count; i++)
+        {
+            var o = occurrences[i];
+            if (o.Kind == SymbolKind.Variable && o.Role == SymbolRole.Definition && !o.IsDeclaration
+                && declScope.TryGetValue(o.Name, out var sc) && sc != o.Scope)
+            {
+                occurrences[i] = new SymbolOccurrence(o.Kind, o.Role, o.Name, o.FilePath, o.Offset, o.Length, sc, o.IsDeclaration);
+            }
         }
 
         return occurrences;
@@ -216,7 +275,14 @@ public sealed class DslSymbolIndex
     private static List<SymbolOccurrence> CollectOccurrencesForLines(string filePath, DslToken[][] lines, ReadOnlySpan<char> source)
     {
         var occurrences = new List<SymbolOccurrence>();
-        foreach (var line in lines) ProcessLine(filePath, line, source, occurrences);
+        foreach (var line in lines)
+        {
+            if (line.Length == 0) continue;
+            var lineStart = line[0].Offset;
+            var lineEnd = line[line.Length - 1].Offset + line[line.Length - 1].Length;
+            var lineText = source.Slice(lineStart, lineEnd - lineStart).ToString();
+            ProcessLine(filePath, line, source, lineText, lineStart, occurrences);
+        }
         return occurrences;
     }
 
@@ -248,109 +314,156 @@ public sealed class DslSymbolIndex
         return lo;
     }
 
-    private static void ProcessLine(string filePath, DslToken[] lineTokens, ReadOnlySpan<char> source, List<SymbolOccurrence> occurrences)
+    private static readonly HashSet<string> s_exprBuiltins = new(StringComparer.Ordinal)
     {
-        if (lineTokens.Length == 0) return;
-        var head = lineTokens[0];
-        if (head.Kind != DslTokenKind.Keyword) return;
-        var headText = head.GetText(source).ToString();
+        "random", "min", "max", "abs", "clamp", "true", "false"
+    };
 
-        switch (headText)
+    private static void ProcessLine(string filePath, DslToken[] lineTokens, ReadOnlySpan<char> source, string lineText, int lineStart, List<SymbolOccurrence> occurrences)
+    {
+        if (lineTokens.Length > 0 && lineTokens[0].Kind == DslTokenKind.Keyword)
         {
-            case "scene":
-                if (TryNextString(lineTokens, 1, source, out var sceneName))
-                    occurrences.Add(new SymbolOccurrence(SymbolKind.Scene, SymbolRole.Definition, sceneName, filePath, lineTokens[1].Offset, lineTokens[1].Length, SymbolScope.Global, true));
-                break;
-            case "character":
-                if (TryNextString(lineTokens, 1, source, out var charName))
-                    occurrences.Add(new SymbolOccurrence(SymbolKind.Character, SymbolRole.Definition, charName, filePath, lineTokens[1].Offset, lineTokens[1].Length, SymbolScope.Global, true));
-                break;
-            case "label":
-                if (TryNextIdentifier(lineTokens, 1, source, out var labelName))
-                    occurrences.Add(new SymbolOccurrence(SymbolKind.Label, SymbolRole.Definition, labelName, filePath, lineTokens[1].Offset, lineTokens[1].Length, SymbolScope.Scene, true));
-                break;
-            case "set":
-            case "define":
-            case "let":
-            case "local":
-                // 变量名既可能是裸标识符（set sex 1），也可能是带引号字符串（define "npc.innkeeper.name" "老张" once）。
-                // 裸标识符优先，否则取引号内字符串作为变量名——两者按同一符号名收集，引用端 {name} 才能匹配解析。
-                // 生命周期：define/set 为全局（define 尤甚，无论写在哪个 scene/文件都恒为全局）；
-                // let/local 为局部（场景/块级），仅影响语义展示，不影响跨文件解析（解析保持「任一作用域有定义即命中」）。
-                // 声明式：只有 define 才算「声明」（参与重复定义检测）；set 是赋值、let/local 是块级声明，
-                // 重复书写/重复赋值不构成重复定义。
-                if (TryNextIdentifier(lineTokens, 1, source, out var varName) || TryNextString(lineTokens, 1, source, out varName))
-                {
-                    var scope = headText is "let" or "local" ? SymbolScope.Local : SymbolScope.Global;
-                    var isDecl = headText == "define";
-                    occurrences.Add(new SymbolOccurrence(SymbolKind.Variable, SymbolRole.Definition, varName, filePath, lineTokens[1].Offset, lineTokens[1].Length, scope, isDecl));
-                }
-                break;
-            case "func":
-                if (TryNextIdentifier(lineTokens, 1, source, out var funcName))
-                    occurrences.Add(new SymbolOccurrence(SymbolKind.Func, SymbolRole.Definition, funcName, filePath, lineTokens[1].Offset, lineTokens[1].Length, SymbolScope.Global, true));
-                break;
-            case "jump":
-                if (TryNextIdentifier(lineTokens, 1, source, out var jumpTarget))
-                    occurrences.Add(new SymbolOccurrence(SymbolKind.Label, SymbolRole.Reference, jumpTarget, filePath, lineTokens[1].Offset, lineTokens[1].Length));
-                break;
-            case "navigate":
-                if (TryNextString(lineTokens, 1, source, out var navTarget))
-                    occurrences.Add(new SymbolOccurrence(SymbolKind.Scene, SymbolRole.Reference, navTarget, filePath, lineTokens[1].Offset, lineTokens[1].Length));
-                break;
-            case "call":
-                if (TryNextIdentifier(lineTokens, 1, source, out var callTarget))
-                    occurrences.Add(new SymbolOccurrence(SymbolKind.Func, SymbolRole.Reference, callTarget, filePath, lineTokens[1].Offset, lineTokens[1].Length));
-                break;
-            case "menu":
-                for (var k = 0; k + 1 < lineTokens.Length; k++)
-                {
-                    if (lineTokens[k].Kind == DslTokenKind.Symbol && lineTokens[k].GetText(source).ToString() == "->")
+            var headText = lineTokens[0].GetText(source).ToString();
+            switch (headText)
+            {
+                case "scene":
+                    if (TryNextString(lineTokens, 1, source, out var sceneName))
+                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Scene, SymbolRole.Definition, sceneName, filePath, s.Offset, s.Length, SymbolScope.Global, true)); }
+                    break;
+                case "character":
+                    if (TryNextString(lineTokens, 1, source, out var charName))
+                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Character, SymbolRole.Definition, charName, filePath, s.Offset, s.Length, SymbolScope.Global, true)); }
+                    break;
+                case "label":
+                    if (TryNextIdentifier(lineTokens, 1, source, out var labelName))
+                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Label, SymbolRole.Definition, labelName, filePath, s.Offset, s.Length, SymbolScope.Scene, true)); }
+                    break;
+                case "set":
+                case "define":
+                case "let":
+                case "local":
+                    // 变量名既可能是裸标识符（set sex 1），也可能是带引号字符串（define "npc.innkeeper.name" "老张" once）。
+                    if (TryNextIdentifier(lineTokens, 1, source, out var varName) || TryNextString(lineTokens, 1, source, out varName))
                     {
-                        var target = lineTokens[k + 1];
-                        if (target.Kind == DslTokenKind.Identifier)
+                        var s = NameSpan(lineTokens[1], source);
+                        var scope = headText is "let" or "local" ? SymbolScope.Local : SymbolScope.Global;
+                        var isDecl = headText == "define";
+                        occurrences.Add(new SymbolOccurrence(SymbolKind.Variable, SymbolRole.Definition, varName, filePath, s.Offset, s.Length, scope, isDecl));
+                    }
+                    break;
+                case "func":
+                    if (TryNextIdentifier(lineTokens, 1, source, out var funcName))
+                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Func, SymbolRole.Definition, funcName, filePath, s.Offset, s.Length, SymbolScope.Global, true)); }
+                    break;
+                case "jump":
+                    if (TryNextIdentifier(lineTokens, 1, source, out var jumpTarget))
+                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Label, SymbolRole.Reference, jumpTarget, filePath, s.Offset, s.Length)); }
+                    break;
+                case "navigate":
+                    if (TryNextString(lineTokens, 1, source, out var navTarget))
+                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Scene, SymbolRole.Reference, navTarget, filePath, s.Offset, s.Length)); }
+                    break;
+                case "call":
+                    if (TryNextIdentifier(lineTokens, 1, source, out var callTarget))
+                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Func, SymbolRole.Reference, callTarget, filePath, s.Offset, s.Length)); }
+                    break;
+                case "menu":
+                    for (var k = 0; k + 1 < lineTokens.Length; k++)
+                    {
+                        if (lineTokens[k].Kind == DslTokenKind.Symbol && lineTokens[k].GetText(source).ToString() == "->")
                         {
-                            var name = target.GetText(source).ToString();
-                            occurrences.Add(new SymbolOccurrence(SymbolKind.Label, SymbolRole.Reference, name, filePath, target.Offset, name.Length));
+                            var target = lineTokens[k + 1];
+                            if (target.Kind == DslTokenKind.Identifier)
+                            {
+                                var name = target.GetText(source).ToString();
+                                occurrences.Add(new SymbolOccurrence(SymbolKind.Label, SymbolRole.Reference, name, filePath, target.Offset, name.Length));
+                            }
                         }
                     }
-                }
-                break;
+                    break;
+            }
         }
 
-        // 所有字符串内的 {var} / {var:type} 插值 -> 变量引用
+        // 注释区间——避免把注释里的 {x} 误当插值引用索引
+        var commentSpans = new List<(int, int)>(lineTokens.Length);
         foreach (var t in lineTokens)
-        {
-            if (t.Kind != DslTokenKind.String) continue;
-            var text = t.GetText(source).ToString();
-            var inner = Unquote(text);
-            CollectInterpolations(inner, t.Offset + 1, occurrences, filePath);
-        }
+            if (t.Kind == DslTokenKind.Comment) commentSpans.Add((t.Offset, t.Offset + t.Length));
+
+        // 全行扫描 {...} 插值：覆盖「字符串内的插值」与「裸花括号表达式（if/while 条件、set 值等）」两类上下文。
+        ScanInterpolations(lineText, lineStart, occurrences, filePath, commentSpans);
     }
 
-    private static void CollectInterpolations(string text, int contentOffset, List<SymbolOccurrence> occurrences, string filePath)
+    /// <summary>全行扫描 {...} 插值，提取其中的变量引用（表达式里的多个标识符一并收集，如 {a + b.c}）。</summary>
+    private static void ScanInterpolations(string text, int lineStart, List<SymbolOccurrence> occurrences, string filePath, List<(int, int)> commentSpans)
     {
         var i = 0;
         while (i < text.Length)
         {
-            if (text[i] != '{')
-            {
-                i++;
-                continue;
-            }
+            if (text[i] != '{') { i++; continue; }
             var end = text.IndexOf('}', i + 1);
             if (end < 0) break;
+            var absOpen = lineStart + i;
+            var inComment = false;
+            foreach (var (cs, ce) in commentSpans)
+            {
+                if (absOpen >= cs && absOpen < ce) { inComment = true; break; }
+            }
+            if (inComment) { i = end + 1; continue; }
+
             var expr = text.Substring(i + 1, end - i - 1).Trim();
-            // 行内富文本标记（{b}{/b}{i}{/i}{w}{fast}{p} 及 color=/font=/size= 前缀）不是变量引用，
-            // 用 DslInlineTags 单一真相源判定，避免把 {b} 误报成「未定义的变量」。
+            // 行内富文本标记（{b}{/b}{i}{/i}{color=…}{/color}{size=…} 等）不是变量引用，
+            // 用 DslCore.DslInlineTags 单一真相源判定，避免把 {b}/{color=…} 误报成「未定义的变量」。
+            // B33 重写时此判定被遗漏，导致严重的误报回归，此处恢复。
             if (DslInlineTags.IsInlineTag(expr)) { i = end + 1; continue; }
-            // 剥离可选的类型注解 :type
-            var colon = expr.IndexOf(':');
-            var name = colon >= 0 ? expr.Substring(0, colon).Trim() : expr;
-            if (IsVariableName(name))
-                occurrences.Add(new SymbolOccurrence(SymbolKind.Variable, SymbolRole.Reference, name, filePath, contentOffset + i + 1, name.Length));
+            CollectExprReferences(expr, absOpen + 1, occurrences, filePath);
             i = end + 1;
         }
+    }
+
+    /// <summary>从插值表达式（{...} 内文）提取所有变量引用。支持 {a + b.c * 2}、格式注解 {name:color}（已剥离）、三元 {x ? 1 : 2}。</summary>
+    private static void CollectExprReferences(string rawExpr, int exprOffset, List<SymbolOccurrence> occurrences, string filePath)
+    {
+        // 剥离末尾的格式注解 :format（仅当 : 之后全是字母数字且无空白，形如 {name:color} / {x + 1:red}）
+        var work = rawExpr;
+        var lastColon = work.LastIndexOf(':');
+        if (lastColon >= 0)
+        {
+            var after = work.Substring(lastColon + 1);
+            if (after.Length > 0)
+            {
+                var ok = true;
+                foreach (var c in after)
+                {
+                    if (char.IsWhiteSpace(c) || !(char.IsLetterOrDigit(c) || c == '_')) { ok = false; break; }
+                }
+                if (ok) work = work.Substring(0, lastColon);
+            }
+        }
+
+        var i = 0;
+        while (i < work.Length)
+        {
+            var c = work[i];
+            if (char.IsLetter(c) || c == '_')
+            {
+                var j = i;
+                while (j < work.Length && (char.IsLetterOrDigit(work[j]) || work[j] == '_' || work[j] == '.')) j++;
+                var name = work.Substring(i, j - i);
+                if (IsVariableName(name) && !s_exprBuiltins.Contains(name))
+                    occurrences.Add(new SymbolOccurrence(SymbolKind.Variable, SymbolRole.Reference, name, filePath, exprOffset + i, name.Length));
+                i = j;
+            }
+            else i++;
+        }
+    }
+
+    /// <summary>取符号名在源中的精确区间：字符串字面量剥掉引号取内部，裸标识符取本体。</summary>
+    private static (int Offset, int Length) NameSpan(DslToken token, ReadOnlySpan<char> source)
+    {
+        var text = token.GetText(source).ToString();
+        if (text.Length >= 2 && text[0] == '"' && text[text.Length - 1] == '"')
+            return (token.Offset + 1, text.Length - 2);
+        return (token.Offset, token.Length);
     }
 
     private static bool TryNextString(DslToken[] line, int index, ReadOnlySpan<char> source, out string value)

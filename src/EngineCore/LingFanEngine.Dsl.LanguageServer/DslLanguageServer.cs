@@ -153,7 +153,9 @@ internal sealed class DslLanguageServer
         if (p == null) return Task.CompletedTask;
         var path = UriToPath(p.TextDocument.Uri);
         var changes = p.ContentChanges;
-        // 单 range 变更 → 行级增量（O(变更) 而非 O(整文)）；多变更/无 range → 全量重建
+        if (changes.Length == 0) return Task.CompletedTask;
+
+        // 单 range 变更 → 行级增量（O(变更) 而非 O(整文)）
         if (changes.Length == 1 && changes[0].Range is { } range)
         {
             var src = SourceOf(path);
@@ -163,13 +165,29 @@ internal sealed class DslLanguageServer
             var updated = src.Substring(0, so) + newText + src.Substring(eo);
             _docs[path] = updated;
             _service.UpdateDocument(path, updated, new Ls.DirtyRange(so, eo - so, newText.Length));
+            PublishDiagnostics(p.TextDocument.Uri, path);
+            return Task.CompletedTask;
         }
-        else
+
+        // 多变更 / 无 range：增量同步下每个 change 带独立 range，必须「顺序应用全部 change」
+        // 拼装出完整新文本，再整文重建。旧实现误把末段 change.Text 当全文，会把文档截断成
+        // 一段碎片，导致索引建立在错误文本上（移动 / 剪切粘贴 / 多光标编辑都会触发）。
+        var fullText = SourceOf(path);
+        foreach (var ch in changes)
         {
-            var full = changes.Length > 0 ? changes[^1].Text : SourceOf(path);
-            _docs[path] = full;
-            _service.UpdateDocument(path, full);
+            if (ch.Range is { } r)
+            {
+                var so = PositionToOffset(fullText, r.Start);
+                var eo = PositionToOffset(fullText, r.End);
+                fullText = fullText.Substring(0, so) + ch.Text + fullText.Substring(eo);
+            }
+            else
+            {
+                fullText = ch.Text;
+            }
         }
+        _docs[path] = fullText;
+        _service.UpdateDocument(path, fullText); // dirty=null → 整文重建（小文件开销可忽略，且零错）
         PublishDiagnostics(p.TextDocument.Uri, path);
         return Task.CompletedTask;
     }
@@ -251,6 +269,14 @@ internal sealed class DslLanguageServer
         }
         _conn.SendResult(req.Id.Value, arr, LspJsonContext.Default.LocationArray);
         return Task.CompletedTask;
+    }
+
+    /// <summary>补全触发字符：空格（行首语句后）、{（插值变量）、=（参数值枚举/布尔）、a–z（输入关键字/变量名即弹上下文感知补全）。</summary>
+    private static string[] CompletionTriggerCharacters()
+    {
+        var list = new List<string> { " ", "{", "=" };
+        for (var c = 'a'; c <= 'z'; c++) list.Add(c.ToString());
+        return list.ToArray();
     }
 
     private Task HandleCompletion(Request req)
@@ -338,7 +364,7 @@ internal sealed class DslLanguageServer
             DefinitionProvider = true,
             ReferencesProvider = true,
             FoldingRangeProvider = true,
-            CompletionProvider = new CompletionOptions { TriggerCharacters = new[] { " " } },
+            CompletionProvider = new CompletionOptions { TriggerCharacters = CompletionTriggerCharacters() },
             SemanticTokensProvider = new SemanticTokensOptions
             {
                 Legend = new SemanticTokensLegend

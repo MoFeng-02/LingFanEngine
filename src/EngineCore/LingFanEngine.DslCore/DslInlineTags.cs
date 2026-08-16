@@ -8,7 +8,7 @@ public static class DslInlineTags
 {
     private static readonly HashSet<string> _tags = new()
     {
-        "b", "/b", "i", "/i", "w", "fast", "p",
+        "b", "/b", "i", "/i", "u", "/u", "w", "fast", "p",
     };
 
     private static readonly string[] _prefixed =

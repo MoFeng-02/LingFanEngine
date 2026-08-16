@@ -81,7 +81,7 @@ public sealed class DslLanguageService : IDslLanguageService
         var source = doc.Source;
         var line = doc.GetLineIndex(offset);
         var lineStart = doc.GetLineStart(line);
-        var beforeWord = source.Slice(lineStart, offset - lineStart).ToString().TrimEnd();
+        var beforeWord = source.Slice(lineStart, offset - lineStart).ToString(); // 不 TrimEnd，保留尾部空格以判断「刚输完关键字+空格」
 
         switch (GetCompletionContext(beforeWord))
         {
@@ -96,13 +96,16 @@ public sealed class DslLanguageService : IDslLanguageService
                 break;
 
             case CompletionContext.VariableReference:
-                foreach (var n in _symbolIndex.GetDefinedNames(SymbolKind.Variable))
-                    items.Add(new CompletionItem(n, n, "variable"));
+                foreach (var (n, sc) in _symbolIndex.GetVariablesWithScope())
+                    items.Add(new CompletionItem(n, n, "variable", ScopeBadge(sc)));
                 break;
 
             case CompletionContext.SceneName:
+                // navigate 目标可以是 scene 或 label
                 foreach (var n in _symbolIndex.GetDefinedNames(SymbolKind.Scene))
                     items.Add(new CompletionItem($"\"{n}\"", n, "scene"));
+                foreach (var n in _symbolIndex.GetDefinedNames(SymbolKind.Label))
+                    items.Add(new CompletionItem(n, n, "label"));
                 break;
 
             case CompletionContext.LabelName:
@@ -111,8 +114,11 @@ public sealed class DslLanguageService : IDslLanguageService
                 break;
 
             case CompletionContext.FuncName:
+                // call 目标可以是 func 或 label（示例中多用 label 做子过程）
                 foreach (var n in _symbolIndex.GetDefinedNames(SymbolKind.Func))
                     items.Add(new CompletionItem(n, n, "func"));
+                foreach (var n in _symbolIndex.GetDefinedNames(SymbolKind.Label))
+                    items.Add(new CompletionItem(n, n, "label"));
                 break;
 
             case CompletionContext.SpeakerName:
@@ -143,10 +149,13 @@ public sealed class DslLanguageService : IDslLanguageService
 
             case CompletionContext.General:
             default:
+                // 兜底上下文：只给语句关键字，不给变量（变量引用只在 { 之后出现，交 VariableReference 处理）。
                 AddKeywords(items, DslKeywords.Statements, "statement");
                 AddKeywords(items, DslKeywords.UiElementTypes, "statement");
-                foreach (var n in _symbolIndex.GetDefinedNames(SymbolKind.Variable))
-                    items.Add(new CompletionItem(n, n, "variable"));
+                break;
+
+            case CompletionContext.None:
+                // 普通对话文本等无补全上下文：一股脑全给会干扰输入，返回空。
                 break;
         }
 
@@ -162,7 +171,7 @@ public sealed class DslLanguageService : IDslLanguageService
     {
         StatementStart, ParameterName, VariableReference, SceneName, LabelName,
         FuncName, SpeakerName, EnumValue, BooleanValue, TrueOnlyValue,
-        TransitionValue, EasingValue, General,
+        TransitionValue, EasingValue, General, None,
     }
 
     private static void AddKeywords(List<CompletionItem> items, IReadOnlySet<string> keywords, string kind)
@@ -170,9 +179,29 @@ public sealed class DslLanguageService : IDslLanguageService
         foreach (var kw in keywords) items.Add(new CompletionItem(kw, kw, kind));
     }
 
+    /// <summary>变量作用域徽标（B32）：局部变量标「局部」，其余（define / 仅 set）标「全局」。</summary>
+    private static string ScopeBadge(SymbolScope scope) => scope == SymbolScope.Local ? "局部" : "全局";
+
+    /// <summary>定义引用的回退种类：navigate 目标可以是 scene 或 label；jump/menu 目标可以是 label 或 scene；call 目标可以是 func 或 label。</summary>
+    private static SymbolKind? FallbackKind(SymbolKind kind) => kind switch
+    {
+        SymbolKind.Label => SymbolKind.Scene,
+        SymbolKind.Scene => SymbolKind.Label,
+        SymbolKind.Func => SymbolKind.Label,
+        _ => null,
+    };
+
+    /// <summary>查询某变量名的作用域（用于悬浮信息标注），查不到则按全局处理。</summary>
+    private SymbolScope GetVarScope(string name)
+    {
+        var scopes = _symbolIndex.GetVariablesWithScope();
+        return scopes.TryGetValue(name, out var s) ? s : SymbolScope.Global;
+    }
+
     private static CompletionContext GetCompletionContext(string beforeWord)
     {
         var lower = beforeWord.ToLowerInvariant();
+        var trimmed = lower.TrimEnd();
 
         // 若光标处于未闭合字符串内：看引号前的语句关键字 / 参数名
         var q = lower.LastIndexOf('"');
@@ -192,25 +221,58 @@ public sealed class DslLanguageService : IDslLanguageService
                 var vt = ValueContextFor(ExtractParam(beforeString.Substring(0, beforeString.Length - 1)));
                 if (vt != CompletionContext.General) return vt;
             }
-            return CompletionContext.General; // 对话文本等字符串内 → 无补全
+            return CompletionContext.None; // 对话文本等字符串内（无 {）→ 无补全
         }
 
         // key= 之后 → 值枚举 / 布尔
-        if (lower.EndsWith("="))
+        if (trimmed.EndsWith("="))
         {
-            var vt = ValueContextFor(ExtractParam(lower.Substring(0, lower.Length - 1)));
+            var vt = ValueContextFor(ExtractParam(trimmed.Substring(0, trimmed.Length - 1)));
             if (vt != CompletionContext.General) return vt;
         }
 
-        if (lower.Length == 0) return CompletionContext.StatementStart;
-        if (IsLastWord(lower, "call")) return CompletionContext.FuncName;
-        if (IsLastWord(lower, "jump")) return CompletionContext.LabelName;
-        if (IsLastWord(lower, "menu")) return CompletionContext.LabelName;
-        if (IsLastWord(lower, "navigate") || IsLastWord(lower, "scene")) return CompletionContext.SceneName;
-        if (IsLastWord(lower, "by") || lower.EndsWith("speaker=")) return CompletionContext.SpeakerName;
-        if (IsLastWord(lower, "with")) return CompletionContext.TransitionValue;
-        if (lower.EndsWith("{")) return CompletionContext.VariableReference;
-        if (HasParameterContext(lower)) return CompletionContext.ParameterName;
+        if (trimmed.Length == 0) return CompletionContext.StatementStart;
+
+        // { 插值 → 变量名
+        if (trimmed.EndsWith("{")) return CompletionContext.VariableReference;
+
+        // 按首个词判断上下文：语句关键字的第一个实参 / 后续参数 / UI 元素参数
+        var parts = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length > 0)
+        {
+            var head = parts[0];
+
+            // 语句关键字：第一个实参位置（关键字本身 或 关键字+未完成的单个实参，且光标不在空格后）
+            if (DslKeywords.Statements.Contains(head))
+            {
+                // parts.Length==1：刚输完关键字（可能带空格）
+                // parts.Length==2：正在输第一个实参（如 call sb_）
+                // 光标在空格后且已有第二个词开头，说明第一个实参已结束，进入参数名补全
+                if (parts.Length == 1 || (parts.Length == 2 && !beforeWord.EndsWith(" ")))
+                {
+                    switch (head)
+                    {
+                        case "call": return CompletionContext.FuncName;
+                        case "jump":
+                        case "menu": return CompletionContext.LabelName;
+                        case "navigate": return CompletionContext.SceneName;
+                        case "scene": return CompletionContext.None; // 定义新场景名，不提供补全
+                    }
+                }
+                return CompletionContext.ParameterName;
+            }
+
+            // UI 元素类型（button / text / image ...）：首个实参之后应补参数名/属性键
+            if (DslKeywords.UiElementTypes.Contains(head) && (parts.Length >= 2 || beforeWord.EndsWith(" ")))
+                return CompletionContext.ParameterName;
+        }
+
+        // 兜底：光标紧接在关键字之后（无实参）
+        if (IsLastWord(trimmed, "call")) return CompletionContext.FuncName;
+        if (IsLastWord(trimmed, "jump") || IsLastWord(trimmed, "menu")) return CompletionContext.LabelName;
+        if (IsLastWord(trimmed, "navigate") || IsLastWord(trimmed, "scene")) return CompletionContext.SceneName;
+        if (IsLastWord(trimmed, "by") || trimmed.EndsWith("speaker=")) return CompletionContext.SpeakerName;
+        if (IsLastWord(trimmed, "with")) return CompletionContext.TransitionValue;
         return CompletionContext.General;
     }
 
@@ -253,7 +315,7 @@ public sealed class DslLanguageService : IDslLanguageService
     {
         var parts = beforeWord.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0) return false;
-        return DslKeywords.Statements.Contains(parts[0]);
+        return DslKeywords.Statements.Contains(parts[0]) || DslKeywords.UiElementTypes.Contains(parts[0]);
     }
 
     public HoverInfo? GetHover(string filePath, int offset)
@@ -267,18 +329,38 @@ public sealed class DslLanguageService : IDslLanguageService
             var o = occ.Value;
             if (o.Role == SymbolRole.Definition)
             {
-                var refs = _symbolIndex.FindReferences(o.Kind, o.Name).Count;
-                return new HoverInfo(o.Name, $"{KindLabel(o.Kind)} 定义\n{refs} 处引用",
-                    new Location(o.FilePath, o.Offset, o.Length));
+                if (o.IsDeclaration)
+                {
+                    var refs = _symbolIndex.FindReferences(o.Kind, o.Name).Count;
+                    var scopeTag = o.Kind == SymbolKind.Variable ? ScopeBadge(GetVarScope(o.Name)) : null;
+                    var detail = o.Kind == SymbolKind.Variable && scopeTag != null
+                        ? $"{KindLabel(o.Kind)} 定义（{scopeTag}）\n{refs} 处引用"
+                        : $"{KindLabel(o.Kind)} 定义\n{refs} 处引用";
+                    return new HoverInfo(o.Name, detail, new Location(o.FilePath, o.Offset, o.Length));
+                }
+
+                // set（赋值，非声明式定义）：不标「定义」，而是标「赋值」并指向规范定义（define）。
+                var fb = FallbackKind(o.Kind);
+                var def = _symbolIndex.Resolve(o.Kind, fb, o.Name);
+                var scopeTag2 = o.Kind == SymbolKind.Variable ? ScopeBadge(GetVarScope(o.Name)) : null;
+                var roleLabel = o.Kind == SymbolKind.Variable
+                    ? $"变量 赋值（{scopeTag2}）"
+                    : $"{KindLabel(o.Kind)} 赋值";
+                if (def != null && (def.Value.FilePath != o.FilePath || def.Value.Offset != o.Offset))
+                    roleLabel += $"\n定义于 {def.Value.FilePath}:{LineNumberOf(def.Value.FilePath, def.Value.Offset)}";
+                return new HoverInfo(o.Name, roleLabel, new Location(o.FilePath, o.Offset, o.Length));
             }
 
-            var fb = o.Kind == SymbolKind.Label ? SymbolKind.Scene : (SymbolKind?)null;
-            var def = _symbolIndex.Resolve(o.Kind, fb, o.Name);
-            if (def != null)
+            var fbRef = FallbackKind(o.Kind);
+            var defRef = _symbolIndex.Resolve(o.Kind, fbRef, o.Name);
+            if (defRef != null)
             {
-                var line = LineNumberOf(def.Value.FilePath, def.Value.Offset);
-                return new HoverInfo(o.Name, $"{KindLabel(o.Kind)} 引用\n定义于 {def.Value.FilePath}:{line}",
-                    new Location(def.Value.FilePath, def.Value.Offset, def.Value.Length));
+                var line = LineNumberOf(defRef.Value.FilePath, defRef.Value.Offset);
+                var scopeTag = o.Kind == SymbolKind.Variable ? ScopeBadge(GetVarScope(o.Name)) : null;
+                var detail = o.Kind == SymbolKind.Variable && scopeTag != null
+                    ? $"{KindLabel(o.Kind)} 引用（{scopeTag}）\n定义于 {defRef.Value.FilePath}:{line}"
+                    : $"{KindLabel(o.Kind)} 引用\n定义于 {defRef.Value.FilePath}:{line}";
+                return new HoverInfo(o.Name, detail, new Location(defRef.Value.FilePath, defRef.Value.Offset, defRef.Value.Length));
             }
             return new HoverInfo(o.Name, $"未定义的{KindLabel(o.Kind)}「{o.Name}」",
                 new Location(o.FilePath, o.Offset, o.Length));
@@ -302,14 +384,21 @@ public sealed class DslLanguageService : IDslLanguageService
 
         if (o.Role == SymbolRole.Reference)
         {
-            var fb = o.Kind == SymbolKind.Label ? SymbolKind.Scene : (SymbolKind?)null;
+            var fb = FallbackKind(o.Kind);
             var def = _symbolIndex.Resolve(o.Kind, fb, o.Name);
             if (def != null)
                 return new DefinitionResult(true, new Location(def.Value.FilePath, def.Value.Offset, def.Value.Length), def.Value.Kind);
             return new DefinitionResult(false, null, o.Kind);
         }
 
-        // 光标在定义处：跳到自身定义位置
+        // 光标在定义处：set（赋值，非声明式）重定向到规范定义（define）；其余跳到自身。
+        if (!o.IsDeclaration)
+        {
+            var fb = FallbackKind(o.Kind);
+            var def = _symbolIndex.Resolve(o.Kind, fb, o.Name);
+            if (def != null && (def.Value.FilePath != o.FilePath || def.Value.Offset != o.Offset))
+                return new DefinitionResult(true, new Location(def.Value.FilePath, def.Value.Offset, def.Value.Length), def.Value.Kind);
+        }
         return new DefinitionResult(true, new Location(o.FilePath, o.Offset, o.Length), o.Kind);
     }
 
@@ -320,7 +409,7 @@ public sealed class DslLanguageService : IDslLanguageService
             return new ReferenceResult(System.Array.Empty<Location>(), SymbolKind.Scene, string.Empty);
         var o = occ.Value;
         var refs = new List<Location>(_symbolIndex.FindReferences(o.Kind, o.Name));
-        var fb = o.Kind == SymbolKind.Label ? SymbolKind.Scene : (SymbolKind?)null;
+        var fb = FallbackKind(o.Kind);
         var def = _symbolIndex.Resolve(o.Kind, fb, o.Name);
         if (def != null) refs.Add(new Location(def.Value.FilePath, def.Value.Offset, def.Value.Length));
         return new ReferenceResult(refs, o.Kind, o.Name);
@@ -341,6 +430,9 @@ public sealed class DslLanguageService : IDslLanguageService
 
     /// <inheritdoc/>
     public IReadOnlyCollection<string> GetDefinedNames(SymbolKind kind) => _symbolIndex.GetDefinedNames(kind);
+
+    /// <inheritdoc/>
+    public IReadOnlyDictionary<string, SymbolScope> GetVariablesWithScope() => _symbolIndex.GetVariablesWithScope();
 
     /// <inheritdoc/>
     public (int Line, int Column) GetLineColumn(string filePath, int offset)

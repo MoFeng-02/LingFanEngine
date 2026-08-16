@@ -12,6 +12,8 @@ scene "title_main" type=menu
   define "player.gold" 100 once
   define "player.level" 1 once
   define "player.exp" 0 once
+  define "npc.innkeeper.name" "老张" once
+  define "npc.innkeeper.trust" 0 once
   define "story.progress" 0 once
   define "story.met_innkeeper" false once
   define "story.met_elder" false once
@@ -20,8 +22,6 @@ scene "title_main" type=menu
   define "story.bad_deeds" 0 once
   define "story.wolf_defeated" false once
   define "story.ending" "" once
-  define "npc.innkeeper.name" "老张" once
-  define "npc.innkeeper.trust" 0 once
   define "sandbox.battle_count" 0 once
   image "Images/lingfan.png" x=0 y=0 width=100% height=100% opacity=0.5
   text "迷雾小镇" x=50% y=12% size=56 color="#FFD700" halign=center font="Microsoft YaHei"
