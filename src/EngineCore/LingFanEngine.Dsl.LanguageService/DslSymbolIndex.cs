@@ -53,7 +53,7 @@ public sealed class DslSymbolIndex
         {
             var o = list[i];
             RemoveOccurrence(o);
-            list[i] = new SymbolOccurrence(o.Kind, o.Role, o.Name, o.FilePath, o.Offset + delta, o.Length);
+            list[i] = new SymbolOccurrence(o.Kind, o.Role, o.Name, o.FilePath, o.Offset + delta, o.Length, o.Scope);
             AddOccurrence(list[i]);
         }
 
@@ -116,20 +116,24 @@ public sealed class DslSymbolIndex
         var result = new List<Diagnostic>();
         if (!_byFile.TryGetValue(filePath, out var occ)) return result;
 
-        // 重复定义警告
+        // 重复定义警告——仅「声明式」定义参与（define / scene / character / label / func）。
+        // set（赋值）、let/local（块级声明）重复书写不构成重复定义。
         var seenDefs = new HashSet<SymbolKey>();
         foreach (var o in occ)
         {
             if (o.Role != SymbolRole.Definition) continue;
+            if (!o.IsDeclaration) continue;
             if (!seenDefs.Add(o.Key))
                 result.Add(new Diagnostic(DiagnosticSeverity.Warning,
                     $"重复定义{o.Kind}「{o.Name}」", new Location(filePath, o.Offset, o.Length)));
         }
 
-        // 未定义引用错误
+        // 未定义引用错误——点分属性路径（player.name / npc.innkeeper.name 等）多为 C# 运行时注入的对象属性，
+        // 引擎在运行时动态解析，.story 静态索引无法枚举，跳过未定义告警以免误报。
         foreach (var o in occ)
         {
             if (o.Role != SymbolRole.Reference) continue;
+            if (o.Name.Contains('.')) continue;
             var fb = o.Kind == SymbolKind.Label ? SymbolKind.Scene : (SymbolKind?)null;
             if (Resolve(o.Kind, fb, o.Name) is null)
                 result.Add(new Diagnostic(DiagnosticSeverity.Error,
@@ -255,26 +259,36 @@ public sealed class DslSymbolIndex
         {
             case "scene":
                 if (TryNextString(lineTokens, 1, source, out var sceneName))
-                    occurrences.Add(new SymbolOccurrence(SymbolKind.Scene, SymbolRole.Definition, sceneName, filePath, lineTokens[1].Offset, lineTokens[1].Length));
+                    occurrences.Add(new SymbolOccurrence(SymbolKind.Scene, SymbolRole.Definition, sceneName, filePath, lineTokens[1].Offset, lineTokens[1].Length, SymbolScope.Global, true));
                 break;
             case "character":
                 if (TryNextString(lineTokens, 1, source, out var charName))
-                    occurrences.Add(new SymbolOccurrence(SymbolKind.Character, SymbolRole.Definition, charName, filePath, lineTokens[1].Offset, lineTokens[1].Length));
+                    occurrences.Add(new SymbolOccurrence(SymbolKind.Character, SymbolRole.Definition, charName, filePath, lineTokens[1].Offset, lineTokens[1].Length, SymbolScope.Global, true));
                 break;
             case "label":
                 if (TryNextIdentifier(lineTokens, 1, source, out var labelName))
-                    occurrences.Add(new SymbolOccurrence(SymbolKind.Label, SymbolRole.Definition, labelName, filePath, lineTokens[1].Offset, lineTokens[1].Length));
+                    occurrences.Add(new SymbolOccurrence(SymbolKind.Label, SymbolRole.Definition, labelName, filePath, lineTokens[1].Offset, lineTokens[1].Length, SymbolScope.Scene, true));
                 break;
             case "set":
             case "define":
             case "let":
             case "local":
-                if (TryNextIdentifier(lineTokens, 1, source, out var varName))
-                    occurrences.Add(new SymbolOccurrence(SymbolKind.Variable, SymbolRole.Definition, varName, filePath, lineTokens[1].Offset, lineTokens[1].Length));
+                // 变量名既可能是裸标识符（set sex 1），也可能是带引号字符串（define "npc.innkeeper.name" "老张" once）。
+                // 裸标识符优先，否则取引号内字符串作为变量名——两者按同一符号名收集，引用端 {name} 才能匹配解析。
+                // 生命周期：define/set 为全局（define 尤甚，无论写在哪个 scene/文件都恒为全局）；
+                // let/local 为局部（场景/块级），仅影响语义展示，不影响跨文件解析（解析保持「任一作用域有定义即命中」）。
+                // 声明式：只有 define 才算「声明」（参与重复定义检测）；set 是赋值、let/local 是块级声明，
+                // 重复书写/重复赋值不构成重复定义。
+                if (TryNextIdentifier(lineTokens, 1, source, out var varName) || TryNextString(lineTokens, 1, source, out varName))
+                {
+                    var scope = headText is "let" or "local" ? SymbolScope.Local : SymbolScope.Global;
+                    var isDecl = headText == "define";
+                    occurrences.Add(new SymbolOccurrence(SymbolKind.Variable, SymbolRole.Definition, varName, filePath, lineTokens[1].Offset, lineTokens[1].Length, scope, isDecl));
+                }
                 break;
             case "func":
                 if (TryNextIdentifier(lineTokens, 1, source, out var funcName))
-                    occurrences.Add(new SymbolOccurrence(SymbolKind.Func, SymbolRole.Definition, funcName, filePath, lineTokens[1].Offset, lineTokens[1].Length));
+                    occurrences.Add(new SymbolOccurrence(SymbolKind.Func, SymbolRole.Definition, funcName, filePath, lineTokens[1].Offset, lineTokens[1].Length, SymbolScope.Global, true));
                 break;
             case "jump":
                 if (TryNextIdentifier(lineTokens, 1, source, out var jumpTarget))
@@ -327,10 +341,13 @@ public sealed class DslSymbolIndex
             var end = text.IndexOf('}', i + 1);
             if (end < 0) break;
             var expr = text.Substring(i + 1, end - i - 1).Trim();
+            // 行内富文本标记（{b}{/b}{i}{/i}{w}{fast}{p} 及 color=/font=/size= 前缀）不是变量引用，
+            // 用 DslInlineTags 单一真相源判定，避免把 {b} 误报成「未定义的变量」。
+            if (DslInlineTags.IsInlineTag(expr)) { i = end + 1; continue; }
             // 剥离可选的类型注解 :type
             var colon = expr.IndexOf(':');
             var name = colon >= 0 ? expr.Substring(0, colon).Trim() : expr;
-            if (!string.IsNullOrEmpty(name) && IsIdentifier(name))
+            if (IsVariableName(name))
                 occurrences.Add(new SymbolOccurrence(SymbolKind.Variable, SymbolRole.Reference, name, filePath, contentOffset + i + 1, name.Length));
             i = end + 1;
         }
@@ -361,12 +378,18 @@ public sealed class DslSymbolIndex
         return text;
     }
 
-    private static bool IsIdentifier(string s)
+    /// <summary>判定 {...} 内插值主体是否为合法变量/属性路径名。</summary>
+    /// <remarks>
+    /// 行内富文本标记已由 <see cref="DslInlineTags.IsInlineTag"/> 在收集点排除，此处只校验变量命名：
+    /// 首字符为字母/下划线，后续允许字母/数字/下划线/点号（属性路径，如 player.name），
+    /// 且不能以点号开头或结尾。{sex} 与 {player.name} 都算合法变量引用。
+    /// </remarks>
+    private static bool IsVariableName(string s)
     {
         if (string.IsNullOrEmpty(s)) return false;
         if (!char.IsLetter(s[0]) && s[0] != '_') return false;
         foreach (var c in s)
-            if (!char.IsLetterOrDigit(c) && c != '_') return false;
-        return true;
+            if (!char.IsLetterOrDigit(c) && c != '_' && c != '.') return false;
+        return s[0] != '.' && s[s.Length - 1] != '.';
     }
 }

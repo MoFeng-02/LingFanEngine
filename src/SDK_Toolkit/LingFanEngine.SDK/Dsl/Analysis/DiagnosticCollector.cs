@@ -66,13 +66,14 @@ public static class DiagnosticCollector
         List<DslDiagnostic> warnings,
         List<DslDiagnostic> infos)
     {
-        // 收集当前文件的局部变量定义（变量名 → 定义行号，用于未使用变量波浪线定位）
+        // 收集当前文件的局部变量定义（变量名 → 定义行号，用于未使用变量波浪线定位）。
+        // 注意：set 是赋值（引擎中变量多以 set 注入），重复 set 不构成「未使用」告警，
+        // 故不计入 localVars；仅 define / let / for / func 形参这类「声明」参与未使用检测。
         var localVars = new Dictionary<string, int>();
         foreach (var stmt in statements)
         {
             switch (stmt)
             {
-                case SetStmt set: localVars[set.Key] = set.LineNumber + 1; break;
                 case DefineStmt def: localVars[def.Key] = def.LineNumber + 1; break;
                 case LetStmt let: localVars[let.Key] = let.LineNumber + 1; break;
                 case ForStmt forStmt: localVars[forStmt.VarName] = forStmt.LineNumber + 1; break;
@@ -229,6 +230,9 @@ public static class DiagnosticCollector
                         // 跳过数字和关键字
                         if (double.TryParse(part, out _)) continue;
                         if (part is "true" or "false" or "random" or "min" or "max" or "abs" or "clamp") continue;
+                        // 点分属性路径（player.name / npc.innkeeper.name 等）多为 C# 运行时注入的对象属性，
+                        // 引擎在运行时动态解析，静态索引无法枚举——跳过未定义告警以免误报。
+                        if (part.Contains('.')) continue;
 
                         if (!definedVars.Contains(part) && IsValidIdentifier(part))
                         {
@@ -294,7 +298,9 @@ public static class DiagnosticCollector
         if (!char.IsLetter(s[0]) && s[0] != '_') return false;
         foreach (var c in s)
         {
-            if (!char.IsLetterOrDigit(c) && c != '_')
+            // 允许点号：支持 player.name / npc.innkeeper.trust 这类点分属性路径（C# 运行时注入），
+            // 使点分引用能正确计入「已使用」集合。
+            if (!char.IsLetterOrDigit(c) && c != '_' && c != '.')
                 return false;
         }
         return true;

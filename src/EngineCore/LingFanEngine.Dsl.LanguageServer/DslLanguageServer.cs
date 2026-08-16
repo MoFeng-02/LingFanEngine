@@ -393,12 +393,17 @@ internal sealed class DslLanguageServer
     private Task HandleInitialized(Request req)
     {
         if (_rootPath == null) return Task.CompletedTask;
+        if (!Directory.Exists(_rootPath))
+        {
+            Log($"workspace root NOT FOUND: {_rootPath}");
+            LogMessage(1, $"未找到工作区根目录：{_rootPath}");
+        }
         // 磁盘枚举在写锁外（IO 不占锁），仅 IndexProject 写入在写锁内（由调用方 WithWriteLockAsync 保证）
         List<(string Path, string Text)>? files = null;
         try
         {
             files = new List<(string Path, string Text)>();
-            foreach (var f in Directory.EnumerateFiles(_rootPath, "*.story", SearchOption.AllDirectories))
+            foreach (var f in EnumerateStoryFiles(_rootPath))
             {
                 if (_docs.TryGetValue(f, out var mem)) { files.Add((f, mem)); continue; }
                 try { files.Add((f, File.ReadAllText(f))); }
@@ -413,11 +418,40 @@ internal sealed class DslLanguageServer
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// 容错递归枚举工作区下所有 <c>.story</c>：逐目录独立 try-catch，单个无权限/超大目录失败不影响其它目录，
+    /// 并跳过 <c>.git</c>/<c>bin</c>/<c>obj</c>/<c>node_modules</c> 等典型噪声目录以提速。
+    /// <para>取代 <c>Directory.EnumerateFiles(AllDirectories)</c>——后者遇到首个访问受限目录会整体抛异常、中止枚举。</para>
+    /// </summary>
+    private static IEnumerable<string> EnumerateStoryFiles(string root)
+    {
+        var dirs = new Stack<string>();
+        dirs.Push(root);
+        while (dirs.Count > 0)
+        {
+            var dir = dirs.Pop();
+            IEnumerable<string> files;
+            try { files = Directory.EnumerateFiles(dir, "*.story"); }
+            catch { continue; }
+            foreach (var f in files) yield return f;
+
+            IEnumerable<string> subs;
+            try { subs = Directory.EnumerateDirectories(dir); }
+            catch { continue; }
+            foreach (var d in subs)
+            {
+                var name = Path.GetFileName(d);
+                if (name is ".git" or "bin" or "obj" or "node_modules" or "$tf" or ".vs") continue;
+                dirs.Push(d);
+            }
+        }
+    }
+
     private static string? ResolveRoot(InitializeParams? init)
     {
         if (init == null) return null;
         if (!string.IsNullOrEmpty(init.RootUri)) { var p = UriToPath(init.RootUri); if (!string.IsNullOrEmpty(p)) return p; }
-        if (!string.IsNullOrEmpty(init.RootPath)) return init.RootPath;
+        if (!string.IsNullOrEmpty(init.RootPath)) { var p = NormalizePath(init.RootPath); if (!string.IsNullOrEmpty(p)) return p; }
         if (init.WorkspaceFolders is { Length: > 0 } wf) { var p = UriToPath(wf[0].Uri); if (!string.IsNullOrEmpty(p)) return p; }
         return null;
     }
@@ -514,10 +548,28 @@ internal sealed class DslLanguageServer
         _ => 4, // Hint
     };
 
+    /// <summary>修正 Windows 上非法的「前导斜杠 + 盘符」形式路径（如 <c>/e:/x</c> → <c>e:/x</c>）。</summary>
+    /// <remarks>
+    /// <c>file://e:/x</c>（双斜杠）这类 URI 经 <see cref="Uri.LocalPath"/> 会反序列化成 <c>/e:/x</c>，
+    /// 而 Windows 的 <c>Directory</c> API 无法识别该形式（前导斜杠导致路径失效、Exists 返回 false）。
+    /// 正常 <c>file:///e:/x</c>（三斜杠）才能得到 <c>e:\x</c>。此处统一兜底剥掉前导斜杠。
+    /// </remarks>
+    private static string NormalizePath(string p)
+    {
+        if (string.IsNullOrEmpty(p)) return p;
+        if (p.Length > 2 && p[0] == '/' && char.IsLetter(p[1]) && p[2] == ':')
+            return p.Substring(1);
+        return p;
+    }
+
     private static string UriToPath(string uri)
     {
-        try { return new Uri(uri).LocalPath; }
-        catch { return uri; }
+        try
+        {
+            var local = new Uri(uri).LocalPath;
+            return NormalizePath(local);
+        }
+        catch { return NormalizePath(uri); }
     }
 
     private static string PathToUri(string path)
