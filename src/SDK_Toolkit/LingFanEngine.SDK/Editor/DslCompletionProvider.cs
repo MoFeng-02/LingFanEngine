@@ -60,7 +60,8 @@ public class DslCompletionProvider
         List<string> scenes,
         List<string> labels,
         List<string> characters,
-        List<string>? crossFileVariables = null)
+        List<string>? crossFileVariables = null,
+        List<string>? functions = null)
     {
         // 获取当前行文本和光标在行中的位置
         var line = document.GetLineByOffset(offset);
@@ -126,11 +127,23 @@ public class DslCompletionProvider
                 break;
 
             case CompletionContext.LabelName:
-                // jump/call → 标签名
+                // jump → 标签名
                 foreach (var label in labels)
                 {
                     if (Matches(prefix, label))
                         results.Add(new DslCompletionData(label, label, s_sceneColor, "标签"));
+                }
+                break;
+
+            case CompletionContext.FuncName:
+                // call → 函数名
+                if (functions != null)
+                {
+                    foreach (var func in functions)
+                    {
+                        if (Matches(prefix, func))
+                            results.Add(new DslCompletionData(func, func, s_sceneColor, "函数"));
+                    }
                 }
                 break;
 
@@ -253,9 +266,11 @@ public class DslCompletionProvider
             if (IsLastWord(lowerStr, "navigate") || IsLastWord(lowerStr, "scene"))
                 return CompletionContext.SceneName;
 
-            // jump / call → 标签名
-            if (IsLastWord(lowerStr, "jump") || IsLastWord(lowerStr, "call"))
+            // jump → 标签名；call → 函数名（两者语义不同，分开补全）
+            if (IsLastWord(lowerStr, "jump"))
                 return CompletionContext.LabelName;
+            if (IsLastWord(lowerStr, "call"))
+                return CompletionContext.FuncName;
 
             // speaker=" → 角色名（key=value 语法）
             if (lowerStr.EndsWith("speaker="))
@@ -293,9 +308,11 @@ public class DslCompletionProvider
         // 4. 检查特殊前缀
         var lowerBefore = beforeWord.ToLowerInvariant();
 
-        // jump / call → 标签名（无引号）
-        if (IsLastWord(lowerBefore, "jump") || IsLastWord(lowerBefore, "call"))
+        // jump → 标签名（无引号）；call → 函数名
+        if (IsLastWord(lowerBefore, "jump"))
             return CompletionContext.LabelName;
+        if (IsLastWord(lowerBefore, "call"))
+            return CompletionContext.FuncName;
 
         // with "transition" → 过渡效果（空格分隔，非字符串内）
         if (IsLastWord(lowerBefore, "with"))
@@ -426,6 +443,7 @@ public class DslCompletionProvider
         VariableReference,
         SceneName,
         LabelName,
+        FuncName,
         SpeakerName,
         EnumValue,
         BooleanValue,

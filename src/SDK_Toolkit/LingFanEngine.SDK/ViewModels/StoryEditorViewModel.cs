@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using LingFanEngine.Dsl.LanguageService;
 using LingFanEngine.DslCore;
 using LingFanEngine.SDK.Dsl;
 using LingFanEngine.SDK.Dsl.Analysis;
@@ -13,6 +14,12 @@ using LingFanEngine.SDK.Dsl.Highlight;
 using LingFanEngine.SDK.Editor;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Services.Abstractions;
+// 别名：本文件中的 ReferenceResult 一律指 SDK 模型（UI 绑定 + 引用查找映射）；
+// 语言服务侧同名类型通过全名 LingFanEngine.Dsl.LanguageService.ReferenceResult 引用，避免歧义。
+using ReferenceResult = LingFanEngine.SDK.Models.ReferenceResult;
+// 别名：本文件中的 DiagnosticSeverity 一律指 SDK 模型（用于 DslDiagnostic.Severity）；
+// 语言服务侧同名枚举通过全名引用，避免歧义。
+using DiagnosticSeverity = LingFanEngine.SDK.Models.DiagnosticSeverity;
 using MFToolkit.Routing.Core.Interfaces;
 
 namespace LingFanEngine.SDK.ViewModels;
@@ -22,6 +29,7 @@ public partial class StoryEditorViewModel : ViewModelBase, IQueryAttributable
 {
     private readonly IDslAnalyzer _analyzer;
     private readonly IProjectSession _session;
+    private readonly IDslLanguageService _dsl;
     private CancellationTokenSource? _debounceCts;
 
     /// <summary>P1-7: 文件树需要刷新时触发（文件创建/删除/重命名后）</summary>
@@ -83,10 +91,11 @@ public partial class StoryEditorViewModel : ViewModelBase, IQueryAttributable
     /// <summary>P1-5: 当前活动标签页</summary>
     public OpenFileTab? ActiveTab { get; private set; }
 
-    public StoryEditorViewModel(IDslAnalyzer analyzer, IProjectSession session)
+    public StoryEditorViewModel(IDslAnalyzer analyzer, IProjectSession session, IDslLanguageService dsl)
     {
         _analyzer = analyzer;
         _session = session;
+        _dsl = dsl;
 
         // 监听项目会话
         _session.ProjectOpened += OnProjectOpened;
@@ -106,6 +115,8 @@ public partial class StoryEditorViewModel : ViewModelBase, IQueryAttributable
         {
             StoriesDirectory = storiesDir;
             _ = DefinitionIndexer.ReindexAsync(storiesDir);
+            // M3：把整个项目索引进语言服务，支撑跨文件跳转 / 查找引用
+            IndexProjectIntoLanguageService(storiesDir);
         }
     }
 
@@ -134,11 +145,12 @@ public partial class StoryEditorViewModel : ViewModelBase, IQueryAttributable
         if (newValue != null && Directory.Exists(newValue))
         {
             _ = DefinitionIndexer.ReindexAsync(newValue);
+            IndexProjectIntoLanguageService(newValue);
         }
     }
 
-    /// <summary>编辑器文本变更时调用（debounce 后自动分析）</summary>
-    public async Task OnSourceChangedAsync(string source)
+    /// <summary>编辑器文本变更时调用（debounce 后自动分析）。dirty 透传给语言服务以启用 token 层增量重词法。</summary>
+    public async Task OnSourceChangedAsync(string source, DirtyRange? dirty = null)
     {
         EditorContent = source;
         IsDirty = true;
@@ -150,13 +162,13 @@ public partial class StoryEditorViewModel : ViewModelBase, IQueryAttributable
             ActiveTab.IsDirty = true;
         }
 
-        // debounce 300ms
+        // debounce 300ms（M4-P2：复用既有防抖 + CancellationToken 取消）
         _debounceCts?.Cancel();
         _debounceCts = new CancellationTokenSource();
         try
         {
             await Task.Delay(300, _debounceCts.Token);
-            await AnalyzeInternalAsync(source);
+            await AnalyzeInternalAsync(source, dirty);
         }
         catch (TaskCanceledException)
         {
@@ -379,20 +391,20 @@ public partial class StoryEditorViewModel : ViewModelBase, IQueryAttributable
     {
         if (string.IsNullOrEmpty(EditorContent)) return;
 
-        var formatted = DslFormatter.Format(EditorContent);
+        var formatted = DslFormatter.Format(EditorContent, _dsl.GetLineBlockDepths(CurrentFilePath));
         EditorContent = formatted;
         StatusMessage = "已格式化";
     }
 
-    /// <summary>获取高亮 token</summary>
+    /// <summary>获取高亮 token（M3：经语言服务 + SDK 适配层映射到 HighlightCategory）</summary>
     public List<HighlightToken> GetHighlights()
     {
         return string.IsNullOrEmpty(EditorContent)
             ? []
-            : _analyzer.GetHighlights(EditorContent);
+            : Highlighter.GetHighlights(EditorContent, CurrentFilePath);
     }
 
-    private async Task AnalyzeInternalAsync(string source)
+    private async Task AnalyzeInternalAsync(string source, DirtyRange? dirty = null)
     {
         if (string.IsNullOrEmpty(source))
         {
@@ -403,6 +415,10 @@ public partial class StoryEditorViewModel : ViewModelBase, IQueryAttributable
             OutlineItems.Clear();
             return;
         }
+
+        // M3：把当前文件同步进语言服务索引（与高亮 / 跨文件查询共享同一内存索引）
+        // M4-P1：透传 dirty 以启用 token 层增量重词法（脏区非法时 DslDocument 自动退化全量）
+        _dsl.UpdateDocument(CurrentFilePath, source, dirty);
 
         try
         {
@@ -469,71 +485,88 @@ public partial class StoryEditorViewModel : ViewModelBase, IQueryAttributable
         CaretInfo = $"Ln {line}, Col {column}";
     }
 
-    /// <summary>获取补全数据源快照</summary>
-    public (List<VariableInfo> Variables, List<string> Scenes, List<string> Labels, List<string> Characters, List<string> VariableNames)
+    /// <summary>获取补全数据源快照（M3：符号名来自语言服务的单一跨文件索引）</summary>
+    public (List<VariableInfo> Variables, List<string> Scenes, List<string> Labels, List<string> Characters, List<string> VariableNames, List<string> Functions)
         GetCompletionData()
     {
-        return (
-            new List<VariableInfo>(Variables),
-            DefinitionIndexer.SceneNames,
-            DefinitionIndexer.LabelNames,
-            DefinitionIndexer.CharacterKeys,
-            DefinitionIndexer.VariableNames);
+        var scenes = new List<string>(_dsl.GetDefinedNames(SymbolKind.Scene));
+        var labels = new List<string>(_dsl.GetDefinedNames(SymbolKind.Label));
+        var characters = new List<string>(_dsl.GetDefinedNames(SymbolKind.Character));
+        var varNames = new List<string>(_dsl.GetDefinedNames(SymbolKind.Variable));
+        var functions = new List<string>(_dsl.GetDefinedNames(SymbolKind.Func));
+        var variables = new List<VariableInfo>();
+        foreach (var name in varNames)
+            variables.Add(new VariableInfo(name, null, 0, new List<int>()));
+        return (variables, scenes, labels, characters, varNames, functions);
     }
 
-    /// <summary>P0-3: Go to Definition——查找当前光标下的词并跳转</summary>
-    public (string FilePath, int Line)? GoToDefinition(string word)
+    /// <summary>P0-3: Go to Definition——根据光标偏移在语言服务索引中解析定义位置</summary>
+    public (string FilePath, int Line)? GoToDefinition(string word, int offset)
+    {
+        if (string.IsNullOrEmpty(word) || offset < 0) return null;
+
+        var result = _dsl.GoToDefinition(CurrentFilePath, offset);
+        if (!result.Found || result.Location is not { } loc) return null;
+
+        var (line, _) = _dsl.GetLineColumn(loc.FilePath, loc.Offset);
+        return (loc.FilePath, line);
+    }
+
+    /// <summary>P0-4: Find All References——查找符号的所有引用（基于语言服务的跨文件索引）</summary>
+    public Task<List<ReferenceResult>> FindAllReferencesAsync(string word, int offset)
+    {
+        if (string.IsNullOrEmpty(word) || offset < 0)
+            return Task.FromResult(new List<ReferenceResult>());
+
+        var result = _dsl.FindReferences(CurrentFilePath, offset);
+        var refs = new List<ReferenceResult>();
+        foreach (var loc in result.Locations)
+        {
+            var (line, column) = _dsl.GetLineColumn(loc.FilePath, loc.Offset);
+            refs.Add(new ReferenceResult(loc.FilePath, line, column, "", MapReferenceKind(result.Kind)));
+        }
+        References.Clear();
+        foreach (var r in refs) References.Add(r);
+        ShowReferencesPanel = refs.Count > 0;
+        return Task.FromResult(refs);
+    }
+
+    /// <summary>P1-2: 获取 Hover 提示文本（关键字文档 + 语言服务的符号解析）</summary>
+    public string? GetHoverText(string word, int offset)
     {
         if (string.IsNullOrEmpty(word)) return null;
+        if (DslKeywords.All.Contains(word))
+            return DslHoverProvider.GetKeywordDoc(word);
+        if (offset < 0) return null;
 
-        // 按类型依次查找
-        var def = DefinitionIndexer.FindDefinition(word);
-        return def != null ? (def.FilePath, def.Line) : null;
+        var info = _dsl.GetHover(CurrentFilePath, offset);
+        if (info == null) return null;
+        var text = info.Title;
+        if (!string.IsNullOrEmpty(info.Detail))
+            text += "\n" + info.Detail;
+        return text;
     }
 
-    /// <summary>P0-4: Find All References——查找符号的所有引用</summary>
-    public async Task<List<ReferenceResult>> FindAllReferencesAsync(string word)
+    /// <summary>将语言服务的符号种类映射到 SDK 引用类型</summary>
+    private static ReferenceKind MapReferenceKind(SymbolKind kind) => kind switch
     {
-        if (string.IsNullOrEmpty(word) || StoriesDirectory == null)
-            return new List<ReferenceResult>();
+        SymbolKind.Scene => ReferenceKind.Scene,
+        SymbolKind.Label => ReferenceKind.Label,
+        SymbolKind.Variable => ReferenceKind.Variable,
+        SymbolKind.Character => ReferenceKind.Character,
+        SymbolKind.Func => ReferenceKind.Function,
+        _ => ReferenceKind.Variable,
+    };
 
-        // 判断符号类型
-        var kind = DetermineReferenceKind(word);
-
-        var results = await ReferenceFinder.FindReferencesAsync(StoriesDirectory, word, kind);
-        References.Clear();
-        foreach (var r in results)
-            References.Add(r);
-        ShowReferencesPanel = results.Count > 0;
-        return results;
-    }
-
-    /// <summary>根据定义索引判断引用类型</summary>
-    private ReferenceKind DetermineReferenceKind(string word)
+    /// <summary>M3：把目录下所有 .story 文件索引进语言服务（跨文件跳转 / 查找引用）。</summary>
+    private void IndexProjectIntoLanguageService(string dir)
     {
-        var def = DefinitionIndexer.FindDefinition(word);
-        if (def != null)
-        {
-            return def.Type switch
-            {
-                DefinitionType.Scene => ReferenceKind.Scene,
-                DefinitionType.Label => ReferenceKind.Label,
-                DefinitionType.Character => ReferenceKind.Character,
-                DefinitionType.Style => ReferenceKind.Style,
-                DefinitionType.Variable => ReferenceKind.Variable,
-                DefinitionType.Function => ReferenceKind.Function,
-                DefinitionType.Sprite => ReferenceKind.Sprite,
-                _ => ReferenceKind.Variable,
-            };
-        }
-        // 默认当作变量
-        return ReferenceKind.Variable;
-    }
-
-    /// <summary>P1-2: 获取 Hover 提示文本</summary>
-    public string? GetHoverText(string word)
-    {
-        return DslHoverProvider.GetHoverText(word, DefinitionIndexer, new List<VariableInfo>(Variables));
+        if (!Directory.Exists(dir)) return;
+        var files = new List<(string Path, string Text)>();
+        foreach (var f in Directory.GetFiles(dir, "*.story", SearchOption.AllDirectories))
+            files.Add((f, File.ReadAllText(f)));
+        if (files.Count > 0)
+            _dsl.IndexProject(files);
     }
 
     // ===== P1-5: 多标签页管理 =====

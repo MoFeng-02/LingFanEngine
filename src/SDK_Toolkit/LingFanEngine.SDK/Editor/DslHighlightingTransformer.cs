@@ -4,6 +4,7 @@ using System.Diagnostics;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
 using AvaloniaEdit.Rendering;
+using LingFanEngine.Dsl.LanguageService;
 using LingFanEngine.SDK.Dsl.Highlight;
 
 namespace LingFanEngine.SDK.Editor;
@@ -19,7 +20,11 @@ public class DslHighlightingTransformer : IVisualLineTransformer
     private List<HighlightToken> _tokens = [];
     private bool _dirty = true;
     private long _lastSetTime;  // Stopwatch.GetTimestamp() of last SetSource call
+    private DirtyRange? _dirtyRange; // 最近一次 SetSource 携带的脏区，供 token 层增量重词法
     private const int DebounceMs = 150;
+
+    /// <summary>当前文档路径——高亮时传给语言服务，使其与编辑器查询共享同一跨文件索引。</summary>
+    public string? FilePath { get; set; }
 
     // ===== 配色方案（暗背景 #1E1E1E 高对比、色相分散、互不撞色）=====
     // 设计原则：每个色相代表一类语义；只把"语义紧耦合"的类别归为同色
@@ -63,11 +68,15 @@ public class DslHighlightingTransformer : IVisualLineTransformer
     private static readonly IBrush s_infoBrush = new SolidColorBrush(Color.Parse("#82AAFF"));         // 蓝：信息级下划线
 
     /// <summary>设置源码并标记需要重新分词</summary>
-    public void SetSource(string source)
+    public void SetSource(string source) => SetSource(source, null);
+
+    /// <summary>设置源码并标记需要重新分词；dirty 透传给语言服务以启用 token 层增量重词法。</summary>
+    public void SetSource(string source, DirtyRange? dirty)
     {
         _source = source;
         _lastSetTime = Stopwatch.GetTimestamp();
         _dirty = true;
+        _dirtyRange = dirty;
     }
 
     /// <summary>标记需要重新计算（下次渲染时刷新）</summary>
@@ -87,7 +96,7 @@ public class DslHighlightingTransformer : IVisualLineTransformer
 
         _tokens = string.IsNullOrEmpty(_source)
             ? []
-            : Highlighter.GetHighlights(_source);
+            : Highlighter.GetHighlights(_source, FilePath, _dirtyRange);
         _dirty = false;
     }
 

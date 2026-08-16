@@ -1,4 +1,6 @@
 using System;
+using LingFanEngine.Dsl.LanguageService;
+using LingFanEngine.SDK.Dsl.Highlight;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace LingFanEngine.SDK.Bootstrapper;
@@ -20,6 +22,11 @@ public sealed class AppHost : IDisposable
     {
         _services = services;
         s_current = this;
+
+        // 组合根统一注入语言服务单例：高亮（Highlighter 静态门面）与编辑器查询（StoryEditorViewModel）
+        // 必须共享同一内存跨文件索引，否则两者会各持一份、互相看不到对方更新的符号。
+        // 规划 M3：SDK.Dsl 改为语言服务前端适配层。
+        Highlighter.Initialize(_services.GetRequiredService<IDslLanguageService>());
     }
 
     /// <summary>底层 IServiceProvider</summary>

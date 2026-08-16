@@ -16,6 +16,8 @@
   <Folder Name="/EngineCore/">
     <Project Path="E:/Project/Engine/src/EngineCore/LingFanEngine.Abstractions/LingFanEngine.Abstractions.csproj" />
     <Project Path="E:/Project/Engine/src/EngineCore/LingFanEngine.DslCore/LingFanEngine.DslCore.csproj" />
+    <Project Path="E:/Project/Engine/src/EngineCore/LingFanEngine.Dsl.LanguageService/LingFanEngine.Dsl.LanguageService.csproj" />
+    <Project Path="E:/Project/Engine/src/EngineCore/LingFanEngine.Dsl.LanguageServer/LingFanEngine.Dsl.LanguageServer.csproj" />
     <Project Path="E:/Project/Engine/src/EngineCore/LingFanEngine.Tests/LingFanEngine.Tests.csproj" />
     <Project Path="E:/Project/Engine/src/EngineCore/LingFanEngine.HeadlessTests/LingFanEngine.HeadlessTests.csproj" />
     <Project Path="E:/Project/Engine/src/EngineCore/LingFanEngine/LingFanEngine.csproj" />

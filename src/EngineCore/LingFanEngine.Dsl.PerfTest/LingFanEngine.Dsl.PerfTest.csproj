@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <IsAotCompatible>true</IsAotCompatible>
+        <InvariantGlobalization>true</InvariantGlobalization>
+        <RootNamespace>LingFanEngine.Dsl.PerfTest</RootNamespace>
+        <AssemblyName>LingFan.Dsl.PerfTest</AssemblyName>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\LingFanEngine.Dsl.LanguageService\LingFanEngine.Dsl.LanguageService.csproj" />
+    </ItemGroup>
+</Project>

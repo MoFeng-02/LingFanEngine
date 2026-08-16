@@ -1,0 +1,367 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace LingFanEngine.Dsl.LanguageServer.Protocol;
+
+/// <summary>
+/// LSP 协议子集类型（手写、AOT 友好）——仅覆盖本服务实际使用的请求/响应。
+/// <para>统一经 <see cref="LspJsonContext"/> 源生成序列化（零反射）；命名策略 camelCase，null 字段省略。</para>
+/// </summary>
+internal static class LspProtocol
+{
+    // 语义令牌图例：索引 == LingFanEngine.Dsl.LanguageService.SemanticCategory 枚举值（0..18）。
+    // 与 DslLanguageService.GetSemanticTokens 产出的 tokenType 下标严格对齐。
+    public static readonly string[] SemanticTokenLegend =
+    {
+        "unknown",      // 0 Unknown
+        "comment",      // 1 Comment
+        "string",       // 2 String
+        "number",       // 3 Number
+        "identifier",   // 4 Identifier
+        "operator",     // 5 Symbol
+        "keyword",      // 6 Keyword
+        "keyword",      // 7 ControlFlow
+        "keyword",      // 8 Navigation
+        "keyword",      // 9 DataOp
+        "keyword",      // 10 Media
+        "property",     // 11 Parameter
+        "property",     // 12 ElementAttribute
+        "enumMember",   // 13 Literal
+        "type",         // 14 UiDisplay
+        "type",         // 15 UiContainer
+        "function",     // 16 UiInteractive
+        "function",     // 17 SymbolDefinition
+        "variable",     // 18 SymbolReference
+    };
+}
+
+[JsonSerializable(typeof(Request))]
+[JsonSerializable(typeof(Response))]
+[JsonSerializable(typeof(Notification))]
+[JsonSerializable(typeof(RpcError))]
+[JsonSerializable(typeof(Position))]
+[JsonSerializable(typeof(Range))]
+[JsonSerializable(typeof(Location))]
+[JsonSerializable(typeof(Location[]))]
+[JsonSerializable(typeof(TextDocumentIdentifier))]
+[JsonSerializable(typeof(TextDocumentItem))]
+[JsonSerializable(typeof(VersionedTextDocumentIdentifier))]
+[JsonSerializable(typeof(TextDocumentContentChangeEvent))]
+[JsonSerializable(typeof(TextDocumentPositionParams))]
+[JsonSerializable(typeof(ReferenceContext))]
+[JsonSerializable(typeof(ReferenceParams))]
+[JsonSerializable(typeof(DidOpenTextDocumentParams))]
+[JsonSerializable(typeof(DidChangeTextDocumentParams))]
+[JsonSerializable(typeof(FoldingRangeParams))]
+[JsonSerializable(typeof(SemanticTokensParams))]
+[JsonSerializable(typeof(InitializeResult))]
+[JsonSerializable(typeof(InitializeParams))]
+[JsonSerializable(typeof(WorkspaceFolder))]
+[JsonSerializable(typeof(ServerCapabilities))]
+[JsonSerializable(typeof(ServerInfo))]
+[JsonSerializable(typeof(CompletionOptions))]
+[JsonSerializable(typeof(SemanticTokensLegend))]
+[JsonSerializable(typeof(SemanticTokensOptions))]
+[JsonSerializable(typeof(Hover))]
+[JsonSerializable(typeof(MarkupContent))]
+[JsonSerializable(typeof(CompletionItem))]
+[JsonSerializable(typeof(CompletionItem[]))]
+[JsonSerializable(typeof(FoldingRange))]
+[JsonSerializable(typeof(FoldingRange[]))]
+[JsonSerializable(typeof(SemanticTokens))]
+[JsonSerializable(typeof(LspDiagnostic))]
+[JsonSerializable(typeof(PublishDiagnosticsParams))]
+[JsonSerializable(typeof(DidChangeWatchedFilesParams))]
+[JsonSerializable(typeof(FileEvent))]
+[JsonSerializable(typeof(WorkspaceCapabilities))]
+[JsonSerializable(typeof(FileOperations))]
+[JsonSerializable(typeof(DidChangeWatchedFiles))]
+[JsonSerializable(typeof(FileOperationFilter))]
+[JsonSerializable(typeof(FileOperationPattern))]
+[JsonSerializable(typeof(WindowCapabilities))]
+[JsonSerializable(typeof(LogMessageParams))]
+[JsonSourceGenerationOptions(
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    WriteIndented = false)]
+internal sealed partial class LspJsonContext : JsonSerializerContext;
+
+/// <summary>JSON-RPC 2.0 请求（也用于通知：此时 <see cref="Id"/> 为 null）。</summary>
+internal sealed class Request
+{
+    public string Jsonrpc { get; set; } = "2.0";
+    public JsonElement? Id { get; set; }
+    public string Method { get; set; } = string.Empty;
+    public JsonElement? Params { get; set; }
+}
+
+/// <summary>JSON-RPC 2.0 成功响应。</summary>
+internal sealed class Response
+{
+    public string Jsonrpc { get; set; } = "2.0";
+    public JsonElement? Id { get; set; }
+    public JsonElement? Result { get; set; }
+    public JsonElement? Error { get; set; }
+}
+
+/// <summary>JSON-RPC 2.0 服务端→客户端通知（如 publishDiagnostics）。</summary>
+internal sealed class Notification
+{
+    public string Jsonrpc { get; set; } = "2.0";
+    public string Method { get; set; } = string.Empty;
+    public JsonElement? Params { get; set; }
+}
+
+/// <summary>JSON-RPC 错误对象。</summary>
+internal sealed class RpcError
+{
+    public int Code { get; set; }
+    public string Message { get; set; } = string.Empty;
+}
+
+internal sealed class Position
+{
+    public int Line { get; set; }
+    public int Character { get; set; }
+}
+
+internal sealed class Range
+{
+    public Position Start { get; set; } = new();
+    public Position End { get; set; } = new();
+}
+
+internal sealed class Location
+{
+    public string Uri { get; set; } = string.Empty;
+    public Range Range { get; set; } = new();
+}
+
+internal sealed class TextDocumentIdentifier
+{
+    public string Uri { get; set; } = string.Empty;
+}
+
+internal sealed class TextDocumentItem
+{
+    public string Uri { get; set; } = string.Empty;
+    public string? LanguageId { get; set; }
+    public int? Version { get; set; }
+    public string Text { get; set; } = string.Empty;
+}
+
+internal sealed class VersionedTextDocumentIdentifier
+{
+    public string Uri { get; set; } = string.Empty;
+    public int? Version { get; set; }
+}
+
+internal sealed class TextDocumentContentChangeEvent
+{
+    public Range? Range { get; set; }
+    public int? RangeLength { get; set; }
+    public string Text { get; set; } = string.Empty;
+}
+
+internal sealed class TextDocumentPositionParams
+{
+    public TextDocumentIdentifier TextDocument { get; set; } = new();
+    public Position Position { get; set; } = new();
+}
+
+internal sealed class ReferenceContext
+{
+    public bool IncludeDeclaration { get; set; }
+}
+
+internal sealed class ReferenceParams
+{
+    public TextDocumentIdentifier TextDocument { get; set; } = new();
+    public Position Position { get; set; } = new();
+    public ReferenceContext Context { get; set; } = new();
+}
+
+internal sealed class DidOpenTextDocumentParams
+{
+    public TextDocumentItem TextDocument { get; set; } = new();
+}
+
+internal sealed class DidChangeTextDocumentParams
+{
+    public VersionedTextDocumentIdentifier TextDocument { get; set; } = new();
+    public TextDocumentContentChangeEvent[] ContentChanges { get; set; } = [];
+}
+
+internal sealed class FoldingRangeParams
+{
+    public TextDocumentIdentifier TextDocument { get; set; } = new();
+}
+
+internal sealed class SemanticTokensParams
+{
+    public TextDocumentIdentifier TextDocument { get; set; } = new();
+}
+
+internal sealed class ServerInfo
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Version { get; set; }
+}
+
+internal sealed class CompletionOptions
+{
+    public string[]? TriggerCharacters { get; set; }
+    public bool? ResolveProvider { get; set; }
+}
+
+internal sealed class SemanticTokensLegend
+{
+    public string[] TokenTypes { get; set; } = [];
+    public string[] TokenModifiers { get; set; } = [];
+}
+
+internal sealed class SemanticTokensOptions
+{
+    public SemanticTokensLegend Legend { get; set; } = new();
+    public bool? Full { get; set; }
+}
+
+internal sealed class ServerCapabilities
+{
+    /// <summary>1 = Full（didChange 发送整文）。</summary>
+    public int? TextDocumentSync { get; set; }
+    public bool? HoverProvider { get; set; }
+    public bool? DefinitionProvider { get; set; }
+    public bool? ReferencesProvider { get; set; }
+    public bool? FoldingRangeProvider { get; set; }
+    public CompletionOptions? CompletionProvider { get; set; }
+    public SemanticTokensOptions? SemanticTokensProvider { get; set; }
+    /// <summary>workspace 能力（如文件监听，用于 P2 增量索引）。</summary>
+    public WorkspaceCapabilities? Workspace { get; set; }
+    /// <summary>window 能力（如 workDoneProgress，用于 P4 进度通知）。</summary>
+    public WindowCapabilities? Window { get; set; }
+}
+
+internal sealed class InitializeResult
+{
+    public ServerCapabilities Capabilities { get; set; } = new();
+    public ServerInfo? ServerInfo { get; set; }
+}
+
+internal sealed class WorkspaceFolder
+{
+    public string Uri { get; set; } = string.Empty;
+    public string? Name { get; set; }
+}
+
+/// <summary>initialize 请求参数（仅消费本服务用得上的字段；capabilities 暂忽略）。</summary>
+internal sealed class InitializeParams
+{
+    /// <summary>父进程 PID（LSP 规范为 number|null；用于进程生命周期探测，本服务暂仅接收不主动使用）。</summary>
+    public int? ProcessId { get; set; }
+    /// <summary>工作区根 URI（通常 file://...）。优先于 rootPath。</summary>
+    public string? RootUri { get; set; }
+    public string? RootPath { get; set; }
+    public WorkspaceFolder[]? WorkspaceFolders { get; set; }
+}
+
+internal sealed class MarkupContent
+{
+    public string Kind { get; set; } = "markdown";
+    public string Value { get; set; } = string.Empty;
+}
+
+internal sealed class Hover
+{
+    public MarkupContent? Contents { get; set; }
+    public Range? Range { get; set; }
+}
+
+internal sealed class CompletionItem
+{
+    public string Label { get; set; } = string.Empty;
+    public int? Kind { get; set; }
+    public string? Detail { get; set; }
+    public string? InsertText { get; set; }
+}
+
+internal sealed class FoldingRange
+{
+    public int StartLine { get; set; }
+    public int EndLine { get; set; }
+    public int? StartCharacter { get; set; }
+    public int? EndCharacter { get; set; }
+    public string? Kind { get; set; }
+}
+
+internal sealed class SemanticTokens
+{
+    public int[] Data { get; set; } = [];
+}
+
+internal sealed class LspDiagnostic
+{
+    public Range Range { get; set; } = new();
+    public int? Severity { get; set; }
+    public string? Source { get; set; }
+    public string Message { get; set; } = string.Empty;
+}
+
+internal sealed class PublishDiagnosticsParams
+{
+    public string Uri { get; set; } = string.Empty;
+    public LspDiagnostic[] Diagnostics { get; set; } = [];
+}
+
+// ---- P2: workspace/didChangeWatchedFiles 文件监听（增量重索引）----
+
+internal sealed class DidChangeWatchedFilesParams
+{
+    public FileEvent[] Changes { get; set; } = [];
+}
+
+/// <summary>LSP FileEvent：Uri + 变更类型（1=Created, 2=Changed, 3=Deleted）。</summary>
+internal sealed class FileEvent
+{
+    public string Uri { get; set; } = string.Empty;
+    public int Type { get; set; }
+}
+
+internal sealed class WorkspaceCapabilities
+{
+    public FileOperations? FileOperations { get; set; }
+}
+
+internal sealed class FileOperations
+{
+    public DidChangeWatchedFiles? DidChangeWatchedFiles { get; set; }
+}
+
+internal sealed class DidChangeWatchedFiles
+{
+    public FileOperationFilter[] Filters { get; set; } = [];
+}
+
+internal sealed class FileOperationFilter
+{
+    public FileOperationPattern? Pattern { get; set; }
+}
+
+internal sealed class FileOperationPattern
+{
+    public string? Glob { get; set; }
+    public string? Matches { get; set; }
+}
+
+// ---- P4: window/logMessage 进度/诊断通知（服务端→客户端）----
+
+internal sealed class WindowCapabilities
+{
+    public bool? WorkDoneProgress { get; set; }
+}
+
+internal sealed class LogMessageParams
+{
+    /// <summary>1=Error, 2=Warning, 3=Info, 4=Log。</summary>
+    public int Type { get; set; }
+    public string Message { get; set; } = string.Empty;
+}

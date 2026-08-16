@@ -18,11 +18,15 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Avalonia.Android" />
-		<PackageReference Include="ThisAssembly">
+		<PackageReference Include="Avalonia.Android" Version="12.1.1" />
+		<PackageReference Include="ThisAssembly" Version="2.1.2">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="Xamarin.AndroidX.Core.SplashScreen" />
+		<PackageReference Include="Xamarin.AndroidX.Core.SplashScreen" Version="1.0.1.15" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\LingFanEngine.Entry\LingFanEngine.Entry.csproj" />
 	</ItemGroup>
 </Project>

@@ -116,9 +116,9 @@ public class StoryEditorPage : UserControl, INavigationAware
         // ===== 事件绑定 =====
 
         // 编辑器文本变更 → debounce 分析 + 实时脏标记
-        _editor.SourceChanged += async source =>
+        _editor.SourceChanged += async (source, dirty) =>
         {
-            await _viewModel.OnSourceChangedAsync(source);
+            await _viewModel.OnSourceChangedAsync(source, dirty);
             // 不在此处调用 UpdateHighlights——避免在快速输入时与 TextView 渲染竞争
             // 高亮更新由 DslHighlightingTransformer 的 SetSource + 下次渲染自动完成
             UpdateFileTreeDirtyStates();
@@ -139,7 +139,7 @@ public class StoryEditorPage : UserControl, INavigationAware
         {
             var word = _editor.GetWordAtCaret();
             if (string.IsNullOrEmpty(word)) return;
-            var result = _viewModel.GoToDefinition(word);
+            var result = _viewModel.GoToDefinition(word, _editor.CaretOffset);
             if (result != null)
             {
                 if (result.Value.FilePath == _viewModel.CurrentFilePath)
@@ -159,7 +159,7 @@ public class StoryEditorPage : UserControl, INavigationAware
         {
             var word = _editor.GetWordAtCaret();
             if (string.IsNullOrEmpty(word)) return;
-            await _viewModel.FindAllReferencesAsync(word);
+            await _viewModel.FindAllReferencesAsync(word, _editor.CaretOffset);
         };
 
         // Hover 提示
@@ -167,7 +167,7 @@ public class StoryEditorPage : UserControl, INavigationAware
         {
             var word = _editor.GetWordAtCaret();
             if (string.IsNullOrEmpty(word)) return;
-            var hoverText = _viewModel.GetHoverText(word);
+            var hoverText = _viewModel.GetHoverText(word, _editor.CaretOffset);
             if (!string.IsNullOrEmpty(hoverText))
             {
                 ToolTip.SetTip(_editor.InnerEditor, hoverText);
@@ -331,8 +331,8 @@ public class StoryEditorPage : UserControl, INavigationAware
     /// <summary>变量集合变化时更新补全数据</summary>
     private void OnVariablesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        var (vars, scenes, labels, chars, varNames) = _viewModel.GetCompletionData();
-        _editor.UpdateCompletionData(vars, scenes, labels, chars, varNames);
+        var (vars, scenes, labels, chars, varNames, funcs) = _viewModel.GetCompletionData();
+        _editor.UpdateCompletionData(vars, scenes, labels, chars, varNames, funcs);
     }
 
     /// <summary>创建右侧面板：诊断 + 变量 + 引用 + 大纲</summary>

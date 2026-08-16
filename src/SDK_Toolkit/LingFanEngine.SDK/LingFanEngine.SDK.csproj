@@ -15,20 +15,20 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Avalonia" />
-		<PackageReference Include="Avalonia.Themes.Fluent" />
-		<PackageReference Include="Avalonia.Fonts.Inter" />
-		<PackageReference Include="Avalonia.AvaloniaEdit" />
-		<PackageReference Include="AvaloniaUI.DiagnosticsSupport">
+		<PackageReference Include="Avalonia" Version="12.1.1" />
+		<PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+		<PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.1" />
+		<PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
+		<PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3">
 			<IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
 			<PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
 		</PackageReference>
-		<PackageReference Include="CommunityToolkit.Mvvm" />
-		<PackageReference Include="MFToolkit.Abstractions" />
-		<PackageReference Include="MFToolkit.AutoGenerator" />
-		<PackageReference Include="MFToolkit.Routing" />
-		<PackageReference Include="Microsoft.Extensions.Hosting" />
-		<PackageReference Include="Microsoft.Extensions.Http" />
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+		<PackageReference Include="MFToolkit.Abstractions" Version="1.0.20" />
+		<PackageReference Include="MFToolkit.AutoGenerator" Version="1.0.20" />
+		<PackageReference Include="MFToolkit.Routing" Version="1.1.1" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+		<PackageReference Include="Microsoft.Extensions.Http" Version="10.0.11" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -44,6 +44,7 @@
 
 	<ItemGroup>
 	  <ProjectReference Include="..\..\EngineCore\LingFanEngine.DslCore\LingFanEngine.DslCore.csproj" />
+	  <ProjectReference Include="..\..\EngineCore\LingFanEngine.Dsl.LanguageService\LingFanEngine.Dsl.LanguageService.csproj" />
 	</ItemGroup>
 
 	<!-- 将 DLL/ 目录复制到输出目录的 DLL/ 子目录 -->

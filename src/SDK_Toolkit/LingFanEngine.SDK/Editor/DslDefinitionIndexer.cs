@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using LingFanEngine.DslCore;
 using LingFanEngine.SDK.Dsl;
 
 namespace LingFanEngine.SDK.Editor;
@@ -191,7 +192,7 @@ public class DslDefinitionIndexer
                 if (end > i)
                 {
                     var expr = cleaned.Substring(i + 1, end - i - 1).Trim();
-                    if (!IsInlineTag(expr))
+                    if (!DslInlineTags.IsInlineTag(expr))
                     {
                         var parts = expr.Split([' ', '+', '-', '*', '/', '%', '>', '<', '=', '!', '?', ':', '&', '|', '(', ')'],
                             StringSplitOptions.RemoveEmptyEntries);
@@ -204,17 +205,6 @@ public class DslDefinitionIndexer
             }
             else i++;
         }
-    }
-
-    private static bool IsInlineTag(string content)
-    {
-        var tags = new[] { "b", "/b", "i", "/i", "w", "fast", "p" };
-        if (tags.Contains(content)) return true;
-        if (content.StartsWith("color=") || content.StartsWith("/color") ||
-            content.StartsWith("font=") || content.StartsWith("/font") ||
-            content.StartsWith("size=") || content.StartsWith("/size"))
-            return true;
-        return false;
     }
 
     private static bool IsValidIdentifier(string s)

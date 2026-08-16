@@ -16,7 +16,10 @@ public static class DslFormatter
     private const int IndentSize = 4;
 
     /// <summary>格式化 DSL 源码</summary>
-    public static string Format(string source)
+    /// <param name="source">源码文本</param>
+    /// <param name="desiredDepths">可选的结构化块嵌套深度（来自语言服务单源块结构）；
+    /// 提供且与行数匹配时，缩进以结构深度为准（折叠/格式化同源一致）；否则回退到源缩进栈逻辑。</param>
+    public static string Format(string source, int[]? desiredDepths = null)
     {
         if (string.IsNullOrEmpty(source))
             return source;
@@ -30,8 +33,9 @@ public static class DslFormatter
         indentStack.Push(0); // 根级别
         var depth = 0;
 
-        foreach (var rawLine in lines)
+        for (var i = 0; i < lines.Length; i++)
         {
+            var rawLine = lines[i];
             var trimmed = rawLine.Trim();
 
             // 空行——保留但不加缩进
@@ -44,7 +48,8 @@ public static class DslFormatter
             // 注释行——保持当前缩进
             if (DslCommentHelper.IsCommentLine(trimmed))
             {
-                result.Add(new string(' ', depth * IndentSize) + trimmed);
+                var commentDepth = (desiredDepths != null && i < desiredDepths.Length) ? desiredDepths[i] : depth;
+                result.Add(new string(' ', commentDepth * IndentSize) + trimmed);
                 continue;
             }
 
@@ -65,8 +70,11 @@ public static class DslFormatter
                 depth++;
             }
 
+            // 缩进来源：结构化块模型优先，否则回退到源缩进栈
+            var lineDepth = (desiredDepths != null && i < desiredDepths.Length) ? desiredDepths[i] : depth;
+
             // 输出归一化后的行
-            result.Add(new string(' ', depth * IndentSize) + NormalizeLine(trimmed));
+            result.Add(new string(' ', lineDepth * IndentSize) + NormalizeLine(trimmed));
         }
 
         // 构建结果

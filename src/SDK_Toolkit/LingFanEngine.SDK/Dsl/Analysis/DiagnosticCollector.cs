@@ -215,8 +215,8 @@ public static class DiagnosticCollector
                 if (end > i)
                 {
                     var expr = text.Substring(i + 1, end - i - 1).Trim();
-                    // 跳过内联标记
-                    if (IsInlineTag(expr))
+                    // 跳过内联标记（单源：DslCore.DslInlineTags）
+                    if (DslInlineTags.IsInlineTag(expr))
                     {
                         i = end + 1;
                         continue;
@@ -264,7 +264,7 @@ public static class DiagnosticCollector
                 if (end > i)
                 {
                     var expr = text.Substring(i + 1, end - i - 1).Trim();
-                    if (!IsInlineTag(expr))
+                    if (!DslInlineTags.IsInlineTag(expr))
                     {
                         var parts = expr.Split([' ', '+', '-', '*', '/', '%', '>', '<', '=', '!', '?', ':', '&', '|', '(', ')'],
                             StringSplitOptions.RemoveEmptyEntries);
@@ -286,17 +286,6 @@ public static class DiagnosticCollector
                 i++;
             }
         }
-    }
-
-    private static bool IsInlineTag(string content)
-    {
-        var tags = new[] { "b", "/b", "i", "/i", "w", "fast", "p" };
-        if (tags.Contains(content)) return true;
-        if (content.StartsWith("color=") || content.StartsWith("/color") ||
-            content.StartsWith("font=") || content.StartsWith("/font") ||
-            content.StartsWith("size=") || content.StartsWith("/size"))
-            return true;
-        return false;
     }
 
     private static bool IsValidIdentifier(string s)

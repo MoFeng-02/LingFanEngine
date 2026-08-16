@@ -63,7 +63,7 @@ public static class DslHoverProvider
     }
 
     /// <summary>获取关键字文档（P1-2）</summary>
-    private static string? GetKeywordDoc(string keyword) => keyword switch
+    public static string? GetKeywordDoc(string keyword) => keyword switch
     {
         "say" => "say \"text\" speaker=\"name\" [clickable=true] [instant=true] [noskip=true]\n显示对话文本",
         "set" => "set \"key\" {value}\n设置变量值。支持复合赋值: += -= *= /= %=",

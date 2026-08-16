@@ -1,5 +1,6 @@
 ﻿﻿﻿﻿﻿using System;
 using System.Net.Http.Headers;
+using LingFanEngine.Dsl.LanguageService;
 using LingFanEngine.SDK.Constants;
 using LingFanEngine.SDK.Navigation;
 using LingFanEngine.SDK.Services.Abstractions;
@@ -27,6 +28,8 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<ITemplateService>()));
         services.AddSingleton<ITemplateService, TemplateService>();
         services.AddSingleton<IDslAnalyzer, DslAnalyzer>();
+        // M3：语言服务（引擎侧，仅依赖 DslCore）作为编辑器实时分析的唯一事实源
+        services.AddSingleton<IDslLanguageService, DslLanguageService>();
         services.AddSingleton<IResourceEncryptor, ResourceEncryptor>();
         services.AddSingleton<IPackToolService, PackToolService>();
         services.AddSingleton<IPublishService>(sp => new PublishService(

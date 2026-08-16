@@ -6,8 +6,12 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using AvaloniaEdit;
 using AvaloniaEdit.CodeCompletion;
+using AvaloniaEdit.Document;
 using AvaloniaEdit.Folding;
 using AvaloniaEdit.Search;
+using LingFanEngine.Dsl.LanguageService;
+using LingFanEngine.DslCore;
+using LingFanEngine.SDK.Dsl.Highlight;
 using LingFanEngine.SDK.Models;
 using DslDiagnostic = LingFanEngine.SDK.Models.DslDiagnostic;
 
@@ -31,10 +35,10 @@ public class CodeEditorView : UserControl
     private CompletionWindow? _completionWindow;
     private DslCompletionProvider _completionProvider = new();
     private FoldingManager? _foldingManager;
-    private readonly DslFoldingStrategy _foldingStrategy = new();
     private string _filePath = "";
     private bool _isDirty;
     private string _lastSavedText = "";
+    private DirtyRange? _pendingDirty; // 最近一次文本替换的脏区，随 TextChanged 透传给语言服务
 
     // 标记模板是否已应用（TextArea.TextView 在模板应用后才可用）
     private bool _isTemplateApplied;
@@ -48,6 +52,7 @@ public class CodeEditorView : UserControl
     private List<string> _labels = new();
     private List<string> _characters = new();
     private List<string> _variableNames = new();
+    private List<string> _functions = new();
 
     // P0-4: Enter 键标记，供 OnTextEntered 检测
     private bool _isEnterKey;
@@ -56,7 +61,7 @@ public class CodeEditorView : UserControl
     private bool _bracketHighlightActive;
 
     /// <summary>文本变更时触发（用于 debounce 触发分析）</summary>
-    public event Action<string>? SourceChanged;
+    public event Action<string, DirtyRange?>? SourceChanged;
 
     /// <summary>光标位置变更时触发（用于状态栏行列号）</summary>
     public event Action<(int Line, int Column)>? CaretMoved;
@@ -116,6 +121,9 @@ public class CodeEditorView : UserControl
     /// <summary>底层 AvaloniaEdit TextEditor（供高级扩展使用）</summary>
     public TextEditor InnerEditor => _textEditor;
 
+    /// <summary>当前光标字符偏移（供跳转 / 查找引用 / 悬浮时定位符号出现）。</summary>
+    public int CaretOffset => _textEditor.CaretOffset;
+
     public CodeEditorView()
     {
         Padding = new Thickness(0);
@@ -138,11 +146,17 @@ public class CodeEditorView : UserControl
         _highlighter = new DslHighlightingTransformer();
 
         // Document 级别事件——Document 在构造函数中创建，模板应用前即可安全访问
+        // 捕获脏区：Changing 在替换发生前触发，提供精确的 Offset / RemovedText / InsertedText
+        _textEditor.Document.Changing += (_, e) =>
+        {
+            _pendingDirty = new DirtyRange(e.Offset, e.RemovedText.TextLength, e.InsertedText.TextLength);
+        };
         _textEditor.Document.TextChanged += (_, _) =>
         {
             IsDirty = _textEditor.Document.Text != _lastSavedText;
-            _highlighter.SetSource(_textEditor.Document.Text);
-            SourceChanged?.Invoke(_textEditor.Document.Text);
+            _highlighter.SetSource(_textEditor.Document.Text, _pendingDirty);
+            SourceChanged?.Invoke(_textEditor.Document.Text, _pendingDirty);
+            _pendingDirty = null;
         };
 
         // TextArea 级别事件——TextArea 在构造函数中创建，但 TextView 是模板部件
@@ -237,7 +251,7 @@ public class CodeEditorView : UserControl
         if (e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Alt) && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
         {
             e.Handled = true;
-            var formatted = Dsl.DslFormatter.Format(_textEditor.Document.Text);
+            var formatted = Dsl.DslFormatter.Format(_textEditor.Document.Text, Highlighter.GetLineBlockDepths(_filePath));
             FormatDocument(formatted);
             // 同步到 ViewModel
             if (_textEditor.Document.Text != formatted)
@@ -291,12 +305,7 @@ public class CodeEditorView : UserControl
         }
 
         var firstWord = GetFirstWord(prevTrimmed);
-        var blockStarters = new HashSet<string>
-        {
-            "scene", "if", "while", "for", "func", "switch", "foreach",
-        };
-
-        if (blockStarters.Contains(firstWord))
+        if (DslBlockStructure.IsBlockStarter(firstWord))
         {
             indent += "    ";
         }
@@ -372,7 +381,7 @@ public class CodeEditorView : UserControl
             return;
         }
 
-        var matchOffset = FindMatchingBracket(document, checkOffset, ch, matchChar.Value);
+        var matchOffset = FindMatchingBracket(document, checkOffset, ch, matchChar.Value, _filePath);
         if (matchOffset < 0)
         {
             if (_bracketHighlightActive)
@@ -396,13 +405,24 @@ public class CodeEditorView : UserControl
         _bracketHighlightActive = true;
     }
 
-    /// <summary>搜索匹配的括号/引号（考虑嵌套）</summary>
-    private static int FindMatchingBracket(AvaloniaEdit.Document.TextDocument document, int startOffset, char openChar, char closeChar)
+    /// <summary>搜索匹配的括号/引号（考虑嵌套；跳过字符串/注释内的字面量——消费语言服务语义 token 结构化模型）</summary>
+    private static int FindMatchingBracket(AvaloniaEdit.Document.TextDocument document, int startOffset, char openChar, char closeChar, string filePath)
     {
+        var tokens = Highlighter.GetSemanticTokens(filePath); // 一次性取回，避免逐偏移重复获取
+        bool InLiteral(int off)
+        {
+            foreach (var t in tokens)
+                if (off >= t.Offset && off < t.Offset + t.Length)
+                    return t.Category is SemanticCategory.String or SemanticCategory.Comment;
+            return false;
+        }
+        if (InLiteral(startOffset))
+            return -1;
         if (openChar == closeChar)
         {
             for (var i = startOffset + 1; i < document.TextLength; i++)
             {
+                if (InLiteral(i)) continue;
                 if (document.GetCharAt(i) == closeChar)
                     return i;
             }
@@ -415,6 +435,7 @@ public class CodeEditorView : UserControl
             var depth = 1;
             for (var i = startOffset + 1; i < document.TextLength; i++)
             {
+                if (InLiteral(i)) continue;
                 var c = document.GetCharAt(i);
                 if (c == openChar) depth++;
                 else if (c == closeChar)
@@ -429,6 +450,7 @@ public class CodeEditorView : UserControl
             var depth = 1;
             for (var i = startOffset - 1; i >= 0; i--)
             {
+                if (InLiteral(i)) continue;
                 var c = document.GetCharAt(i);
                 if (c == openChar) depth++;
                 else if (c == closeChar)
@@ -468,6 +490,7 @@ public class CodeEditorView : UserControl
         _lastSavedText = content;
         _isDirty = false;
         _highlighter.SetSource(content);
+        _highlighter.FilePath = _filePath;
         if (_isTemplateApplied)
         {
             _highlighter.Invalidate();
@@ -521,13 +544,15 @@ public class CodeEditorView : UserControl
         List<string> scenes,
         List<string> labels,
         List<string> characters,
-        List<string> variableNames)
+        List<string> variableNames,
+        List<string> functions)
     {
         _variables = variables;
         _scenes = scenes;
         _labels = labels;
         _characters = characters;
         _variableNames = variableNames;
+        _functions = functions;
     }
 
     /// <summary>获取光标下的单词（P0-3/P0-4 共用）</summary>
@@ -548,12 +573,18 @@ public class CodeEditorView : UserControl
         return editor.Document.GetText(start, end - start);
     }
 
-    /// <summary>P2-1: 更新折叠区段</summary>
+    /// <summary>P2-1: 更新折叠区段（消费语言服务结构化块模型，单源 DslBlockStructure）</summary>
     private void UpdateFoldings()
     {
         if (_foldingManager == null) return;
-        var foldings = _foldingStrategy.CreateNewFoldings(_textEditor.Document, out var firstError);
-        _foldingManager.UpdateFoldings(foldings, firstError);
+        // 确保索引反映当前文本（折叠仅在离散事件触发，强制同步廉价且避免陈旧）
+        Highlighter.UpdateDocument(_filePath, _textEditor.Document.Text);
+        var regions = Highlighter.GetFoldingRegions(_filePath);
+        var foldings = new List<NewFolding>(regions.Count);
+        foreach (var (start, end) in regions)
+            foldings.Add(new NewFolding(start, end));
+        foldings.Sort((a, b) => a.StartOffset.CompareTo(b.StartOffset));
+        _foldingManager.UpdateFoldings(foldings, -1);
     }
 
     /// <summary>P2-2: 格式化当前文档</summary>
@@ -632,28 +663,9 @@ public class CodeEditorView : UserControl
         var indent = lineText[..^trimmed.Length]; // 保留缩进
 
         // snippet 是关键字之后的内容（不含前导空格，空格由替换逻辑补充）
-        var snippet = trimmed switch
-        {
-            "say" => "\"\" speaker=\"\"",
-            "scene" => "\"\" type=game\n" + indent + "    ",
-            "label" => "",
-            "if" => "{true}\n" + indent + "    ",
-            "while" => "{true}\n" + indent + "    ",
-            "for" => "\"i\" in {0..10}\n" + indent + "    ",
-            "menu" => "\"选择\" {\n" + indent + "    \"选项1\" -> label1,\n" + indent + "    \"选项2\" -> label2,\n" + indent + "}",
-            "character" => "\"key\" name=\"名字\" color=\"#FFFFFF\"",
-            "style" => "\"name\" color=#FFFFFF size=18",
-            "navigate" => "\"scene_name\"",
-            "background" => "\"path/to/bg.png\"",
-            "bgm" => "\"path/to/music.ogg\" volume=0.8",
-            "transition" => "\"fade\" duration=1.0",
-            "show" => "\"target\"",
-            "hide" => "\"target\"",
-            "animate" => "\"target\" property=\"x\" target=100 duration=1.0",
-            "sprite" => "\"id\" src=\"path.png\"",
-            _ => null,
-        };
-        if (snippet == null) return false;
+        // 由 DslCore 单一真相源提供，{indent} 占位符解析为当前行缩进
+        if (!DslSnippetProvider.TryGetSnippet(trimmed, indent, out var snippet) || snippet == null)
+            return false;
 
         // 删除已输入的关键字+空格，插入 关键字+空格+snippet
         var wordStart = offset - trimmed.Length - 1; // -1 for space
@@ -677,7 +689,7 @@ public class CodeEditorView : UserControl
         {
             var offset = _textEditor.CaretOffset;
             var completions = _completionProvider.GetCompletions(
-                _textEditor.Document, offset, _variables, _scenes, _labels, _characters, _variableNames);
+                _textEditor.Document, offset, _variables, _scenes, _labels, _characters, _variableNames, _functions);
 
             var list = new List<ICompletionData>(completions);
             if (list.Count == 0)

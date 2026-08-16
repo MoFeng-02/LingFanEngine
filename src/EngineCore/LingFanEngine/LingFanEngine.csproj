@@ -43,8 +43,8 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Avalonia" />
-		<PackageReference Include="ThisAssembly">
+		<PackageReference Include="Avalonia" Version="12.1.1" />
+		<PackageReference Include="ThisAssembly" Version="2.1.2">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
