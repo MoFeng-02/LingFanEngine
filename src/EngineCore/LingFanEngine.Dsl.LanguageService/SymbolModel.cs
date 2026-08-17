@@ -17,6 +17,9 @@ public enum SymbolKind
 
     /// <summary>函数（func name ... / call name）。</summary>
     Func,
+
+    /// <summary>样式（style "name" ...；元素 class=/style= 引用）。</summary>
+    Style,
 }
 
 /// <summary>符号出现角色——是定义还是引用。</summary>

@@ -69,10 +69,16 @@ public sealed class DslLanguageService : IDslLanguageService
     }
 
     /// <summary>
-    /// 上下文感知补全——与 SDK 侧 <c>DslCompletionProvider</c> 行为对齐：
-    /// 行首→语句关键字+UI 元素；call→函数名；jump/menu→标签名；navigate/scene→场景名；
-    /// speaker=/by→角色名；type=/loop=/transition=/easing=/with= 等→枚举/布尔/过渡/缓动；
-    /// {→变量名。全部符号候选取自 <c>GetDefinedNames</c>（跨文件索引）。
+    /// 上下文感知补全——驱动源为 DslCore 的 <see cref="DslGrammar"/>（与 <see cref="DslStatementParser"/> 同源单一真相源），
+    /// 并用 <see cref="DslTokenizer"/> 解析光标所在行的真实 token 序列判定上下文，取代旧字符串切片启发式。
+    /// <list type="bullet">
+    ///   <item><description>行首→语句关键字 + UI 元素类型。</description></item>
+    ///   <item><description>光标在引号字符串内→按语法槽位（位置参 / 位置词 / key=）给场景/标签/函数/角色/样式/过渡等引用。</description></item>
+    ///   <item><description>光标在 key= 值→按参数值种类给枚举 / 布尔 / 过渡 / 缓动。</description></item>
+    ///   <item><description>光标在 { 表达式} 内→变量名（跨文件索引）。</description></item>
+    ///   <item><description>call/jump/label 等裸标识符目标→标签/函数名。</description></item>
+    /// </list>
+    /// 全部引用候选取自跨文件符号索引 <see cref="_symbolIndex"/>，故所见即项目真实定义。
     /// </summary>
     public IReadOnlyList<CompletionItem> GetCompletion(string filePath, int offset)
     {
@@ -81,9 +87,19 @@ public sealed class DslLanguageService : IDslLanguageService
         var source = doc.Source;
         var line = doc.GetLineIndex(offset);
         var lineStart = doc.GetLineStart(line);
-        var beforeWord = source.Slice(lineStart, offset - lineStart).ToString(); // 不 TrimEnd，保留尾部空格以判断「刚输完关键字+空格」
 
-        switch (GetCompletionContext(beforeWord))
+        // 当前行文本（含换行前）
+        var lineLen = source.Length - lineStart;
+        if (lineLen > 0)
+        {
+            var nl = source.Slice(lineStart).IndexOf('\n');
+            if (nl >= 0) lineLen = nl;
+        }
+        var lineText = source.Slice(lineStart, lineLen);
+        var lineTokens = DslTokenizer.TokenizeLine(lineText, lineStart);
+
+        var (ctx, spec) = ResolveContext(lineTokens, source, offset);
+        switch (ctx)
         {
             case CompletionContext.StatementStart:
                 AddKeywords(items, DslKeywords.Statements, "statement");
@@ -91,8 +107,9 @@ public sealed class DslLanguageService : IDslLanguageService
                 break;
 
             case CompletionContext.ParameterName:
-                AddKeywords(items, DslKeywords.Parameters, "parameter");
-                AddKeywords(items, DslKeywords.ElementAttributes, "parameter");
+                if (spec != null)
+                    foreach (var kv in spec.NamedParams)
+                        items.Add(new CompletionItem(kv.Key, kv.Key, "parameter"));
                 break;
 
             case CompletionContext.VariableReference:
@@ -101,7 +118,7 @@ public sealed class DslLanguageService : IDslLanguageService
                 break;
 
             case CompletionContext.SceneName:
-                // navigate 目标可以是 scene 或 label
+                // navigate 目标可以是 scene 或 label；scene 定义
                 foreach (var n in _symbolIndex.GetDefinedNames(SymbolKind.Scene))
                     items.Add(new CompletionItem($"\"{n}\"", n, "scene"));
                 foreach (var n in _symbolIndex.GetDefinedNames(SymbolKind.Label))
@@ -114,7 +131,7 @@ public sealed class DslLanguageService : IDslLanguageService
                 break;
 
             case CompletionContext.FuncName:
-                // call 目标可以是 func 或 label（示例中多用 label 做子过程）
+                // call 目标可以是 func 或 label（示例多用 label 做子过程）
                 foreach (var n in _symbolIndex.GetDefinedNames(SymbolKind.Func))
                     items.Add(new CompletionItem(n, n, "func"));
                 foreach (var n in _symbolIndex.GetDefinedNames(SymbolKind.Label))
@@ -122,40 +139,40 @@ public sealed class DslLanguageService : IDslLanguageService
                 break;
 
             case CompletionContext.SpeakerName:
+            case CompletionContext.CharacterName:
                 foreach (var n in _symbolIndex.GetDefinedNames(SymbolKind.Character))
                     items.Add(new CompletionItem($"\"{n}\"", n, "character"));
                 break;
 
+            case CompletionContext.StyleName:
+                foreach (var n in _symbolIndex.GetDefinedNames(SymbolKind.Style))
+                    items.Add(new CompletionItem(n, n, "style"));
+                break;
+
             case CompletionContext.EnumValue:
-                foreach (var v in s_sceneTypes) items.Add(new CompletionItem(v, v, "variable"));
+                foreach (var v in s_sceneTypes) items.Add(new CompletionItem(v, v, "enum"));
                 break;
 
             case CompletionContext.BooleanValue:
-                items.Add(new CompletionItem("true", "true", "variable"));
-                items.Add(new CompletionItem("false", "false", "variable"));
+                items.Add(new CompletionItem("true", "true", "enum"));
+                items.Add(new CompletionItem("false", "false", "enum"));
                 break;
 
             case CompletionContext.TrueOnlyValue:
-                items.Add(new CompletionItem("true", "true", "variable"));
+                items.Add(new CompletionItem("true", "true", "enum"));
                 break;
 
             case CompletionContext.TransitionValue:
-                foreach (var v in DslTransitionNames.All) items.Add(new CompletionItem(v, v, "variable"));
+                foreach (var v in DslTransitionNames.All) items.Add(new CompletionItem(v, v, "enum"));
                 break;
 
             case CompletionContext.EasingValue:
-                foreach (var v in DslEasingNames.All) items.Add(new CompletionItem(v, v, "variable"));
-                break;
-
-            case CompletionContext.General:
-            default:
-                // 兜底上下文：只给语句关键字，不给变量（变量引用只在 { 之后出现，交 VariableReference 处理）。
-                AddKeywords(items, DslKeywords.Statements, "statement");
-                AddKeywords(items, DslKeywords.UiElementTypes, "statement");
+                foreach (var v in DslEasingNames.All) items.Add(new CompletionItem(v, v, "enum"));
                 break;
 
             case CompletionContext.None:
-                // 普通对话文本等无补全上下文：一股脑全给会干扰输入，返回空。
+            default:
+                // 自由文本 / 数字 / 对话正文等无补全上下文：不弹，避免干扰输入。
                 break;
         }
 
@@ -163,15 +180,13 @@ public sealed class DslLanguageService : IDslLanguageService
     }
 
     private static readonly string[] s_sceneTypes = { "game", "menu", "ui" };
-    private static readonly HashSet<string> s_booleanParams = new() { "loop", "autoplay", "skipable", "screenshot", "mask", "unlock" };
-    private static readonly HashSet<string> s_trueOnlyParams = new() { "clickable", "noskip", "instant", "typewriter" };
 
-    /// <summary>补全上下文（对齐 SDK DslCompletionProvider.GetCompletionContext）。</summary>
+    /// <summary>补全上下文（语法驱动，取代旧字符串切片启发式）。</summary>
     private enum CompletionContext
     {
         StatementStart, ParameterName, VariableReference, SceneName, LabelName,
-        FuncName, SpeakerName, EnumValue, BooleanValue, TrueOnlyValue,
-        TransitionValue, EasingValue, General, None,
+        FuncName, SpeakerName, CharacterName, StyleName, EnumValue, BooleanValue,
+        TrueOnlyValue, TransitionValue, EasingValue, None,
     }
 
     private static void AddKeywords(List<CompletionItem> items, IReadOnlySet<string> keywords, string kind)
@@ -198,125 +213,134 @@ public sealed class DslLanguageService : IDslLanguageService
         return scopes.TryGetValue(name, out var s) ? s : SymbolScope.Global;
     }
 
-    private static CompletionContext GetCompletionContext(string beforeWord)
+    // ===== 语法驱动的补全上下文判定（取代 GetCompletionContext 字符串切片）=====
+
+    /// <summary>
+    /// 解析光标所在行的补全上下文。先判表达式插值（{ 未闭合）→ 变量；
+    /// 再判光标是否在引号字符串内→按语法槽位取引用；否则按 token 序列判定行首/key=值/位置词/参数名/裸标识符目标。
+    /// </summary>
+    private static (CompletionContext Ctx, DslStmtGrammar? Spec) ResolveContext(DslToken[] tokens, ReadOnlySpan<char> source, int offset)
     {
-        var lower = beforeWord.ToLowerInvariant();
-        var trimmed = lower.TrimEnd();
+        if (tokens.Length == 0) return (CompletionContext.StatementStart, null);
 
-        // 若光标处于未闭合字符串内：看引号前的语句关键字 / 参数名
-        var q = lower.LastIndexOf('"');
-        if (q >= 0 && CountQuotes(lower) % 2 == 1)
+        // 1) 表达式插值上下文（{ ... 未闭合）→ 变量名。优先级最高（say "{x}" 既在字符串内又在插值内）。
+        if (IsInInterpolation(source, offset))
+            return (CompletionContext.VariableReference, null);
+
+        // 2) 光标位于引号字符串内部（open quote 之后）→ 按该字符串的语法槽位取引用
+        for (var si = 0; si < tokens.Length; si++)
         {
-            // 字符串内 {var} 插值 → 变量名补全（保留既有行为，SDK 未覆盖）
-            if (lower.IndexOf('{') > q) return CompletionContext.VariableReference;
-            var beforeString = lower.Substring(0, q).TrimEnd();
-            if (IsLastWord(beforeString, "navigate") || IsLastWord(beforeString, "scene")) return CompletionContext.SceneName;
-            if (IsLastWord(beforeString, "jump")) return CompletionContext.LabelName;
-            if (IsLastWord(beforeString, "call")) return CompletionContext.FuncName;
-            if (IsLastWord(beforeString, "by")) return CompletionContext.SpeakerName;
-            if (IsLastWord(beforeString, "with")) return CompletionContext.TransitionValue;
-            if (beforeString.EndsWith("speaker=")) return CompletionContext.SpeakerName;
-            if (beforeString.EndsWith("="))
+            var t = tokens[si];
+            if (t.Kind == DslTokenKind.String && offset > t.Offset && offset <= t.Offset + t.Length)
             {
-                var vt = ValueContextFor(ExtractParam(beforeString.Substring(0, beforeString.Length - 1)));
-                if (vt != CompletionContext.General) return vt;
-            }
-            return CompletionContext.None; // 对话文本等字符串内（无 {）→ 无补全
-        }
-
-        // key= 之后 → 值枚举 / 布尔
-        if (trimmed.EndsWith("="))
-        {
-            var vt = ValueContextFor(ExtractParam(trimmed.Substring(0, trimmed.Length - 1)));
-            if (vt != CompletionContext.General) return vt;
-        }
-
-        if (trimmed.Length == 0) return CompletionContext.StatementStart;
-
-        // { 插值 → 变量名
-        if (trimmed.EndsWith("{")) return CompletionContext.VariableReference;
-
-        // 按首个词判断上下文：语句关键字的第一个实参 / 后续参数 / UI 元素参数
-        var parts = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length > 0)
-        {
-            var head = parts[0];
-
-            // 语句关键字：第一个实参位置（关键字本身 或 关键字+未完成的单个实参，且光标不在空格后）
-            if (DslKeywords.Statements.Contains(head))
-            {
-                // parts.Length==1：刚输完关键字（可能带空格）
-                // parts.Length==2：正在输第一个实参（如 call sb_）
-                // 光标在空格后且已有第二个词开头，说明第一个实参已结束，进入参数名补全
-                if (parts.Length == 1 || (parts.Length == 2 && !beforeWord.EndsWith(" ")))
+                var spec = DslGrammar.TryGet(tokens[0].GetText(source).ToString());
+                // 2a) key= 值：字符串前最近一个紧邻标识符的 '='
+                for (var i = si - 1; i >= 1; i--)
                 {
-                    switch (head)
+                    if (tokens[i].Kind == DslTokenKind.Symbol && source[tokens[i].Offset] == '=')
                     {
-                        case "call": return CompletionContext.FuncName;
-                        case "jump":
-                        case "menu": return CompletionContext.LabelName;
-                        case "navigate": return CompletionContext.SceneName;
-                        case "scene": return CompletionContext.None; // 定义新场景名，不提供补全
+                        var prev = tokens[i - 1];
+                        if (prev.Kind is DslTokenKind.Identifier or DslTokenKind.Keyword)
+                        {
+                            var key = prev.GetText(source).ToString();
+                            var r = spec?.NamedParams.TryGetValue(key, out var rv) == true ? rv : DslCompletionRef.None;
+                            return (RefToContext(r), spec);
+                        }
                     }
                 }
-                return CompletionContext.ParameterName;
+                // 2b) 位置词槽：字符串前紧邻的单词（by / with / scene ...）
+                if (si - 1 >= 0)
+                {
+                    var prevText = tokens[si - 1].GetText(source).ToString();
+                    if (spec?.PositionalWordRefs.TryGetValue(prevText, out var rw) == true)
+                        return (RefToContext(rw), spec);
+                }
+                // 2c) 首个位置参
+                return (RefToContext(spec?.PositionalRef ?? DslCompletionRef.None), spec);
             }
-
-            // UI 元素类型（button / text / image ...）：首个实参之后应补参数名/属性键
-            if (DslKeywords.UiElementTypes.Contains(head) && (parts.Length >= 2 || beforeWord.EndsWith(" ")))
-                return CompletionContext.ParameterName;
         }
 
-        // 兜底：光标紧接在关键字之后（无实参）
-        if (IsLastWord(trimmed, "call")) return CompletionContext.FuncName;
-        if (IsLastWord(trimmed, "jump") || IsLastWord(trimmed, "menu")) return CompletionContext.LabelName;
-        if (IsLastWord(trimmed, "navigate") || IsLastWord(trimmed, "scene")) return CompletionContext.SceneName;
-        if (IsLastWord(trimmed, "by") || trimmed.EndsWith("speaker=")) return CompletionContext.SpeakerName;
-        if (IsLastWord(trimmed, "with")) return CompletionContext.TransitionValue;
-        return CompletionContext.General;
-    }
+        // 3) 非字符串、非插值：按 token 序列判定
+        var first = tokens[0];
+        var firstName = first.GetText(source).ToString();
+        var spec2 = DslGrammar.TryGet(firstName);
 
-    private static CompletionContext ValueContextFor(string param)
-    {
-        switch (param)
+        // 正在输入行首第一个词（光标仍在该词内，未带尾随空格）→ 语句/元素候选
+        if (offset <= first.Offset + first.Length)
+            return (CompletionContext.StatementStart, null);
+
+        // key= 值补全：光标前最近 '=' 紧邻一个标识符（参数名）
+        for (var i = tokens.Length - 1; i >= 1; i--)
         {
-            case "type": return CompletionContext.EnumValue;
-            case "transition": return CompletionContext.TransitionValue;
-            case "easing": return CompletionContext.EasingValue;
-            default:
-                if (s_trueOnlyParams.Contains(param)) return CompletionContext.TrueOnlyValue;
-                if (s_booleanParams.Contains(param)) return CompletionContext.BooleanValue;
-                return CompletionContext.General;
+            if (tokens[i].Kind == DslTokenKind.Symbol && source[tokens[i].Offset] == '=')
+            {
+                var prev = tokens[i - 1];
+                if (prev.Kind is DslTokenKind.Identifier or DslTokenKind.Keyword)
+                {
+                    var key = prev.GetText(source).ToString();
+                    var r = spec2?.NamedParams.TryGetValue(key, out var rv) == true ? rv : DslCompletionRef.None;
+                    return (RefToContext(r), spec2);
+                }
+            }
         }
+
+        // menu 选项目标："text" -> label
+        for (var i = tokens.Length - 1; i >= 0; i--)
+        {
+            if (tokens[i].Kind == DslTokenKind.Symbol && IsArrow(tokens[i], source))
+                return (CompletionContext.LabelName, spec2);
+        }
+
+        // 正在输入参数名（key，未到 =）或该语句有命名参数 → 给参数名候选
+        if (spec2 != null && spec2.NamedParams.Count > 0)
+            return (CompletionContext.ParameterName, spec2);
+
+        // 第一个位置参为裸标识符目标（jump/call/label/func）→ 标签/函数名
+        if (spec2 != null && spec2.PositionalRef is DslCompletionRef.Label or DslCompletionRef.Func or DslCompletionRef.LabelOrFunc)
+            return (RefToContext(spec2.PositionalRef), spec2);
+
+        // UI 元素属性键
+        if (spec2 is { IsUiElement: true })
+            return (CompletionContext.ParameterName, spec2);
+
+        return (CompletionContext.None, spec2);
     }
 
-    private static int CountQuotes(string s)
+    private static CompletionContext RefToContext(DslCompletionRef r) => r switch
     {
-        var c = 0;
-        for (var i = 0; i < s.Length; i++) if (s[i] == '"') c++;
-        return c;
+        DslCompletionRef.Scene => CompletionContext.SceneName,
+        DslCompletionRef.Label => CompletionContext.LabelName,
+        DslCompletionRef.Func => CompletionContext.FuncName,
+        DslCompletionRef.LabelOrFunc => CompletionContext.FuncName,
+        DslCompletionRef.Speaker => CompletionContext.SpeakerName,
+        DslCompletionRef.Character => CompletionContext.CharacterName,
+        DslCompletionRef.Style => CompletionContext.StyleName,
+        DslCompletionRef.Transition => CompletionContext.TransitionValue,
+        DslCompletionRef.Easing => CompletionContext.EasingValue,
+        DslCompletionRef.SceneType => CompletionContext.EnumValue,
+        DslCompletionRef.Boolean => CompletionContext.BooleanValue,
+        DslCompletionRef.TrueOnly => CompletionContext.TrueOnlyValue,
+        DslCompletionRef.Expression => CompletionContext.VariableReference,
+        _ => CompletionContext.None,
+    };
+
+    /// <summary>光标前是否存在未闭合的 {（表达式插值上下文）。</summary>
+    private static bool IsInInterpolation(ReadOnlySpan<char> source, int offset)
+    {
+        var start = offset;
+        while (start > 0 && source[start - 1] != '\n') start--;
+        var depth = 0;
+        for (var i = start; i < offset; i++)
+        {
+            var c = source[i];
+            if (c == '{') depth++;
+            else if (c == '}') depth--;
+        }
+        return depth > 0;
     }
 
-    private static string ExtractParam(string text)
-    {
-        text = text.TrimEnd();
-        var sp = text.LastIndexOf(' ');
-        return sp >= 0 ? text.Substring(sp + 1) : text;
-    }
-
-    private static bool IsLastWord(string text, string word)
-    {
-        if (text.Length < word.Length) return false;
-        if (text.Length == word.Length) return text == word;
-        return text.EndsWith(word) && text[text.Length - word.Length - 1] == ' ';
-    }
-
-    private static bool HasParameterContext(string beforeWord)
-    {
-        var parts = beforeWord.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0) return false;
-        return DslKeywords.Statements.Contains(parts[0]) || DslKeywords.UiElementTypes.Contains(parts[0]);
-    }
+    private static bool IsArrow(DslToken t, ReadOnlySpan<char> source) =>
+        t.Kind == DslTokenKind.Symbol && t.Length == 2 && source[t.Offset] == '-' && source[t.Offset + 1] == '>';
 
     public HoverInfo? GetHover(string filePath, int offset)
     {
@@ -362,6 +386,9 @@ public sealed class DslLanguageService : IDslLanguageService
                     : $"{KindLabel(o.Kind)} 引用\n定义于 {defRef.Value.FilePath}:{line}";
                 return new HoverInfo(o.Name, detail, new Location(defRef.Value.FilePath, defRef.Value.Offset, defRef.Value.Length));
             }
+            if (DslSymbolIndex.IsInternalVariableName(o.Name))
+                return new HoverInfo(o.Name, "变量（内部临时变量）",
+                    new Location(o.FilePath, o.Offset, o.Length));
             return new HoverInfo(o.Name, $"未定义的{KindLabel(o.Kind)}「{o.Name}」",
                 new Location(o.FilePath, o.Offset, o.Length));
         }

@@ -101,6 +101,10 @@ public sealed class DslSymbolIndex
         return null;
     }
 
+    /// <summary>内部/临时变量名约定：以下划线 `_` 开头（含 `__` 引擎保留变量与 `_local_` 用户临时变量）。
+    /// 这类变量由 set 自动创建、无需 define 声明，静态分析豁免「未定义」检查，避免误报。</summary>
+    public static bool IsInternalVariableName(string name) => name.StartsWith("_");
+
     /// <summary>返回某种类下所有已定义的符号名（去重），供补全候选。</summary>
     public IReadOnlyCollection<string> GetDefinedNames(SymbolKind kind)
     {
@@ -150,12 +154,18 @@ public sealed class DslSymbolIndex
                     $"重复定义{o.Kind}「{o.Name}」", new Location(filePath, o.Offset, o.Length)));
         }
 
-        // 未定义引用错误——点分属性路径（player.name / npc.innkeeper.name 等）多为 C# 运行时注入的对象属性，
-        // 引擎在运行时动态解析，.story 静态索引无法枚举，跳过未定义告警以免误报。
+        // 未定义引用错误。
+        // 关于点分名字（player.name / npc.innkeeper.trust / story.good_deeds 等）：本 DSL 中点号只是「命名空间约定」，
+        // 它们与裸标识符一样是 define / set 以字符串键声明的扁平变量（见 LingFanDslEngineTests：define "player.hp" → key 即 "player.hp"），
+        // 并非 C# 运行时注入的对象属性。因此必须纳入未定义检查——否则 npc.innkeeper.name 这类被移走或拼错的变量永远不会爆红。
+        // 历史上为绕过 B31「扫描 0 文件导致 player.name 误报」而加的「点分一律跳过」是临时补丁，索引正常后反而成 bug，现移除。
+        // 仅跳过引擎内部保留变量（双下划线前缀 __，如 __for_idx / __for_len）：它们由 for/switch 编译生成，无需在故事里声明。
         foreach (var o in occ)
         {
             if (o.Role != SymbolRole.Reference) continue;
-            if (o.Name.Contains('.')) continue;
+            // 内部/临时变量（_ 前缀，含 __ 引擎保留变量与 _local_ 用户临时变量）由 set 自动创建，
+            // 无需 define 声明，豁免「未定义」检查，避免把 _local_wolf_hp 这类合法临时变量误报成未定义。
+            if (IsInternalVariableName(o.Name)) continue;
             var fb = o.Kind switch
             {
                 SymbolKind.Label => SymbolKind.Scene,
@@ -177,14 +187,11 @@ public sealed class DslSymbolIndex
     {
         if (o.Role == SymbolRole.Definition)
         {
-            // 同一符号可能既 define 又 set（set 也以 Definition 角色入索引以便变量名被识别）。
-            // 「定义站点」优先取声明式（define / let / local，IsDeclaration=true），
-            // 使跳转定义 / 悬停稳定落在真正的声明处，而非被靠前的 set 覆盖。
-            // 关键修正（B35）：声明式出现时一律覆盖既有条目——包括「跨文件移动」场景下
-            // 旧文件定义尚未被移除、_definitions 仍指向旧位置的情况。否则新文件先索引、
-            // 旧文件后删除时会丢失新定义（或残留旧位置），导致「移动 define 后仍指向旧位置」。
-            // set（IsDeclaration=false）永不覆盖 define（IsDeclaration=true），顺序无关。
-            if (!_definitions.TryGetValue(o.Key, out var existing) || o.IsDeclaration || !existing.IsDeclaration)
+            // 「已定义」表只收录「声明式」定义（define / let / local，IsDeclaration=true）。
+            // set（赋值，IsDeclaration=false）是写引用，绝不进入「已定义」表——
+            // 否则「把 define 移走、只留 set」时变量仍会被判为「已定义」，导致未定义引用永不爆红（B37 根因）。
+            // 这也意味着：若某变量只剩 set 而无 define，它的所有读取引用（{x} / 表达式 RHS）都会被正确判为未定义并爆红。
+            if (o.IsDeclaration)
                 _definitions[o.Key] = o;
         }
         else
@@ -354,6 +361,10 @@ public sealed class DslSymbolIndex
                 case "func":
                     if (TryNextIdentifier(lineTokens, 1, source, out var funcName))
                     { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Func, SymbolRole.Definition, funcName, filePath, s.Offset, s.Length, SymbolScope.Global, true)); }
+                    break;
+                case "style":
+                    if (TryNextString(lineTokens, 1, source, out var styleName))
+                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Style, SymbolRole.Definition, styleName, filePath, s.Offset, s.Length, SymbolScope.Global, true)); }
                     break;
                 case "jump":
                     if (TryNextIdentifier(lineTokens, 1, source, out var jumpTarget))

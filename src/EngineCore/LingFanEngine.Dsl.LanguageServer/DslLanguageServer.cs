@@ -271,10 +271,10 @@ internal sealed class DslLanguageServer
         return Task.CompletedTask;
     }
 
-    /// <summary>补全触发字符：空格（行首语句后）、{（插值变量）、=（参数值枚举/布尔）、a–z（输入关键字/变量名即弹上下文感知补全）。</summary>
+    /// <summary>补全触发字符：空格（行首语句后）、{（插值变量）、=（参数值枚举/布尔）、"（字符串开启即弹引用列表）、a–z（输入关键字/变量名即弹上下文感知补全）。</summary>
     private static string[] CompletionTriggerCharacters()
     {
-        var list = new List<string> { " ", "{", "=" };
+        var list = new List<string> { " ", "{", "=", "\"" };
         for (var c = 'a'; c <= 'z'; c++) list.Add(c.ToString());
         return list.ToArray();
     }
@@ -330,12 +330,11 @@ internal sealed class DslLanguageServer
         if (p == null || !req.Id.HasValue) return Task.CompletedTask;
         var path = UriToPath(p.TextDocument.Uri);
         var src = SourceOf(path);
-        var tokens = _service.GetSemanticTokens(path);
-        var sorted = tokens.OrderBy(t => t.Offset).ToArray();
-        var data = new List<int>(sorted.Length * 5);
+        var tokens = _service.GetSemanticTokens(path); // 偏移已升序（GetAllTokens 按行/词序产出），无需再排序
+        var data = new List<int>(tokens.Count * 5);
         var prevLine = 0;
         var prevChar = 0;
-        foreach (var t in sorted)
+        foreach (var t in tokens)
         {
             var start = OffsetToPosition(src, t.Offset);
             var deltaLine = start.Line - prevLine;
