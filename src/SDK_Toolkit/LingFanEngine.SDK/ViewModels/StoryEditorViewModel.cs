@@ -567,6 +567,13 @@ public partial class StoryEditorViewModel : ViewModelBase, IQueryAttributable
             files.Add((f, File.ReadAllText(f)));
         if (files.Count > 0)
             _dsl.IndexProject(files);
+        // M6：资源 + C# 符号索引——扫描项目根（Stories 的父目录），让 .story 也能补全
+        // 资源路径（图片/音频/视频/字体）与 C# 命令/状态键/场景目标（M8 跨语言联动）。
+        var projectRoot = Path.GetDirectoryName(dir);
+        if (!string.IsNullOrEmpty(projectRoot) && projectRoot != dir && Directory.Exists(projectRoot))
+            _dsl.ScanProject(projectRoot);
+        else
+            _dsl.ScanProject(dir);
     }
 
     // ===== P1-5: 多标签页管理 =====

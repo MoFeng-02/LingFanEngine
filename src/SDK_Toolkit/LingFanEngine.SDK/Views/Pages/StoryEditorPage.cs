@@ -201,7 +201,6 @@ public class StoryEditorPage : UserControl, INavigationAware
 
         // 诊断标记通过 CollectionChanged 实时更新
         _viewModel.Diagnostics.CollectionChanged += OnDiagnosticsChanged;
-        _viewModel.Variables.CollectionChanged += OnVariablesChanged;
 
         // 引用列表点击 → 跳转
         _referencesList.SelectionChanged += async (_, _) =>
@@ -326,13 +325,6 @@ public class StoryEditorPage : UserControl, INavigationAware
                 errors.Add(d);
         }
         _editor.UpdateDiagnosticsWithInfo(errors, warnings, infos);
-    }
-
-    /// <summary>变量集合变化时更新补全数据</summary>
-    private void OnVariablesChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        var (vars, scenes, labels, chars, varNames, funcs) = _viewModel.GetCompletionData();
-        _editor.UpdateCompletionData(vars, scenes, labels, chars, varNames, funcs);
     }
 
     /// <summary>创建右侧面板：诊断 + 变量 + 引用 + 大纲</summary>

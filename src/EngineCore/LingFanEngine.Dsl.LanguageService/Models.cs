@@ -42,12 +42,17 @@ public sealed class CompletionItem
     /// <summary>可选说明。</summary>
     public string? Detail { get; }
 
-    public CompletionItem(string insertText, string displayText, string kind, string? detail = null)
+    /// <summary>补全替换起点（绝对字符偏移）。-1 表示由调用方自行按词边界探测。
+    /// 用于资源路径/命令名等含分隔符（/ 或 _）的候选，避免把已输入前缀重复拼回（如 "Audio/cri" → 选 "Audio/x.mp3" 不会变 "Audio/Audio/x.mp3"）。</summary>
+    public int ReplaceStart { get; set; } = -1;
+
+    public CompletionItem(string insertText, string displayText, string kind, string? detail = null, int replaceStart = -1)
     {
         InsertText = insertText;
         DisplayText = displayText;
         Kind = kind;
         Detail = detail;
+        ReplaceStart = replaceStart;
     }
 }
 

@@ -11,6 +11,7 @@ using AvaloniaEdit.Folding;
 using AvaloniaEdit.Search;
 using LingFanEngine.Dsl.LanguageService;
 using LingFanEngine.DslCore;
+using LingFanEngine.SDK.Bootstrapper;
 using LingFanEngine.SDK.Dsl.Highlight;
 using LingFanEngine.SDK.Models;
 using DslDiagnostic = LingFanEngine.SDK.Models.DslDiagnostic;
@@ -33,7 +34,10 @@ public class CodeEditorView : UserControl
     private readonly DslHighlightingTransformer _highlighter;
     private DslTextMarkerService? _markerService;
     private CompletionWindow? _completionWindow;
-    private DslCompletionProvider _completionProvider = new();
+    // 与高亮 / 悬停 / 跳转共享同一个 IDslLanguageService 单例（AppHost 组合根注入），
+    // 保证编辑器补全看到的符号索引、资源索引、C# 联动与语言服务其它能力完全一致。
+    private readonly DslCompletionProvider _completionProvider =
+        new(AppHost.Current.GetRequiredService<IDslLanguageService>());
     private FoldingManager? _foldingManager;
     private string _filePath = "";
     private bool _isDirty;
@@ -45,14 +49,6 @@ public class CodeEditorView : UserControl
 
     /// <summary>模板是否已应用（TextView 可用，外部可据此做守卫判断）</summary>
     public bool IsTemplateApplied => _isTemplateApplied;
-
-    // 补全数据源（由 ViewModel 设置）
-    private List<VariableInfo> _variables = new();
-    private List<string> _scenes = new();
-    private List<string> _labels = new();
-    private List<string> _characters = new();
-    private List<string> _variableNames = new();
-    private List<string> _functions = new();
 
     // P0-4: Enter 键标记，供 OnTextEntered 检测
     private bool _isEnterKey;
@@ -538,23 +534,6 @@ public class CodeEditorView : UserControl
         _textEditor.TextArea.Caret.Line = line;
     }
 
-    /// <summary>更新补全数据源</summary>
-    public void UpdateCompletionData(
-        List<VariableInfo> variables,
-        List<string> scenes,
-        List<string> labels,
-        List<string> characters,
-        List<string> variableNames,
-        List<string> functions)
-    {
-        _variables = variables;
-        _scenes = scenes;
-        _labels = labels;
-        _characters = characters;
-        _variableNames = variableNames;
-        _functions = functions;
-    }
-
     /// <summary>获取光标下的单词（P0-3/P0-4 共用）</summary>
     public string GetWordAtCaret()
     {
@@ -688,8 +667,7 @@ public class CodeEditorView : UserControl
         try
         {
             var offset = _textEditor.CaretOffset;
-            var completions = _completionProvider.GetCompletions(
-                _textEditor.Document, offset, _variables, _scenes, _labels, _characters, _variableNames, _functions);
+            var completions = _completionProvider.GetCompletions(_textEditor.Document, offset, _filePath);
 
             var list = new List<ICompletionData>(completions);
             if (list.Count == 0)
@@ -703,6 +681,13 @@ public class CodeEditorView : UserControl
             while (wordStart > 0 && IsWordChar(_textEditor.Document.GetCharAt(wordStart - 1)))
                 wordStart--;
 
+            // 含分隔符的候选（资源路径含 /、命令名含 _）用精确替换起点覆盖默认词边界，
+            // 避免把已输入前缀重复拼回（"Audio/cri" 选 "Audio/x.mp3" → "Audio/Audio/x.mp3"）。
+            // 同一补全列表内所有项共享同一个 ReplaceStart（按上下文算一次），取首项即可。
+            var effectiveStart = wordStart;
+            if (list.Count > 0 && list[0] is DslCompletionData d && d.ReplaceStart >= 0)
+                effectiveStart = d.ReplaceStart;
+
             // 每次创建新窗口——复用旧窗口在 Avalonia 12.x 中会出 NRE
             // 因为 CompletionWindow.Close() 后内部状态不一致
             _completionWindow?.Close();
@@ -715,7 +700,7 @@ public class CodeEditorView : UserControl
             // 关键修复：设置补全区域为当前单词范围，使 Complete() 替换而非追加
             // CompletionWindowBase 构造函数默认 StartOffset=EndOffset=CaretOffset（零长度），
             // 导致选中补全项后文本被追加而非替换（如输入 s 选 say 变成 ssay）
-            _completionWindow.StartOffset = wordStart;
+            _completionWindow.StartOffset = effectiveStart;
             _completionWindow.EndOffset = offset;
 
             // 填充数据后再 Show
@@ -726,7 +711,7 @@ public class CodeEditorView : UserControl
                 _completionWindow.CompletionList.CompletionData.Add(item);
 
             // 设置初始过滤词
-            var filterWord = _textEditor.Document.GetText(wordStart, offset - wordStart);
+            var filterWord = _textEditor.Document.GetText(effectiveStart, offset - effectiveStart);
             _completionWindow.CompletionList.SelectItem(filterWord);
 
             // 最后 Show

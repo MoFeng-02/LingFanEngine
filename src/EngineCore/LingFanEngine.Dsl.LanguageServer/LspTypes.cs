@@ -9,7 +9,7 @@ namespace LingFanEngine.Dsl.LanguageServer.Protocol;
 /// </summary>
 internal static class LspProtocol
 {
-    // 语义令牌图例：索引 == LingFanEngine.Dsl.LanguageService.SemanticCategory 枚举值（0..18）。
+    // 语义令牌图例：索引 == LingFanEngine.Dsl.LanguageService.SemanticCategory 枚举值（0..19）。
     // 与 DslLanguageService.GetSemanticTokens 产出的 tokenType 下标严格对齐。
     public static readonly string[] SemanticTokenLegend =
     {
@@ -30,8 +30,9 @@ internal static class LspProtocol
         "type",         // 14 UiDisplay
         "type",         // 15 UiContainer
         "function",     // 16 UiInteractive
-        "function",     // 17 SymbolDefinition
+        "function",      // 17 SymbolDefinition
         "variable",     // 18 SymbolReference
+        "string",       // 19 Resource（资源路径引用：图片/音频/视频/字体，可跳转至磁盘文件）
     };
 }
 
@@ -47,6 +48,7 @@ internal static class LspProtocol
 [JsonSerializable(typeof(TextDocumentItem))]
 [JsonSerializable(typeof(VersionedTextDocumentIdentifier))]
 [JsonSerializable(typeof(TextDocumentContentChangeEvent))]
+[JsonSerializable(typeof(TextEdit))]
 [JsonSerializable(typeof(TextDocumentPositionParams))]
 [JsonSerializable(typeof(ReferenceContext))]
 [JsonSerializable(typeof(ReferenceParams))]
@@ -128,6 +130,12 @@ internal sealed class Range
 {
     public Position Start { get; set; } = new();
     public Position End { get; set; } = new();
+}
+
+internal sealed class TextEdit
+{
+    public Range Range { get; set; } = new();
+    public string NewText { get; set; } = string.Empty;
 }
 
 internal sealed class Location
@@ -282,6 +290,7 @@ internal sealed class CompletionItem
     public int? Kind { get; set; }
     public string? Detail { get; set; }
     public string? InsertText { get; set; }
+    public TextEdit? TextEdit { get; set; }
 }
 
 internal sealed class FoldingRange

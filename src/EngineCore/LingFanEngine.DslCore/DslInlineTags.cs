@@ -19,6 +19,9 @@ public static class DslInlineTags
     /// <summary>完整行内标记名集合（无前缀的短标记）。</summary>
     public static IReadOnlySet<string> Tags => _tags;
 
+    /// <summary>全部行内标记（短标记 + 前缀标记 color=/font=/size=/...），供补全使用。</summary>
+    public static IReadOnlyCollection<string> AllTags { get; } = _tags.Concat(_prefixed).ToArray();
+
     /// <summary>判断给定内容（{...} 内去掉首尾空白后的文本）是否为已知的行内标记。</summary>
     public static bool IsInlineTag(string content)
     {

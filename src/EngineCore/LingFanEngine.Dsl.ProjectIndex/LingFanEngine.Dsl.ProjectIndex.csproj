@@ -5,13 +5,12 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<LangVersion>latest</LangVersion>
-		<!-- 语言服务纯逻辑层：库自身 100% AOT 兼容（无反射 / 无动态代码生成） -->
+		<!-- 项目联合索引层：纯逻辑、库自身 100% AOT 兼容（无反射 / 无动态代码生成） -->
 		<IsAotCompatible>true</IsAotCompatible>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<ProjectReference Include="..\LingFanEngine.DslCore\LingFanEngine.DslCore.csproj" />
-		<ProjectReference Include="..\LingFanEngine.Dsl.ProjectIndex\LingFanEngine.Dsl.ProjectIndex.csproj" />
 	</ItemGroup>
 
 </Project>

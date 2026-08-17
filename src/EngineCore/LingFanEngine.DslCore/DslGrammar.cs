@@ -39,6 +39,12 @@ public enum DslCompletionRef
     TrueOnly,
     /// <summary>表达式上下文（{...} 插值）——变量名。</summary>
     Expression,
+    /// <summary>资源文件路径（图片/音频/视频/字体）——取自项目资源索引。</summary>
+    Resource,
+    /// <summary>按钮命令名（button cmd=）——取自 C# 命令注册表（M8 跨语言索引）。</summary>
+    Command,
+    /// <summary>对齐枚举值（align/halign/valign：left/center/right/stretch/top/bottom），与 ControlFactory 解析一致。</summary>
+    Align,
 }
 
 /// <summary>单条语句 / UI 元素的补全语法模型。</summary>
@@ -111,7 +117,12 @@ public static class DslGrammar
             Stmt("return"), Stmt("back"), Stmt("forward"),
 
             // ===== 变量操作 =====
-            Stmt("set"), Stmt("define"), Stmt("let"), Stmt("local"), Stmt("undef"),
+            // 位置参为表达式（变量名）：set x = … / define x = … 等，关键字后直接补变量名（含 C# 状态键、行内标记）。
+            Stmt("set", positionalRef: DslCompletionRef.Expression),
+            Stmt("define", positionalRef: DslCompletionRef.Expression),
+            Stmt("let", positionalRef: DslCompletionRef.Expression),
+            Stmt("local", positionalRef: DslCompletionRef.Expression),
+            Stmt("undef", positionalRef: DslCompletionRef.Expression),
 
             // ===== 流程控制 =====
             Stmt("if", positionalRef: DslCompletionRef.Expression), Stmt("else"), Stmt("while", positionalRef: DslCompletionRef.Expression),
@@ -127,14 +138,14 @@ public static class DslGrammar
             Stmt("menu"), Stmt("input", named: P(("store", DslCompletionRef.None), ("options", DslCompletionRef.None))),
 
             // ===== 媒体 =====
-            Stmt("bgm", named: P(("volume", DslCompletionRef.None))),
-            Stmt("se", named: P(("volume", DslCompletionRef.None))),
-            Stmt("ambient", named: P(("loop", DslCompletionRef.Boolean), ("volume", DslCompletionRef.None))),
-            Stmt("stop_ambient"), Stmt("voice", named: P(("volume", DslCompletionRef.None), ("auto_stop", DslCompletionRef.Boolean))),
+            Stmt("bgm", positionalRef: DslCompletionRef.Resource, named: P(("volume", DslCompletionRef.None))),
+            Stmt("se", positionalRef: DslCompletionRef.Resource, named: P(("volume", DslCompletionRef.None))),
+            Stmt("ambient", positionalRef: DslCompletionRef.Resource, named: P(("loop", DslCompletionRef.Boolean), ("volume", DslCompletionRef.None))),
+            Stmt("stop_ambient"), Stmt("voice", positionalRef: DslCompletionRef.Resource, named: P(("volume", DslCompletionRef.None), ("auto_stop", DslCompletionRef.Boolean))),
             Stmt("stop_voice"),
-            Stmt("video", named: P(("volume", DslCompletionRef.None), ("loop", DslCompletionRef.Boolean), ("autoplay", DslCompletionRef.Boolean))),
+            Stmt("video", positionalRef: DslCompletionRef.Resource, named: P(("volume", DslCompletionRef.None), ("loop", DslCompletionRef.Boolean), ("autoplay", DslCompletionRef.Boolean))),
             Stmt("stop_video"), Stmt("pause_video"), Stmt("resume_video"), Stmt("seek_video"),
-            Stmt("cutscene", named: P(("skipable", DslCompletionRef.Boolean), ("volume", DslCompletionRef.None))),
+            Stmt("cutscene", positionalRef: DslCompletionRef.Resource, named: P(("skipable", DslCompletionRef.Boolean), ("volume", DslCompletionRef.None))),
             Stmt("wait", named: P(("skipable", DslCompletionRef.TrueOnly))),
             Stmt("pause", named: P(("hard", DslCompletionRef.TrueOnly))),
             Stmt("transition", positionalRef: DslCompletionRef.Transition, named: P(("duration", DslCompletionRef.None))),
@@ -174,7 +185,7 @@ public static class DslGrammar
             Stmt("zindex"),
 
             // ===== 立绘系统 =====
-            Stmt("sprite", named: P(("src", DslCompletionRef.None), ("x", DslCompletionRef.None), ("y", DslCompletionRef.None), ("fade", DslCompletionRef.None))),
+            Stmt("sprite", named: P(("src", DslCompletionRef.Resource), ("x", DslCompletionRef.None), ("y", DslCompletionRef.None), ("fade", DslCompletionRef.None))),
             Stmt("sprite_state", named: P(("emotion", DslCompletionRef.None))),
             Stmt("sprite_move", named: P(("x", DslCompletionRef.None), ("y", DslCompletionRef.None), ("duration", DslCompletionRef.None))),
             Stmt("sprite_hide", named: P(("fade", DslCompletionRef.None))),
@@ -182,7 +193,7 @@ public static class DslGrammar
             Stmt("text_typewriter", named: P(("speed", DslCompletionRef.None))),
 
             // ===== Live2D =====
-            Stmt("live2d_char", named: P(("src", DslCompletionRef.None), ("height", DslCompletionRef.None), ("x", DslCompletionRef.None), ("y", DslCompletionRef.None), ("fade", DslCompletionRef.None), ("loop", DslCompletionRef.Boolean), ("seamless", DslCompletionRef.Boolean), ("blink_rate", DslCompletionRef.None), ("mouse_track_head", DslCompletionRef.Boolean), ("voice_sync_mouth", DslCompletionRef.Boolean))),
+            Stmt("live2d_char", named: P(("src", DslCompletionRef.Resource), ("height", DslCompletionRef.None), ("x", DslCompletionRef.None), ("y", DslCompletionRef.None), ("fade", DslCompletionRef.None), ("loop", DslCompletionRef.Boolean), ("seamless", DslCompletionRef.Boolean), ("blink_rate", DslCompletionRef.None), ("mouse_track_head", DslCompletionRef.Boolean), ("voice_sync_mouth", DslCompletionRef.Boolean))),
             Stmt("live2d_show"), Stmt("live2d_motion", named: P(("name", DslCompletionRef.None), ("fade", DslCompletionRef.None), ("loop", DslCompletionRef.Boolean))),
             Stmt("live2d_expr", named: P(("name", DslCompletionRef.None), ("fade", DslCompletionRef.None))),
             Stmt("live2d_param", named: P(("param", DslCompletionRef.None), ("value", DslCompletionRef.None), ("weight", DslCompletionRef.None))),
@@ -206,12 +217,48 @@ public static class DslGrammar
         // UI 元素类型（scene 块内）：用 ElementAttributes 作属性键；class/style → Style。
         var elemAttrs = new Dictionary<string, DslCompletionRef>(StringComparer.Ordinal);
         foreach (var a in DslKeywords.ElementAttributes)
-            elemAttrs[a] = a is "class" or "style" ? DslCompletionRef.Style : DslCompletionRef.None;
+            elemAttrs[a] = a switch
+            {
+                "class" or "style" => DslCompletionRef.Style,
+                "source" => DslCompletionRef.Resource,
+                "nav" => DslCompletionRef.Scene,
+                "cmd" => DslCompletionRef.Command,
+                "align" or "halign" or "valign" => DslCompletionRef.Align,
+                _ => DslCompletionRef.None,
+            };
         foreach (var t in DslKeywords.UiElementTypes)
-            list.Add(Stmt(t, isUiElement: true, named: elemAttrs));
+        {
+            // image 的位置参即图片资源路径（image "Images/lingfan.png"），须标记为 Resource 槽位，
+            // 否则该字符串会被当作普通 String、既无高亮也无跳转（用户实测痛点）。其余 UI 元素位置参维持 None。
+            var positional = t == "image" ? DslCompletionRef.Resource : DslCompletionRef.None;
+            list.Add(Stmt(t, positionalRef: positional, isUiElement: true, named: elemAttrs));
+        }
 
+        // 合并而非覆盖：同一关键字既作为语句又作为 UI 元素出现时（如 sprite：语句专属 src→Resource，
+        // 又是 UI 元素可带 class/style/source/cmd 等），保留语句专属参数并叠加 UI 元素属性，
+        // 避免 UI 元素版本把语句参数（src→Resource）覆盖掉——否则 sprite src= / live2d_char src= 的资源补全与诊断全部失效。
         var dict = new Dictionary<string, DslStmtGrammar>(StringComparer.Ordinal);
-        foreach (var g in list) dict[g.Keyword] = g;
+        foreach (var g in list)
+        {
+            if (dict.TryGetValue(g.Keyword, out var existing))
+            {
+                var merged = new Dictionary<string, DslCompletionRef>(existing.NamedParams, StringComparer.Ordinal);
+                foreach (var kv in g.NamedParams)
+                    if (!merged.ContainsKey(kv.Key)) merged[kv.Key] = kv.Value;
+                dict[g.Keyword] = new DslStmtGrammar
+                {
+                    Keyword = g.Keyword,
+                    IsUiElement = g.IsUiElement,
+                    PositionalRef = existing.PositionalRef,
+                    PositionalWordRefs = existing.PositionalWordRefs,
+                    NamedParams = merged,
+                };
+            }
+            else
+            {
+                dict[g.Keyword] = g;
+            }
+        }
         return dict;
     }
 

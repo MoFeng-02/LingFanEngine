@@ -19,6 +19,15 @@ public interface IDslLanguageService
     /// <summary>批量索引整个项目的多文件，以满足跨文件跳转 / 查找引用的解析。</summary>
     void IndexProject(System.Collections.Generic.IReadOnlyList<(string Path, string Text)> files);
 
+    /// <summary>扫描项目根，建联合资源索引（图片/音频/视频/字体等），供资源路径补全/悬停/跳转。</summary>
+    void ScanProject(string rootPath);
+
+    /// <summary>资源文件新增/变更（供 didChangeWatchedFiles 增量维护）。</summary>
+    void UpdateResource(string absolutePath);
+
+    /// <summary>资源文件删除（供 didChangeWatchedFiles 增量维护）。</summary>
+    void RemoveResource(string absolutePath);
+
     /// <summary>语义高亮：返回 (offset, length, category) 数组，供前端一次性渲染。</summary>
     System.Collections.Generic.IReadOnlyList<SemanticToken> GetSemanticTokens(string filePath);
 

@@ -53,7 +53,10 @@ public sealed class DslSymbolIndex
         {
             var o = list[i];
             RemoveOccurrence(o);
-            list[i] = new SymbolOccurrence(o.Kind, o.Role, o.Name, o.FilePath, o.Offset + delta, o.Length, o.Scope);
+            // 必须原样保留 IsDeclaration：7 参构造默认 isDeclaration=false，会让声明式定义（label/scene/character/func/style/define）
+            // 在尾部平移后从 _definitions 消失，导致前向 jump/navigate 误报未定义、且补全候选（GetDefinedNames）变空。
+            // 这是 B40：编辑「声明上方」任意行都会触发尾部平移，故声明一旦被编辑上方改动就丢失。
+            list[i] = new SymbolOccurrence(o.Kind, o.Role, o.Name, o.FilePath, o.Offset + delta, o.Length, o.Scope, o.IsDeclaration);
             AddOccurrence(list[i]);
         }
 
@@ -166,6 +169,8 @@ public sealed class DslSymbolIndex
             // 内部/临时变量（_ 前缀，含 __ 引擎保留变量与 _local_ 用户临时变量）由 set 自动创建，
             // 无需 define 声明，豁免「未定义」检查，避免把 _local_wolf_hp 这类合法临时变量误报成未定义。
             if (IsInternalVariableName(o.Name)) continue;
+            // 点分变量（player.level / npc.innkeeper.trust 等）与裸标识符一样，是经 define / set 以字符串键声明的扁平变量，
+            // 并非引擎运行时注入的对象属性——故一律纳入未定义检查：拼写错、被移走、或从未声明的变量都会正确爆红。
             var fb = o.Kind switch
             {
                 SymbolKind.Label => SymbolKind.Scene,

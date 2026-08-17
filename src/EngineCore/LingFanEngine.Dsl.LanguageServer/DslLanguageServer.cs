@@ -85,6 +85,7 @@ internal sealed class DslLanguageServer
 
     private Task DispatchAsync(Request req)
     {
+        Trace($"REQ {req.Method} id={req.Id}");
         switch (req.Method)
         {
             case "initialize":                        return WithWriteLockAsync(HandleInitialize, req);
@@ -143,7 +144,8 @@ internal sealed class DslLanguageServer
         var path = UriToPath(p.TextDocument.Uri);
         _docs[path] = p.TextDocument.Text;
         _service.UpdateDocument(path, p.TextDocument.Text);
-        PublishDiagnostics(p.TextDocument.Uri, path);
+        Trace($"OPEN {path} chars={p.TextDocument.Text.Length}");
+        PublishAllDiagnostics();
         return Task.CompletedTask;
     }
 
@@ -165,7 +167,7 @@ internal sealed class DslLanguageServer
             var updated = src.Substring(0, so) + newText + src.Substring(eo);
             _docs[path] = updated;
             _service.UpdateDocument(path, updated, new Ls.DirtyRange(so, eo - so, newText.Length));
-            PublishDiagnostics(p.TextDocument.Uri, path);
+            PublishAllDiagnostics();
             return Task.CompletedTask;
         }
 
@@ -188,7 +190,7 @@ internal sealed class DslLanguageServer
         }
         _docs[path] = fullText;
         _service.UpdateDocument(path, fullText); // dirty=null → 整文重建（小文件开销可忽略，且零错）
-        PublishDiagnostics(p.TextDocument.Uri, path);
+        PublishAllDiagnostics();
         return Task.CompletedTask;
     }
 
@@ -199,13 +201,22 @@ internal sealed class DslLanguageServer
         foreach (var ev in p.Changes)
         {
             var path = UriToPath(ev.Uri);
+            var isStory = path.EndsWith(".story", StringComparison.OrdinalIgnoreCase);
             if (ev.Type == 3) // 3 = Deleted
             {
                 _docs.Remove(path);
-                _service.RemoveDocument(path);
-                LogMessage(4, $"watched: 删除 {path}");
+                if (isStory)
+                {
+                    _service.RemoveDocument(path);
+                    LogMessage(4, $"watched: 删除 {path}");
+                }
+                else
+                {
+                    // 资源文件删除：增量刷新资源索引（非资源类型在索引内被忽略）。
+                    _service.RemoveResource(path);
+                }
             }
-            else // 1=Created / 2=Changed：外部编辑我们不知增量，整文重建
+            else if (isStory) // 1=Created / 2=Changed：外部编辑我们不知增量，整文重建
             {
                 try
                 {
@@ -216,7 +227,14 @@ internal sealed class DslLanguageServer
                 }
                 catch (Exception ex) { Log($"watched reindex skip {path}: {ex.Message}"); }
             }
+                else
+                {
+                    // 资源文件新增/变更：增量刷新资源索引（非资源类型在索引内被忽略，不会误建文档）。
+                    _service.UpdateResource(path);
+                }
         }
+        // 外部编辑/新增/删除 .story 会改变跨文件定义集合，重发全部打开文档诊断保持一致。
+        PublishAllDiagnostics();
         return Task.CompletedTask;
     }
 
@@ -271,12 +289,11 @@ internal sealed class DslLanguageServer
         return Task.CompletedTask;
     }
 
-    /// <summary>补全触发字符：空格（行首语句后）、{（插值变量）、=（参数值枚举/布尔）、"（字符串开启即弹引用列表）、a–z（输入关键字/变量名即弹上下文感知补全）。</summary>
+    /// <summary>补全触发字符（标点类）：空格（行首语句后）、{（插值变量）、=（参数值枚举/布尔）、"（字符串开启即弹引用列表）、(（参数起点）、.（属性/路径联动）、:（say: 等联动）。
+    /// 字母类「边打字边弹」由客户端 editor.quickSuggestions(other:on) 承载，无须在此列 a–z（否则会与 quickSuggestions 重复触发）。</summary>
     private static string[] CompletionTriggerCharacters()
     {
-        var list = new List<string> { " ", "{", "=", "\"" };
-        for (var c = 'a'; c <= 'z'; c++) list.Add(c.ToString());
-        return list.ToArray();
+        return new[] { " ", "{", "=", "\"", "(", ".", ":" };
     }
 
     private Task HandleCompletion(Request req)
@@ -284,19 +301,30 @@ internal sealed class DslLanguageServer
         var p = Deserialize<TextDocumentPositionParams>(req, LspJsonContext.Default.TextDocumentPositionParams);
         if (p == null || !req.Id.HasValue) return Task.CompletedTask;
         var path = UriToPath(p.TextDocument.Uri);
-        var offset = PositionToOffset(SourceOf(path), p.Position);
+        var src = SourceOf(path);
+        var offset = PositionToOffset(src, p.Position);
         var items = _service.GetCompletion(path, offset);
+        Trace($"COMPLETION items={items.Count} path={path} offset={offset}");
         var arr = new CompletionItem[items.Count];
         for (var i = 0; i < arr.Length; i++)
         {
             var it = items[i];
-            arr[i] = new CompletionItem
+            var ci = new CompletionItem
             {
                 Label = it.DisplayText,
                 InsertText = it.InsertText,
                 Detail = it.Detail,
                 Kind = MapCompletionKind(it.Kind),
             };
+            // 含 / 或 _ 的候选（资源路径、命令名）：用精确替换范围覆盖客户端默认词边界，
+            // 避免把已输入前缀重复拼回（"Audio/cri" 选 "Audio/x.mp3" → "Audio/Audio/x.mp3"）。
+            if (it.ReplaceStart >= 0)
+                ci.TextEdit = new TextEdit
+                {
+                    Range = MakeRange(src, it.ReplaceStart, offset - it.ReplaceStart),
+                    NewText = it.InsertText,
+                };
+            arr[i] = ci;
         }
         _conn.SendResult(req.Id.Value, arr, LspJsonContext.Default.CompletionItemArray);
         return Task.CompletedTask;
@@ -331,6 +359,7 @@ internal sealed class DslLanguageServer
         var path = UriToPath(p.TextDocument.Uri);
         var src = SourceOf(path);
         var tokens = _service.GetSemanticTokens(path); // 偏移已升序（GetAllTokens 按行/词序产出），无需再排序
+        Trace($"SEMTOK tokens={tokens.Count} path={path}");
         var data = new List<int>(tokens.Count * 5);
         var prevLine = 0;
         var prevChar = 0;
@@ -379,7 +408,25 @@ internal sealed class DslLanguageServer
                 {
                     DidChangeWatchedFiles = new DidChangeWatchedFiles
                     {
-                        Filters = [ new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.story" } } ],
+                        Filters =
+                        [
+                            new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.story" } },
+                            new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.png" } },
+                            new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.jpg" } },
+                            new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.jpeg" } },
+                            new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.gif" } },
+                            new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.webp" } },
+                            new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.mp3" } },
+                            new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.wav" } },
+                            new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.ogg" } },
+                            new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.mp4" } },
+                            new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.webm" } },
+                            new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.ttf" } },
+                            new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.otf" } },
+                            new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.woff" } },
+                            new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.woff2" } },
+                            new FileOperationFilter { Pattern = new FileOperationPattern { Glob = "**/*.fnt" } },
+                        ],
                     },
                 },
             },
@@ -437,6 +484,12 @@ internal sealed class DslLanguageServer
         }
         catch (Exception ex) { Log($"workspace index failed: {ex.Message}"); }
         if (files is { Count: > 0 }) _service.IndexProject(files);
+        // 资源联合索引：扫描项目根下全部资源文件（图片/音频/视频/字体），供资源路径补全/悬停/跳转。
+        if (Directory.Exists(_rootPath))
+        {
+            _service.ScanProject(_rootPath);
+            Log($"scanned resources under {_rootPath}");
+        }
         var count = files?.Count ?? 0;
         Log($"indexed {count} .story file(s) under {_rootPath}");
         LogMessage(3, $"已索引 {count} 个 .story 文件（{_rootPath}）");
@@ -507,6 +560,16 @@ internal sealed class DslLanguageServer
             LspJsonContext.Default.PublishDiagnosticsParams);
     }
 
+    /// <summary>重发所有已打开文档的诊断。本 DSL 的「未定义」是跨文件解析的（引用文件靠全局 _definitions 解析到别处的定义），
+    /// 因此任一文件新增/删除 define 都会改变其它文件的诊断结果。若只在被编辑文件自身 didChange 后重发，
+    /// 引用文件会残留过期诊断，而悬停/跳转是实时解析的 → 出现「诊断=未定义、悬停=已定义」的矛盾。
+    /// 故每次文档变更后统一重发全部打开文档的诊断（story 文件小，开销可忽略）。</summary>
+    private void PublishAllDiagnostics()
+    {
+        foreach (var path in _docs.Keys)
+            PublishDiagnostics(PathToUri(path), path);
+    }
+
     // ---- 工具 ----
 
     private T? Deserialize<T>(Request req, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> typeInfo) where T : class
@@ -562,6 +625,9 @@ internal sealed class DslLanguageServer
         "character" => 7,  // Class
         "variable" => 6,   // Variable
         "parameter" => 10, // Property
+        "resource" => 17,  // File
+        "command" => 3,    // Function
+        "tag" => 14,       // Keyword
         _ => 1,            // Text
     };
 
@@ -606,6 +672,19 @@ internal sealed class DslLanguageServer
     private static void Log(string message)
     {
         try { Console.Error.WriteLine($"[LingFanLsp] {message}"); } catch { /* ignore */ }
+    }
+
+    /// <summary>诊断埋点：把每个 LSP 请求/关键响应落到 exe 同目录的 lsp_trace.log（AOT 安全，File.AppendAllText 零反射）。用于定位「客户端是否真发了 didOpen/completion」。</summary>
+    private static readonly object _traceLock = new();
+    private static void Trace(string message)
+    {
+        try
+        {
+            var dir = AppContext.BaseDirectory;
+            lock (_traceLock)
+                File.AppendAllText(Path.Combine(dir, "lsp_trace.log"), $"{DateTime.Now:HH:mm:ss.fff} {message}\n");
+        }
+        catch { /* 埋点失败绝不影响主流程 */ }
     }
 
     /// <summary>向客户端推送 window/logMessage 进度/诊断通知（不影响协议主流程）。</summary>
