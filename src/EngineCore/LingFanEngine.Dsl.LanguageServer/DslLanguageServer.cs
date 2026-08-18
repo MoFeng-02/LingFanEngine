@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -25,8 +26,8 @@ internal sealed class DslLanguageServer
     private readonly object _chainLock = new();
     private Task _writeChain = Task.CompletedTask;
     private readonly int _workerCount = Math.Max(1, Math.Min(Environment.ProcessorCount, 4));
-    /// <summary>uri/localPath → 源文本（用于 LSP 偏移↔行列互转）。</summary>
-    private readonly Dictionary<string, string> _docs = new();
+    /// <summary>uri/localPath → 源文本（用于 LSP 偏移↔行列互转）。并发字典：后台索引与文档打开/变更可同时安全访问。</summary>
+    private readonly ConcurrentDictionary<string, string> _docs = new();
     private bool _exit;
     /// <summary>initialize 解析出的工作区根路径（file:// 经 LocalPath 还原）；用于自动跨文件索引。</summary>
     private string? _rootPath;
@@ -237,7 +238,7 @@ internal sealed class DslLanguageServer
             var isStory = path.EndsWith(".story", StringComparison.OrdinalIgnoreCase);
             if (ev.Type == 3) // 3 = Deleted
             {
-                _docs.Remove(path);
+                _docs.TryRemove(path, out _);
                 if (isStory)
                 {
                     _service.RemoveDocument(path);
@@ -489,11 +490,26 @@ internal sealed class DslLanguageServer
         return Task.CompletedTask;
     }
 
+    /// <summary>构建时间戳（exe 文件最后写入时间）——用于在 trace 的 initialize 响应里直接辨认当前运行的二进制版本，避免「到底加载的是不是新 exe」的歧义。
+    /// 单文件 AOT 下 <c>Assembly.Location</c> 恒为空（IL3000），改用 <c>AppContext.BaseDirectory</c>（红线 B17 规定的路径基准）拼接 exe 名。</summary>
+    private static string LspBuildStamp()
+    {
+        try
+        {
+            var exePath = System.IO.Path.Combine(System.AppContext.BaseDirectory, "LingFan.Dsl.LanguageServer.exe");
+            if (System.IO.File.Exists(exePath))
+                return "build-" + System.IO.File.GetLastWriteTime(exePath).ToString("yyyy-MM-dd_HH:mm:ss");
+        }
+        catch { }
+        return "build-unknown";
+    }
+
     private Task HandleInitialize(Request req)
     {
         if (!req.Id.HasValue) return Task.CompletedTask;
         var init = Deserialize<InitializeParams>(req, LspJsonContext.Default.InitializeParams);
         _rootPath = ResolveRoot(init);
+        LogMessage(3, $"LSP 启动：{LspBuildStamp()}（pid={System.Environment.ProcessId}）");
         var caps = new ServerCapabilities
         {
             TextDocumentSync = 2, // 2 = Incremental（支持行级增量重索引）
@@ -546,7 +562,7 @@ internal sealed class DslLanguageServer
         var result = new InitializeResult
         {
             Capabilities = caps,
-            ServerInfo = new ServerInfo { Name = "LingFan DSL Language Server", Version = "1.0.0" },
+            ServerInfo = new ServerInfo { Name = "LingFan DSL Language Server", Version = LspBuildStamp() },
         };
         _conn.SendResult(req.Id.Value, result, LspJsonContext.Default.InitializeResult);
         return Task.CompletedTask;
@@ -570,41 +586,56 @@ internal sealed class DslLanguageServer
     // ---- 自动跨文件索引（initialize 后由客户端 initialized 通知触发）----
 
     /// <summary>
-    /// 客户端发 <c>initialized</c> 后触发：扫描工作区根下所有 <c>*.story</c> 建全量跨文件符号索引，
-    /// 使全局跳转/引用/诊断在未逐个 didOpen 前即可用。已打开文档用内存文本，避免被磁盘旧内容覆盖。
+    /// 客户端发 <c>initialized</c> 后触发。重活（项目级 .story 索引 + 全资源树扫描）改为<b>后台执行</b>：
+    /// 经服务层「构建新鲜实例→原子替换引用」（见 <see cref="Ls.DslLanguageService.IndexProject"/> / <see cref="Ls.DslLanguageService.ScanProject"/>），
+    /// 不占用写链、不阻塞 <c>foldingRange</c>/<c>semanticTokens</c>/<c>diagnostics</c> 等读请求——
+    /// 首次响应从 ~3.5s（等全树扫描）降至 ~百毫秒（仅当前文档解析）。
     /// </summary>
     private Task HandleInitialized(Request req)
     {
         if (_rootPath == null) return Task.CompletedTask;
-        if (!Directory.Exists(_rootPath))
-        {
-            Log($"workspace root NOT FOUND: {_rootPath}");
-            LogMessage(1, $"未找到工作区根目录：{_rootPath}");
-        }
-        // 磁盘枚举在写锁外（IO 不占锁），仅 IndexProject 写入在写锁内（由调用方 WithWriteLockAsync 保证）
-        List<(string Path, string Text)>? files = null;
+        // 立即返回（写链随即释放），重活在独立线程池任务里跑，读请求无需等待它。
+        _ = Task.Run(() => BuildProjectIndexAsync(_rootPath!));
+        return Task.CompletedTask;
+    }
+
+    /// <summary>后台构建项目索引：枚举 .story + 全资源树扫描（含 C# 符号联动），完成后经服务层原子替换生效，
+    /// 并补发一次全部打开文档的诊断，使资源/命令引用告警在扫描就绪后浮现。</summary>
+    private void BuildProjectIndexAsync(string root)
+    {
         try
         {
-            files = new List<(string Path, string Text)>();
-            foreach (var f in EnumerateStoryFiles(_rootPath))
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            if (!Directory.Exists(root))
             {
-                if (_docs.TryGetValue(f, out var mem)) { files.Add((f, mem)); continue; }
-                try { files.Add((f, File.ReadAllText(f))); }
-                catch (Exception ex) { Log($"index skip {f}: {ex.Message}"); }
+                Log($"workspace root NOT FOUND: {root}");
+                LogMessage(1, $"未找到工作区根目录：{root}");
+                return;
             }
+            // 磁盘枚举在后台线池（IO 不占 LSP 写锁），索引写入走服务层原子替换，读请求全程不被阻塞。
+            List<(string Path, string Text)>? files = null;
+            try
+            {
+                files = new List<(string Path, string Text)>();
+                foreach (var f in EnumerateStoryFiles(root))
+                {
+                    if (_docs.TryGetValue(f, out var mem)) { files.Add((f, mem)); continue; }
+                    try { files.Add((f, File.ReadAllText(f))); }
+                    catch (Exception ex) { Log($"index skip {f}: {ex.Message}"); }
+                }
+            }
+            catch (Exception ex) { Log($"workspace index failed: {ex.Message}"); }
+            if (files is { Count: > 0 }) _service.IndexProject(files);
+            // 资源联合索引：扫描项目根下全部资源文件（图片/音频/视频/字体）+ C# 符号，供资源路径补全/悬停/跳转/C# 联动。
+            _service.ScanProject(root);
+            sw.Stop();
+            var count = files?.Count ?? 0;
+            Log($"project index ready in {sw.ElapsedMilliseconds}ms (background): {count} .story + resources under {root}");
+            LogMessage(3, $"已索引 {count} 个 .story 文件（后台 {sw.ElapsedMilliseconds}ms，{root}）");
+            // 扫描就绪后重发诊断，使资源/命令引用告警浮现（_docs 为并发字典，枚举安全）
+            try { PublishAllDiagnostics(); } catch (Exception ex) { Log($"republish diagnostics skip: {ex.Message}"); }
         }
-        catch (Exception ex) { Log($"workspace index failed: {ex.Message}"); }
-        if (files is { Count: > 0 }) _service.IndexProject(files);
-        // 资源联合索引：扫描项目根下全部资源文件（图片/音频/视频/字体），供资源路径补全/悬停/跳转。
-        if (Directory.Exists(_rootPath))
-        {
-            _service.ScanProject(_rootPath);
-            Log($"scanned resources under {_rootPath}");
-        }
-        var count = files?.Count ?? 0;
-        Log($"indexed {count} .story file(s) under {_rootPath}");
-        LogMessage(3, $"已索引 {count} 个 .story 文件（{_rootPath}）");
-        return Task.CompletedTask;
+        catch (Exception ex) { Log($"background index failed: {ex.Message}"); }
     }
 
     /// <summary>

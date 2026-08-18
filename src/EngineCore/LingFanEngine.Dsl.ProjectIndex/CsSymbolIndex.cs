@@ -10,35 +10,40 @@ namespace LingFanEngine.Dsl.ProjectIndex;
 /// </summary>
 public sealed class CsSymbolIndex
 {
-    private readonly HashSet<string> _commands = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _variables = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _sceneTargets = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, List<CsRef>> _resourceRefs = new(StringComparer.Ordinal);
+    private HashSet<string> _commands = new(StringComparer.Ordinal);
+    private HashSet<string> _variables = new(StringComparer.Ordinal);
+    private HashSet<string> _sceneTargets = new(StringComparer.Ordinal);
+    private Dictionary<string, List<CsRef>> _resourceRefs = new(StringComparer.Ordinal);
 
-    /// <summary>全量扫描项目根下所有 <c>.cs</c>（跳过 bin/obj 等噪声目录）。</summary>
+    /// <summary>全量扫描项目根下所有 <c>.cs</c>（跳过 bin/obj 等噪声目录）。
+    /// 后台构建：先在局部集合上完成扫描，末了一次性替换字段引用（原子操作），不阻塞 LSP 读请求。</summary>
     public void Scan(string rootPath)
     {
-        _commands.Clear();
-        _variables.Clear();
-        _sceneTargets.Clear();
-        _resourceRefs.Clear();
+        var commands = new HashSet<string>(StringComparer.Ordinal);
+        var variables = new HashSet<string>(StringComparer.Ordinal);
+        var sceneTargets = new HashSet<string>(StringComparer.Ordinal);
+        var resourceRefs = new Dictionary<string, List<CsRef>>(StringComparer.Ordinal);
         foreach (var f in ProjectScanner.Enumerate(rootPath, "*.cs"))
         {
             string text;
             try { text = File.ReadAllText(f); }
             catch { continue; }
-            ScanFile(f, text);
+            ScanFile(f, text, commands, variables, sceneTargets, resourceRefs);
         }
+        _commands = commands;
+        _variables = variables;
+        _sceneTargets = sceneTargets;
+        _resourceRefs = resourceRefs;
     }
 
-    private void ScanFile(string file, string text)
+    private void ScanFile(string file, string text, HashSet<string> commands, HashSet<string> variables, HashSet<string> sceneTargets, Dictionary<string, List<CsRef>> resourceRefs)
     {
-        CollectFirstArgString(file, text, "RegisterCommand(", _commands);
-        CollectFirstArgString(file, text, "RegisterCommandAsync(", _commands);
-        CollectFirstArgString(file, text, "state.Set(", _variables);
-        CollectFirstArgString(file, text, "state.Get(", _variables);
-        CollectFirstArgString(file, text, "Navigate(", _sceneTargets);
-        CollectPathAssignments(file, text);
+        CollectFirstArgString(file, text, "RegisterCommand(", commands);
+        CollectFirstArgString(file, text, "RegisterCommandAsync(", commands);
+        CollectFirstArgString(file, text, "state.Set(", variables);
+        CollectFirstArgString(file, text, "state.Get(", variables);
+        CollectFirstArgString(file, text, "Navigate(", sceneTargets);
+        CollectPathAssignments(file, text, resourceRefs);
     }
 
     /// <summary>抽取「marker 后首个实参为字符串字面量」调用里的那个字符串（如 <c>RegisterCommand("x")</c> / <c>state.Get&lt;int&gt;("x")</c>）。</summary>
@@ -70,7 +75,7 @@ public sealed class CsSymbolIndex
     }
 
     /// <summary>抽取 <c>Path = "xxx"</c> 形式的资源引用（C# 媒体命令等），记录出处行号。</summary>
-    private void CollectPathAssignments(string file, string text)
+    private void CollectPathAssignments(string file, string text, Dictionary<string, List<CsRef>> resourceRefs)
     {
         const string marker = "Path";
         var idx = 0;
@@ -93,8 +98,8 @@ public sealed class CsSymbolIndex
             var value = text.Substring(p + 1, end - p - 1).Replace('\\', '/');
             if (value.Length > 0)
             {
-                if (!_resourceRefs.TryGetValue(value, out var list))
-                    _resourceRefs[value] = list = new List<CsRef>();
+                if (!resourceRefs.TryGetValue(value, out var list))
+                    resourceRefs[value] = list = new List<CsRef>();
                 list.Add(new CsRef(file, CountLine(text, p)));
             }
             idx = end + 1;

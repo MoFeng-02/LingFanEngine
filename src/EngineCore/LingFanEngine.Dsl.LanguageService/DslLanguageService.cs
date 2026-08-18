@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,12 +14,12 @@ namespace LingFanEngine.Dsl.LanguageService;
 /// </summary>
 public sealed class DslLanguageService : IDslLanguageService
 {
-    private readonly Dictionary<string, DslDocument> _documents = new();
-    private readonly DslSymbolIndex _symbolIndex = new();
+    private readonly ConcurrentDictionary<string, DslDocument> _documents = new();
+    private DslSymbolIndex _symbolIndex = new();
     private readonly IProjectIndex _projectIndex;
     /// <summary>每文件「逐行包围块关键字」缓存——供补全的块级上下文感知（scene 块内首词优先 UI 元素）。
     /// 在 UpdateDocument/IndexProject 重索引后同步重算；典型 .story 文件很小，开销可忽略。</summary>
-    private readonly Dictionary<string, string?[]> _enclosingBlocks = new();
+    private readonly ConcurrentDictionary<string, string?[]> _enclosingBlocks = new();
     /// <summary>资源联合索引是否已建立（ScanProject 成功）。未建立前不跑资源/命令诊断，避免「空索引 → 全盘误报未找到资源」。</summary>
     private bool _scanned;
 
@@ -55,20 +56,44 @@ public sealed class DslLanguageService : IDslLanguageService
 
     public void RemoveDocument(string filePath)
     {
-        _documents.Remove(filePath);
+        _documents.TryRemove(filePath, out _);
         _symbolIndex.RemoveFile(filePath);
-        _enclosingBlocks.Remove(filePath);
+        _enclosingBlocks.TryRemove(filePath, out _);
     }
 
+    /// <summary>
+    /// 跨文件符号索引（项目级 .story 全量重建）。为避免阻塞 LSP 读请求（folding/semantic/diagnostics），
+    /// 本方法在「后台构建」模式下被调用：它先在一份<b>全新</b>的 <see cref="DslSymbolIndex"/> 上完成全部索引，
+    /// 末了才将字段引用一次性替换为新实例——读请求要么看到旧实例、要么看到新实例，绝不会读到半构建状态（引用赋值为原子操作）。
+    /// <para>兜底合并：构建期间可能有新 didOpen 的文档写入 <see cref="_documents"/>；末尾再扫一遍，把构建期新增的文档补编入新索引，
+    /// 防止后台索引覆盖丢失其符号（自 opened 文档的增量更新在下次 didChange 自愈，此处只保证初次符号可用）。</para>
+    /// </summary>
     public void IndexProject(IReadOnlyList<(string Path, string Text)> files)
     {
+        var indexed = new HashSet<string>(StringComparer.Ordinal);
+        var built = new DslSymbolIndex();
+
+        // 1) 当前已打开文档（此刻快照）一并编入，保证 didOpen 早于本调用的文件符号不丢
+        foreach (var kv in _documents)
+        {
+            indexed.Add(kv.Key);
+            built.IndexFile(kv.Key, kv.Value.GetAllTokens(), kv.Value.Source);
+        }
+        // 2) 项目级 .story 文件
         foreach (var (path, text) in files)
         {
+            indexed.Add(path);
             var doc = new DslDocument(path, text);
             _documents[path] = doc;
-            _symbolIndex.IndexFile(path, doc.GetAllTokens(), doc.Source);
+            built.IndexFile(path, doc.GetAllTokens(), doc.Source);
             RecomputeEnclosing(path, text);
         }
+        // 3) 兜底：合并构建期间新 didOpen 的文档（避免被后台索引覆盖丢失）
+        foreach (var kv in _documents)
+            if (indexed.Add(kv.Key))
+                built.IndexFile(kv.Key, kv.Value.GetAllTokens(), kv.Value.Source);
+
+        _symbolIndex = built;
     }
 
     /// <summary>

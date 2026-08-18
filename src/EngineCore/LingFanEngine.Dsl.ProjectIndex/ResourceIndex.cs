@@ -4,26 +4,29 @@ namespace LingFanEngine.Dsl.ProjectIndex;
 /// <para>性能优先：全量扫描进内存，查询不碰磁盘；didChangeWatchedFiles 经 Update/Remove 增量维护。</para></summary>
 public sealed class ResourceIndex
 {
-    private readonly Dictionary<string, ResourceEntry> _byRelative = new(StringComparer.Ordinal);
+    private Dictionary<string, ResourceEntry> _byRelative = new(StringComparer.Ordinal);
     private string? _root;
 
     public void Scan(string rootPath)
     {
         _root = rootPath;
-        _byRelative.Clear();
+        // 后台构建：先在局部字典上完成全量扫描，末了一次性替换字段引用（引用赋值为原子操作），
+        // 读请求要么看到旧表、要么看到新表，不会读到半构建状态——从而不阻塞 LSP 读请求。
+        var byRelative = new Dictionary<string, ResourceEntry>(StringComparer.Ordinal);
         foreach (var f in ProjectScanner.Enumerate(rootPath, "*"))
         {
             var ext = Path.GetExtension(f);
             if (!ResourceClassifier.IsResourceExtension(ext)) continue;
-            AddOrUpdate(f);
+            AddOrUpdate(byRelative, f);
         }
+        _byRelative = byRelative;
     }
 
     public void UpdateFile(string absolutePath)
     {
         var ext = Path.GetExtension(absolutePath);
         if (!ResourceClassifier.IsResourceExtension(ext)) return;
-        AddOrUpdate(absolutePath);
+        AddOrUpdate(_byRelative, absolutePath);
     }
 
     public void RemoveFile(string absolutePath)
@@ -33,7 +36,7 @@ public sealed class ResourceIndex
         _byRelative.Remove(rel);
     }
 
-    private void AddOrUpdate(string absolutePath)
+    private void AddOrUpdate(Dictionary<string, ResourceEntry> dict, string absolutePath)
     {
         if (_root == null) return;
         try
@@ -43,7 +46,7 @@ public sealed class ResourceIndex
             long size = 0;
             try { size = new FileInfo(absolutePath).Length; }
             catch { }
-            _byRelative[rel] = new ResourceEntry(absolutePath, rel, Path.GetExtension(absolutePath), kind, size);
+            dict[rel] = new ResourceEntry(absolutePath, rel, Path.GetExtension(absolutePath), kind, size);
         }
         catch { }
     }
