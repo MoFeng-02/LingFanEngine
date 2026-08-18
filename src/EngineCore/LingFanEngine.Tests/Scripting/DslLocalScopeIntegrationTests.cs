@@ -63,7 +63,7 @@ public class DslLocalScopeIntegrationTests
         s.Get<object>("_local_story_dsl_x").Should().Be(0);
         s.Get<object>("_local_story_dsl_fileOnly").Should().Be(99);
         // 场景级作用域（label=sceneA）
-        s.Get<object>("_local_story_dsl_sceneA_x").Should().Be(1);
+        s.Get<object>("_local_L_story_dsl_sceneA_x").Should().Be(1);
         // 内层读取：sceneA 内 x=1；fileOnly 回退到文件级 99（内层可见外层）
         s.Get<object>("probeA").Should().Be(1);
         s.Get<object>("probeFallback").Should().Be(99);
@@ -72,10 +72,10 @@ public class DslLocalScopeIntegrationTests
         host.DslExecutor.StartFromLabel("sceneB");
         await DriveUntilIdleAsync(host);
 
-        s.Get<object>("_local_story_dsl_sceneB_x").Should().Be(2);
+        s.Get<object>("_local_L_story_dsl_sceneB_x").Should().Be(2);
         s.Get<object>("probeB").Should().Be(2);
         // sceneA / 文件级的值未被 sceneB 覆盖
-        s.Get<object>("_local_story_dsl_sceneA_x").Should().Be(1);
+        s.Get<object>("_local_L_story_dsl_sceneA_x").Should().Be(1);
         s.Get<object>("_local_story_dsl_x").Should().Be(0);
     }
 
@@ -132,8 +132,8 @@ public class DslLocalScopeIntegrationTests
         var result = engine.Compile(script, "story.dsl");
         await host.RunDslAndDriveAsync(result.Commands, result.Labels);
 
-        host.State.Get<object>("_local_story_dsl_sceneA_x").Should().Be(1);
+        host.State.Get<object>("_local_S_story_dsl_sceneA_x").Should().Be(1);
         // 不应出现重复场景名的脏键
-        host.State.ContainsKey("_local_story_dsl_sceneA_sceneA_x").Should().BeFalse();
+        host.State.ContainsKey("_local_S_story_dsl_sceneA_sceneA_x").Should().BeFalse();
     }
 }

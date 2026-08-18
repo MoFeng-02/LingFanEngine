@@ -576,12 +576,14 @@ public class GameLoop : IGameLoop
         => SaveDataService.MergeIntoState(dict, state, prefix);
 
     /// <summary>
-    /// 清空所有 _local_ 前缀的局部变量（场景切换时调用）
+    /// 清空场景/标签作用域的局部变量（场景切换时调用）。
+    /// <para>仅清 <c>_local_S_*</c> / <c>_local_L_*</c> 与引擎内部循环键 <c>_local___for_*</c> / <c>_local___switch_*</c>；
+    /// <b>保留文件级局部</b> <c>_local_&lt;file&gt;_&lt;name&gt;</c>（类 JS 模块级 let，跨 scene 保活）。</para>
     /// <para>注意：不再自动清除回溯检查点。检查点的清除由调用方显式控制。</para>
     /// </summary>
     private void ClearLocalVariables()
     {
-        var keys = _state.Keys.Where(k => k.StartsWith("_local_")).ToList();
+        var keys = _state.Keys.Where(LocalScope.IsScopedLocal).ToList();
         foreach (var key in keys)
             _state.Remove(key);
     }

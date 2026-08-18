@@ -4,12 +4,16 @@ namespace LingFanEngine.Abstractions;
 
 /// <summary>
 /// 局部变量（let/local）作用域键工具
-/// <para>作用域键格式：<c>_local_&lt;file&gt;[_&lt;scene&gt;][_&lt;label&gt;]_&lt;name&gt;</c></para>
+/// <para>作用域键格式（不对称设计，保证 ClearLocalVariables 能稳健区分文件级与场景/标签级）：</para>
+/// <para>· 文件级（最顶层、未被 scene/label 包裹）：<c>_local_&lt;file&gt;_&lt;name&gt;</c>（保持历史格式，存量零破坏）</para>
+/// <para>· 场景级：<c>_local_S_&lt;file&gt;_&lt;scene&gt;_&lt;name&gt;</c></para>
+/// <para>· 标签级：<c>_local_L_&lt;file&gt;[_&lt;scene&gt;]_&lt;label&gt;_&lt;name&gt;</c></para>
 /// <para>读取回退链：label → scene → file（JS 语义：内层可见外层，内层不外泄，兄弟作用域互不冲突），最后回退全局键。</para>
 /// <para>file 来自 executor 在每条命令执行前按命令携带的 SourceFile 写入的 __current_file；
 /// scene 来自 __current_scene_name（SceneCommand/NavigateCommand 写入）；
 /// label 来自 executor 按 labels 映射反查「最近前置 label」写入的 __current_label。</para>
-/// <para>引擎内部局部变量（_local___for_* / _local___switch_*）保持非作用域化，按精确键读写，不参与回退。</para>
+/// <para>引擎内部局部变量（_local___for_* / _local___switch_*）保持非作用域化，按精确键读写，不参与回退；但随 scene 切换被 ClearLocalVariables 清掉。</para>
+/// <para>类 JS 作用域语义：进入 scene 只清场景/标签级局部键（含引擎内部循环键），<b>保留文件级局部</b>（模块级 let 跨 scene 保活）。</para>
 /// </summary>
 public static class LocalScope
 {
@@ -27,18 +31,51 @@ public static class LocalScope
         return sb.ToString();
     }
 
-    /// <summary>作用域键：_local_&lt;file&gt;[_&lt;scene&gt;][_&lt;label&gt;]_&lt;baseName&gt;</summary>
+    /// <summary>作用域键（不对称设计：文件级保持 _local_&lt;file&gt;_&lt;baseName&gt;，场景/标签级带 S_/L_ 标记，便于 ClearLocalVariables 区分）</summary>
     public static string Key(string? file, string? scene, string? label, string baseName)
     {
         var f = Sanitize(file);
         var s = Sanitize(scene);
         var l = Sanitize(label);
         var sb = new System.Text.StringBuilder(Prefix);
-        if (f.Length > 0) sb.Append(f).Append('_');
-        if (s.Length > 0) sb.Append(s).Append('_');
-        if (l.Length > 0) sb.Append(l).Append('_');
-        sb.Append(baseName);
+        if (f.Length > 0 && l.Length > 0)
+        {
+            // 标签作用域：_local_L_<file>[_<scene>]_<label>_<baseName>
+            sb.Append('L').Append('_').Append(f);
+            if (s.Length > 0) sb.Append('_').Append(s);
+            sb.Append('_').Append(l).Append('_').Append(baseName);
+        }
+        else if (f.Length > 0 && s.Length > 0)
+        {
+            // 场景作用域：_local_S_<file>_<scene>_<baseName>
+            sb.Append('S').Append('_').Append(f).Append('_').Append(s).Append('_').Append(baseName);
+        }
+        else if (f.Length > 0)
+        {
+            // 文件作用域：保持历史格式 _local_<file>_<baseName>（进入 scene 不清此键）
+            sb.Append(f).Append('_').Append(baseName);
+        }
+        else
+        {
+            // 无文件（理论不触发）：退化为扁平键
+            sb.Append(baseName);
+        }
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// 是否「场景/标签作用域」的局部键（进入 scene 应被清掉）。
+    /// <para>判定：以 <c>_local_S_</c> 或 <c>_local_L_</c> 开头，或含引擎内部循环键标记（_local___for_ / _local___switch_）。</para>
+    /// <para>文件级 <c>_local_&lt;file&gt;_&lt;base&gt;</c> 与无文件扁平键不在列——它们跨 scene 保活（类 JS 模块级 let）。</para>
+    /// </summary>
+    public static bool IsScopedLocal(string key)
+    {
+        if (!key.StartsWith(Prefix, System.StringComparison.Ordinal)) return false;
+        if (key.StartsWith(Prefix + "S_", System.StringComparison.Ordinal)) return true;
+        if (key.StartsWith(Prefix + "L_", System.StringComparison.Ordinal)) return true;
+        // 引擎内部循环键也随场景切换清掉（与旧行为一致：旧 ClearLocalVariables 清所有 _local_）
+        if (key.Contains(InternalFor) || key.Contains(InternalSwitch)) return true;
+        return false;
     }
 
     /// <summary>从状态读取当前作用域（file / scene / label）</summary>
