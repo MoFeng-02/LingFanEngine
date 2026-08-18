@@ -98,22 +98,24 @@ public class DslLocalScopeIntegrationTests
     }
 
     [Fact]
-    public async Task Runtime_CrossFile_SameLocalName_Independent()
+    public async Task Runtime_CrossFile_SameLocalName_LeavesFileScopeOnExit()
     {
         var host = new EngineTestHost();
         var engine = new LingFanDslEngine();
 
         var a = engine.Compile("let \"x\" 1", "A.dsl");
-        var b = engine.Compile("let \"x\" 2", "B.dsl");
-
         await host.RunDslAndDriveAsync(a.Commands, a.Labels);
+
+        // 在文件 A 作用域内：A 的文件级局部存在（出作用域前可见）
+        host.State.Get<object>("_local_A_dsl_x").Should().Be(1);
+
+        var b = engine.Compile("let \"x\" 2", "B.dsl");
         await host.RunDslAndDriveAsync(b.Commands, b.Labels);
 
-        var s = host.State;
-        s.Get<object>("_local_A_dsl_x").Should().Be(1);
-        s.Get<object>("_local_B_dsl_x").Should().Be(2);
-        // 互不妨碍
-        s.Get<object>("_local_B_dsl_x").Should().NotBe(s.Get<object>("_local_A_dsl_x"));
+        // 离开文件 A（进入 B）后：A 的文件级局部被清（不跨文件泄漏、不整局常驻）
+        host.State.ContainsKey("_local_A_dsl_x").Should().BeFalse();
+        // 文件 B 的文件级局部独立存在
+        host.State.Get<object>("_local_B_dsl_x").Should().Be(2);
     }
 
     [Fact]

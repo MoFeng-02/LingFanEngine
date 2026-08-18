@@ -205,4 +205,73 @@ public class LocalScopeTests
         // 场景内读取回退到文件级
         LocalScope.Read(s, "cfg").Should().Be(7);
     }
+
+    [Fact]
+    public void CrossFile_Isolation_SameNamedLet_ResolvesPerFile()
+    {
+        // 跨文件隔离：文件 A 与文件 B 各有同名 let "x"，互不可见（类 JS 模块级隔离）。
+        var s = new StateContainer();
+        s.Set(StateKeys.Scene.CurrentFile, "a.story");
+        LocalScope.Write(s, "_local_x", 1);   // A 的局部
+        s.Set(StateKeys.Scene.CurrentFile, "b.story");
+        LocalScope.Write(s, "_local_x", 2);   // B 的局部（同名，独立键）
+
+        s.Set(StateKeys.Scene.CurrentFile, "a.story");
+        LocalScope.Read(s, "x").Should().Be(1);   // A 读 A 的
+        s.Set(StateKeys.Scene.CurrentFile, "b.story");
+        LocalScope.Read(s, "x").Should().Be(2);   // B 读 B 的（绝不泄漏 A 的 1）
+    }
+
+    [Fact]
+    public void CrossFile_Isolation_LocalOnlyDeclaredInFileA_NotLeakedToB()
+    {
+        // 文件 B 读取只在文件 A 声明的局部 let "y"：必须返回 null（不泄漏），
+        // 且不能经由 Read 的全局兜底（state.Get("y")）误命中 A 的局部键。
+        var s = new StateContainer();
+        s.Set(StateKeys.Scene.CurrentFile, "a.story");
+        LocalScope.Write(s, "_local_y", 99);   // 仅文件 A 声明
+
+        s.Set(StateKeys.Scene.CurrentFile, "b.story");
+        LocalScope.Read(s, "y").Should().BeNull();   // 不泄漏到 B、全局也无 y
+    }
+
+    [Fact]
+    public void CrossFile_Isolation_SceneScopeOfFileA_NotVisibleInFileB()
+    {
+        // 文件 A 的场景级局部 _local_S_<A>_S1_x 在文件 B 作用域下不可见（文件+场景三维隔离）。
+        var s = new StateContainer();
+        s.Set(StateKeys.Scene.CurrentFile, "a.story");
+        s.Set(StateKeys.Scene.CurrentName, "S1");
+        LocalScope.Write(s, "_local_x", 11);   // A 的场景 S1 局部
+
+        s.Set(StateKeys.Scene.CurrentFile, "b.story");
+        s.Set(StateKeys.Scene.CurrentName, "S1");
+        LocalScope.Read(s, "x").Should().BeNull();   // B 的同名场景局部不存在
+
+        // 即便在文件 A 内、但换一个场景 S2，原 S1 场景局部也不泄漏
+        s.Set(StateKeys.Scene.CurrentFile, "a.story");
+        s.Set(StateKeys.Scene.CurrentName, "S2");
+        LocalScope.Read(s, "x").Should().BeNull();
+    }
+
+    [Fact]
+    public void ClearFileLevel_RemovesOnlyThatFile_FileLevelLocals()
+    {
+        // 锁定「离开文件即清」的精确语义：ClearFileLevel 只清指定文件的文件级局部，
+        // 不影响其他文件、也不误伤场景/标签级局部。
+        var s = new StateContainer();
+        s.Set(StateKeys.Scene.CurrentFile, "a.dsl");
+        LocalScope.Write(s, "_local_cfg", 1);     // A 文件级
+        s.Set(StateKeys.Scene.CurrentName, "S1");
+        LocalScope.Write(s, "_local_sx", 10);      // A 场景级（键 _local_S_a_dsl_S1_sx）
+        s.Set(StateKeys.Scene.CurrentFile, "b.dsl");
+        s.Remove(StateKeys.Scene.CurrentName);  // 离开场景，回到文件级（否则会写成场景级键）
+        LocalScope.Write(s, "_local_cfg", 2);      // B 文件级（键 _local_b_dsl_cfg）
+
+        LocalScope.ClearFileLevel(s, "a.dsl");     // 离开文件 A
+
+        s.ContainsKey("_local_a_dsl_cfg").Should().BeFalse();  // A 文件级被清
+        s.Get<object>("_local_b_dsl_cfg").Should().Be(2);      // B 文件级保留
+        s.Get<object>("_local_S_a_dsl_S1_sx").Should().Be(10); // A 场景级未被误伤
+    }
 }

@@ -73,6 +73,49 @@ public class SaveDataServiceTests
     }
 
     [Fact]
+    public void BuildSaveData_ExcludesAllScopedLocals_FormatAgnostic()
+    {
+        // 锁定：小说世界模式的时间锚点=存档快照，必须排除所有局部变量（_local_*），
+        // 且对新作用域键格式（_local_S_*/_local_L_*/_local_<file>_）同样排除——与键格式无关。
+        var state = new StateContainer();
+        state.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
+        state.Set(StateKeys.Scene.CurrentName, "chapter1");
+        state.Set("player_hp", 80);
+        state.Set("_local_story_dsl_g", 1);                    // 文件级
+        state.Set("_local_S_story_dsl_sceneA_a", 2);           // 场景级
+        state.Set("_local_L_story_dsl_sceneA_labelX_x", 3);    // 标签级
+
+        var data = CreateService(state).BuildSaveData();
+        data.Should().NotBeNull();
+        var ts = data!.TypedState!;
+        ts.Should().ContainKey("player_hp");
+        ts.Should().NotContainKey("_local_story_dsl_g", "存档/时间锚点不得持久化文件级局部");
+        ts.Should().NotContainKey("_local_S_story_dsl_sceneA_a", "存档/时间锚点不得持久化场景级局部");
+        ts.Should().NotContainKey("_local_L_story_dsl_sceneA_labelX_x", "存档/时间锚点不得持久化标签级局部");
+    }
+
+    [Fact]
+    public void SaveRoundTrip_AnchorDoesNotCarryLocals()
+    {
+        // 锁定：时间锚点存档 → 读档后用户态恢复、局部不还原（局部是运行时重跑重建的临时量）。
+        var src = new StateContainer();
+        src.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
+        src.Set(StateKeys.Scene.CurrentName, "chapter1");
+        src.Set("player_hp", 80);
+        src.Set("_local_story_dsl_g", 1);
+        src.Set("_local_S_story_dsl_sceneA_a", 2);
+
+        var data = CreateService(src).BuildSaveData();
+
+        var dst = new StateContainer();
+        dst.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
+        CreateService(dst).ApplySaveData(data!);
+        dst.Get<int>("player_hp").Should().Be(80);
+        dst.ContainsKey("_local_story_dsl_g").Should().BeFalse("读档（锚点恢复）后局部不存在——由场景重跑重建");
+        dst.ContainsKey("_local_S_story_dsl_sceneA_a").Should().BeFalse();
+    }
+
+    [Fact]
     public void BuildSaveData_GameScene_ExcludesSystemKeys()
     {
         var state = new StateContainer();

@@ -251,4 +251,52 @@ say ""F""";
         cps.Should().NotBeNull();
         cps![0].InteractionType.Should().Be("menu"); // menu 检查点保留，可再次回退到它
     }
+
+    [Fact]
+    public void Rollback_PreservesScopedAndFileLevelLocals_RemovesStaleSceneLocal()
+    {
+        // 锁定：叙事模式逐句回溯（前进/后退）对作用域局部键的处理自洽——
+        // 作用域键格式 _local_S_*/_local_L_*/_local_<file>_ 被检查点全量快照捕获，
+        // 回退到场景 A 检查点时：保留文件级与场景 A 局部，且移除过期的场景 B 局部（不泄漏到兄弟场景时间线）。
+        var state = new StateContainer();
+        state.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
+        var exe = MakeExecutor(state);
+
+        // 与 LocalScope 真实写入格式一致的键
+        const string fileG = "_local_story_dsl_g";
+        const string sceneA = "_local_S_story_dsl_sceneA_a";
+        const string sceneB = "_local_S_story_dsl_sceneB_b";
+
+        // 检查点布局：cpA(文件级+场景A) → cpB(+场景B)
+        var cpA = new RollbackCheckpoint
+        {
+            CommandIndex = 0,
+            InteractionType = "dialog",
+            SceneName = "sceneA",
+            StateSnapshot = new Dictionary<string, object?> { [fileG] = 1, [sceneA] = 2 }
+        };
+        var cpB = new RollbackCheckpoint
+        {
+            CommandIndex = 1,
+            InteractionType = "dialog",
+            SceneName = "sceneB",
+            StateSnapshot = new Dictionary<string, object?> { [fileG] = 1, [sceneA] = 2, [sceneB] = 3 }
+        };
+        state.Set(StateKeys.Rollback.Checkpoints, new List<RollbackCheckpoint> { cpA, cpB });
+        state.Set(StateKeys.Rollback.CurrentIndex, 1);
+
+        // 运行时已推进到场景 B：三个局部都在
+        state.Set(fileG, 1);
+        state.Set(sceneA, 2);
+        state.Set(sceneB, 3);
+
+        // 回退一步 → 落到 cpA
+        exe.Rollback().Should().BeTrue();
+        state.Get<int>(StateKeys.Rollback.CurrentIndex).Should().Be(0);
+
+        // 关键断言：文件级与场景 A 局部保留，场景 B 局部被清除（不泄漏到场景 A 时间线）
+        state.Get<int>(fileG).Should().Be(1);
+        state.Get<int>(sceneA).Should().Be(2);
+        state.ContainsKey(sceneB).Should().BeFalse("回退到场景A检查点后，场景B的作用域局部必须被清除，不能泄漏到兄弟场景");
+    }
 }

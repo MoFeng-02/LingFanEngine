@@ -123,7 +123,18 @@ public class DslExecutor : IDslExecutor
     private void ApplyCommandScope(ICommand cmd, int currentIndex)
     {
         if (cmd is IFileScopedCommand fs && !string.IsNullOrEmpty(fs.SourceFile))
+        {
+            // 文件边界切换：离开旧文件时清掉其文件级局部（类 JS 块级作用域——
+            // 出文件作用域即不存在，下次进入由顶层 let 自然重建）。场景/标签级局部随场景切换已清，
+            // 此处只清文件级（_local_<file>_ 前缀，不含 S_/L_ 场景/标签段）。
+            var prevFile = _state.Get<string>(StateKeys.Scene.CurrentFile);
+            if (!string.IsNullOrEmpty(prevFile)
+                && !string.Equals(prevFile, fs.SourceFile, StringComparison.Ordinal))
+            {
+                LocalScope.ClearFileLevel(_state, prevFile);
+            }
             _state.Set(StateKeys.Scene.CurrentFile, fs.SourceFile);
+        }
 
         var sceneName = _state.Get<string>(StateKeys.Scene.CurrentName);
         var label = NearestPrecedingLabel(currentIndex);

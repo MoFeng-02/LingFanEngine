@@ -78,6 +78,28 @@ public static class LocalScope
         return false;
     }
 
+    /// <summary>
+    /// 清掉指定文件的<b>文件级</b>局部键（<c>_local_&lt;file&gt;_&lt;base&gt;</c>），保留场景/标签级
+    /// （<c>_local_S_*</c> / <c>_local_L_*</c>）与引擎内部循环键（<c>_local___for_</c> / <c>_local___switch_</c>）。
+    /// <para>用途：离开文件（执行流跨到另一文件）时销毁旧文件的文件级 scratch——类 JS 块级作用域，
+    /// 「出文件作用域即不存在」，下次进入由顶层 let 自然重建。叙事游戏换章/换图清草稿语义。</para>
+    /// <para>安全：前缀 <c>_local_&lt;file&gt;_</c> 不会命中场景/标签级键（后者在 file 段前夹了 S_/L_ 标记），
+    /// 且用 !IsScopedLocal 二次把关，避免文件名为 "S"/"L" 等极端情形误清。</para>
+    /// </summary>
+    public static void ClearFileLevel(IStateContainer state, string file)
+    {
+        var f = Sanitize(file);
+        if (f.Length == 0) return;
+        var prefix = Prefix + f + "_";
+        foreach (var k in state.Keys
+                     .Where(k => k.StartsWith(prefix, System.StringComparison.Ordinal)
+                              && !IsScopedLocal(k))
+                     .ToList())
+        {
+            state.Remove(k);
+        }
+    }
+
     /// <summary>从状态读取当前作用域（file / scene / label）</summary>
     public static (string File, string? Scene, string? Label) Current(IStateContainer state)
     {
