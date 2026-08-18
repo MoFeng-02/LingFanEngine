@@ -24,6 +24,7 @@ public sealed class DslDocument
 
     private string _source;
     private int[] _lineStarts = System.Array.Empty<int>();         // 每行首字符在全文中的绝对偏移；长度 = 行数
+    private int _version = 1;                                      // 内容版本号：每次 Update 改变源码后自增，供折叠/语义缓存做 O(1) 失效判等
     private DslToken[][] _lineTokens = System.Array.Empty<DslToken[]>();
     private DocumentUpdateResult? _lastUpdate;
 
@@ -36,6 +37,13 @@ public sealed class DslDocument
 
     /// <summary>源文本视图。</summary>
     public ReadOnlySpan<char> Source => _source.AsSpan();
+
+    /// <summary>源文本字符串引用（与 <see cref="_source"/> 同一实例）。
+    /// 折叠/语义缓存用它做内容失效比对，避免每次 <c>doc.Source.ToString()</c> 把整份源码拷贝成新字符串（大文件 O(n) 分配）。</summary>
+    public string Text => _source;
+
+    /// <summary>内容版本号：每次 <see cref="Update"/> 改变源码后自增，供折叠/语义缓存做 O(1) 失效判等（避免 O(n) 全文比对）。</summary>
+    public int Version => _version;
 
     /// <summary>扁平化全部 token（绝对偏移——出口处由相对行首偏移还原）。</summary>
     public DslToken[] GetAllTokens()
@@ -106,6 +114,7 @@ public sealed class DslDocument
     public DocumentUpdateResult Update(string newText, DirtyRange? dirty)
     {
         _lastUpdate = null;
+        _version++;   // 内容即将变更（全量或增量两条路径都会改 _source）→ 版本自增，使依赖旧内容的折叠/语义缓存失效
         if (dirty is null || !TryApplyIncremental(newText, dirty.Value))
         {
             _source = newText;

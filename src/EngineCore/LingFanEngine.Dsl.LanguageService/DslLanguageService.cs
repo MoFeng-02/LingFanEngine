@@ -20,6 +20,17 @@ public sealed class DslLanguageService : IDslLanguageService
     /// <summary>每文件「逐行包围块关键字」缓存——供补全的块级上下文感知（scene 块内首词优先 UI 元素）。
     /// 在 UpdateDocument/IndexProject 重索引后同步重算；典型 .story 文件很小，开销可忽略。</summary>
     private readonly ConcurrentDictionary<string, string?[]> _enclosingBlocks = new();
+    /// <summary>折叠结构缓存（区段 + 逐行深度），按「文档实例 + 内容版本号」O(1) 判失效（编辑自增 <see cref="DslDocument.Version"/> → 自动失效）。
+    /// 后台 <see cref="IndexProject"/> 建索引后预热，使首次 <c>foldingRange</c> 请求直接命中 → 瞬时（<see cref="ComputeStructure"/> 改 span 零分配 + 缓存命中，大文件不再每次重算 + Split 逐行分配）。</summary>
+    private readonly ConcurrentDictionary<string, FoldingCacheEntry> _foldingCache = new();
+    /// <summary>语义 token 缓存，按「文档实例 + 内容版本号 + 当前符号索引实例」O(1) 判失效（符号索引交换后旧条目自动失效）。
+    /// 同样在 <see cref="IndexProject"/> 预热，使首次 <c>semanticTokens/full</c> 直接命中。</summary>
+    private readonly ConcurrentDictionary<string, SemanticCacheEntry> _semanticCache = new();
+
+    /// <summary>折叠缓存条目：文档实例 + 内容版本号 + 折叠区段 + 逐行嵌套深度（O(1) 失效判等，无 O(n) 全文比对）。</summary>
+    private sealed record FoldingCacheEntry(DslDocument? Doc, int Version, List<(int Start, int End)> Foldings, int[] Depths);
+    /// <summary>语义缓存条目：文档实例 + 内容版本号 + 计算时所用的符号索引实例 + token 序列。</summary>
+    private sealed record SemanticCacheEntry(DslDocument? Doc, int Version, DslSymbolIndex UsedIndex, IReadOnlyList<SemanticToken> Tokens);
     /// <summary>资源联合索引是否已建立（ScanProject 成功）。未建立前不跑资源/命令诊断，避免「空索引 → 全盘误报未找到资源」。</summary>
     private bool _scanned;
 
@@ -59,6 +70,10 @@ public sealed class DslLanguageService : IDslLanguageService
         _documents.TryRemove(filePath, out _);
         _symbolIndex.RemoveFile(filePath);
         _enclosingBlocks.TryRemove(filePath, out _);
+        // 同路径重建的文档是新实例（Version 重置为 1），实例守卫已保证不误命中；
+        // 此处显式清除避免长驻 LSP 下缓存条目无限堆积。
+        _foldingCache.TryRemove(filePath, out _);
+        _semanticCache.TryRemove(filePath, out _);
     }
 
     /// <summary>
@@ -94,6 +109,14 @@ public sealed class DslLanguageService : IDslLanguageService
                 built.IndexFile(kv.Key, kv.Value.GetAllTokens(), kv.Value.Source);
 
         _symbolIndex = built;
+
+        // 预热折叠/语义缓存：此刻符号索引已就绪，统一为所有已加载文档算好并缓存，
+        // 用户首次 foldingRange/semanticTokens 请求直接命中 → 大文件也瞬时（不再现场重算 + 逐 token 线性扫描）。
+        foreach (var kv in _documents)
+        {
+            GetFoldingRegions(kv.Key);
+            GetSemanticTokens(kv.Key);
+        }
     }
 
     /// <summary>
@@ -115,6 +138,9 @@ public sealed class DslLanguageService : IDslLanguageService
     public IReadOnlyList<SemanticToken> GetSemanticTokens(string filePath)
     {
         if (!_documents.TryGetValue(filePath, out var doc)) return System.Array.Empty<SemanticToken>();
+        // 命中缓存：同一文档实例 + 内容版本未变 + 符号索引实例未变（索引交换后旧条目自动失效）→ 直接返回，避免大文件逐 token 线性扫描。
+        if (_semanticCache.TryGetValue(filePath, out var cached) && cached.Doc == doc && cached.Version == doc.Version && ReferenceEquals(cached.UsedIndex, _symbolIndex))
+            return cached.Tokens;
         var tokens = doc.GetAllTokens();
         var source = doc.Source;
         var result = new SemanticToken[tokens.Length];
@@ -131,6 +157,7 @@ public sealed class DslLanguageService : IDslLanguageService
                 cat = SemanticCategory.Resource;
             result[i] = new SemanticToken(tokens[i].Offset, tokens[i].Length, cat);
         }
+        _semanticCache[filePath] = new SemanticCacheEntry(doc, doc.Version, _symbolIndex, result);
         return result;
     }
 
@@ -856,7 +883,11 @@ public sealed class DslLanguageService : IDslLanguageService
     public IReadOnlyList<(int Start, int End)> GetFoldingRegions(string filePath)
     {
         if (!_documents.TryGetValue(filePath, out var doc)) return System.Array.Empty<(int, int)>();
-        ComputeStructure(doc.Source.ToString(), out var foldings, out _);
+        // O(1) 命中：同一文档实例 + 内容版本未变（编辑自增 Version → 自动失效），无 O(n) 全文比对。
+        if (_foldingCache.TryGetValue(filePath, out var cached) && cached.Doc == doc && cached.Version == doc.Version)
+            return cached.Foldings;
+        ComputeStructure(doc.Text, out var foldings, out var depths);
+        _foldingCache[filePath] = new FoldingCacheEntry(doc, doc.Version, foldings, depths);
         return foldings;
     }
 
@@ -864,7 +895,10 @@ public sealed class DslLanguageService : IDslLanguageService
     public int[] GetLineBlockDepths(string filePath)
     {
         if (!_documents.TryGetValue(filePath, out var doc)) return System.Array.Empty<int>();
-        ComputeStructure(doc.Source.ToString(), out _, out var depths);
+        if (_foldingCache.TryGetValue(filePath, out var cached) && cached.Doc == doc && cached.Version == doc.Version)
+            return cached.Depths;
+        ComputeStructure(doc.Text, out var foldings, out var depths);
+        _foldingCache[filePath] = new FoldingCacheEntry(doc, doc.Version, foldings, depths);
         return depths;
     }
 
@@ -872,62 +906,77 @@ public sealed class DslLanguageService : IDslLanguageService
     /// 结构化块分析（单算法产出折叠区段与逐行嵌套深度）——折叠与格式化共用，杜绝漂移。
     /// <para>块头关键字来自 DslCore 单源 <see cref="DslBlockStructure"/>；else/case/default 是对块栈的匹配而非起始块。</para>
     /// </summary>
-    private static void ComputeStructure(string source, out List<(int Start, int End)> foldings, out int[] depths)
+    private static void ComputeStructure(ReadOnlySpan<char> source, out List<(int Start, int End)> foldings, out int[] depths)
     {
-        var lines = source.Split(["\r\n", "\n", "\r"], StringSplitOptions.None);
-        depths = new int[lines.Length];
-        foldings = new List<(int, int)>(lines.Length / 4);
+        // 行数（按 '\n' 计），避免 source.Split 给每行 new 字符串的巨量分配——大文件下这是秒级卡顿的主因。
+        var lineCount = 1;
+        for (var i = 0; i < source.Length; i++)
+            if (source[i] == '\n') lineCount++;
 
-        // 绝对行首偏移（含换行长度）
-        var lineStarts = new int[lines.Length];
-        var off = 0;
-        for (var i = 0; i < lines.Length; i++)
-        {
-            lineStarts[i] = off;
-            off += lines[i].Length;
-            if (i < lines.Length - 1) off++; // 一个换行符
-        }
+        depths = new int[lineCount];
+        foldings = new List<(int, int)>(lineCount / 4);
+        var lineStarts = new int[lineCount];
 
         var stack = new Stack<(int Line, int Indent)>();
-        for (var i = 0; i < lines.Length; i++)
+        var lineStart = 0;
+        var li = 0;
+        while (li < lineCount)
         {
-            var raw = lines[i];
-            var trimmed = raw.Trim();
-            if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith('#'))
-            {
-                depths[i] = stack.Count;
-                continue;
-            }
+            lineStarts[li] = lineStart;
+            var relNl = source.Slice(lineStart).IndexOf('\n');
+            var lineEnd = relNl < 0 ? source.Length : lineStart + relNl;
 
-            var indent = CountIndent(raw);
-            var firstWord = GetFirstWord(trimmed);
+            // 本行内容（去结尾换行；CRLF 尾部 '\r' 一并剥离），全程 span 不分配
+            var span = source.Slice(lineStart, lineEnd - lineStart);
+            if (span.Length > 0 && span[span.Length - 1] == '\r') span = span.Slice(0, span.Length - 1);
 
-            if (DslBlockStructure.IsBlockStarter(firstWord))
+            var s = 0;
+            while (s < span.Length && (span[s] == ' ' || span[s] == '\t')) s++;
+            var indent = 0;
+            for (var k = 0; k < s; k++) indent += span[k] == '\t' ? 4 : 1;
+
+            var w = s;
+            while (w < span.Length && span[w] != ' ' && span[w] != '\t' && span[w] != '#') w++;
+            var word = span.Slice(s, w - s);
+
+            if (word.IsEmpty || (span.Length > 0 && span[s] == '#'))
             {
-                depths[i] = stack.Count;
-                stack.Push((i, indent));
-            }
-            else if (firstWord is "else" or "case" or "default")
-            {
-                // 与父块同缩进的续行：不闭合、不加深
-                depths[i] = stack.Count;
+                // 空行或注释行：继承当前块深度，不管理栈
+                depths[li] = stack.Count;
             }
             else
             {
-                while (stack.Count > 0 && indent <= stack.Peek().Indent)
+                var firstWord = word.ToString(); // 块关键字很短，分配可忽略（与整行 Split/Trim 不可同日而语）
+                if (DslBlockStructure.IsBlockStarter(firstWord))
                 {
-                    var (startLine, _) = stack.Pop();
-                    if (i - 1 > startLine)
-                        foldings.Add((lineStarts[startLine], lineStarts[i - 1]));
+                    depths[li] = stack.Count;
+                    stack.Push((li, indent));
                 }
-                depths[i] = stack.Count;
+                else if (firstWord is "else" or "case" or "default")
+                {
+                    // 与父块同缩进的续行：不闭合、不加深
+                    depths[li] = stack.Count;
+                }
+                else
+                {
+                    while (stack.Count > 0 && indent <= stack.Peek().Indent)
+                    {
+                        var (startLine, _) = stack.Pop();
+                        if (li - 1 > startLine)
+                            foldings.Add((lineStarts[startLine], lineStarts[li - 1]));
+                    }
+                    depths[li] = stack.Count;
+                }
             }
+
+            lineStart = lineEnd + 1;
+            li++;
         }
 
         while (stack.Count > 0)
         {
             var (startLine, _) = stack.Pop();
-            if (lines.Length - 1 > startLine)
+            if (lineCount - 1 > startLine)
                 foldings.Add((lineStarts[startLine], source.Length));
         }
 
@@ -974,22 +1023,4 @@ public sealed class DslLanguageService : IDslLanguageService
 
     private void RecomputeEnclosing(string filePath, string source) =>
         _enclosingBlocks[filePath] = ComputeEnclosingBlocks(source);
-
-    private static int CountIndent(string line)
-    {
-        var count = 0;
-        foreach (var c in line)
-        {
-            if (c == ' ') count++;
-            else if (c == '\t') count += 4;
-            else break;
-        }
-        return count;
-    }
-
-    private static string GetFirstWord(string trimmedLine)
-    {
-        var spaceIdx = trimmedLine.IndexOf(' ');
-        return spaceIdx < 0 ? trimmedLine : trimmedLine[..spaceIdx];
-    }
 }
