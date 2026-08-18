@@ -23,6 +23,14 @@ public static class StateKeys
         /// <summary>当前场景名 (string)，由 NavigateCommand / SceneCommand 写入</summary>
         public const string CurrentName = "__current_scene_name";
 
+        /// <summary>当前源文件 (string)，由 executor 在每条命令执行前按命令携带的 SourceFile 写入；
+        /// 用于让 let/local 的局部作用域键带文件维度（同文件作用域隔离，跨文件互不冲突）。</summary>
+        public const string CurrentFile = "__current_file";
+
+        /// <summary>当前 label (string)，由 executor 在每条命令执行前按 labels 映射反查「最近前置 label」写入；
+        /// 用于让 let/local 的局部作用域键带 label 维度（scene/label 内 let 互不冲突）。</summary>
+        public const string CurrentLabel = "__current_label";
+
         /// <summary>场景 UI 元素列表 (List&lt;UIElementEntity&gt;)</summary>
         public const string Elements = "__scene_elements";
 

@@ -204,9 +204,9 @@ public class StoryLoader : IStoryLoader
         // 验证注册状态
         _logger.LogDebug($"SceneRegistry 中注册的场景: {string.Join(", ", _sceneRegistry.RegisteredScenes)}");
 
-        // 编译剩余流程脚本
+        // 编译剩余流程脚本——传入 filePath 驱动局部变量跨文件隔离
         _logger.LogDebug($"  场景块: {sceneBlocks.Count} 个, 流程脚本: {flowScript.Length} 字符");
-        var result = _dslEngine.Compile(flowScript);
+        var result = _dslEngine.Compile(flowScript, filePath);
         if (result.Success)
         {
             story.CompiledCommands = result.Commands;
@@ -395,8 +395,8 @@ public class StoryLoader : IStoryLoader
 
         if (story.CompiledCommands is null || story.CompiledCommands.Count == 0)
         {
-            // 尝试重新编译
-            var result = _dslEngine.Compile(story.Script);
+            // 尝试重新编译——用故事 Id 作为文件标识驱动局部变量跨文件隔离
+            var result = _dslEngine.Compile(story.Script, story.Id);
             if (!result.Success)
             {
                 _state.Set($"{StateKeys.Story.ErrorPrefix}{storyId}", result.Error ?? "Compilation failed");

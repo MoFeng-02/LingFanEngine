@@ -29,14 +29,28 @@ public class LingFanDslEngine : IScriptEngine
         /// <summary>continue 跳转的 JumpCommand 索引列表（循环体编译完成后解析）</summary>
         public List<int> ContinueJumpIndices { get; } = [];
     }
+
+    /// <summary>
+    /// 当前编译单元的文件标识——用于局部变量（let/local）跨文件作用域隔离。
+    /// <para>由 <see cref="Compile"/> 的 filePath 参数写入，编译期集中注入到每条 IFileScopedCommand.SourceFile；
+    /// 运行时 executor 据此写入 __current_file，LocalScope 据此构建 _local_&lt;file&gt;[_&lt;scene&gt;][_&lt;label&gt;]_&lt;name&gt; 作用域键。</para>
+    /// <para>与 _loopStack 同为编译期实例状态，同步编译不重入（沿用现有约定）。</para>
+    /// </summary>
+    private string? _currentFile;
     /// <inheritdoc/>
     public string Name => "LingFanDSL";
 
-    /// <inheritdoc/>
-    public ScriptResult Compile(string script)
+    /// <summary>
+    /// 编译脚本并标注文件来源——filePath 驱动运行时局部变量（let/local）的跨文件作用域隔离。
+    /// <para>内部设置 _currentFile 字段，并在编译结束后集中注入到所有 IFileScopedCommand.SourceFile。</para>
+    /// </summary>
+    public ScriptResult Compile(string script, string? filePath = null)
     {
         if (string.IsNullOrWhiteSpace(script))
             return new ScriptResult(true, []);
+
+        // 记录当前编译单元的文件标识——供后续 IFileScopedCommand.SourceFile 注入
+        _currentFile = filePath;
 
         // 清理循环上下文栈——防止上次编译异常中断导致栈残留
         _loopStack.Clear();
@@ -164,6 +178,8 @@ public class LingFanDslEngine : IScriptEngine
                     var childPendingJumps = new List<(int CmdIndex, string TargetLabel)>();
                     int nextIdx = CompileBody(parsed, idx + 1, pl.Indent, childCommands, childLabels, childPendingJumps);
                     ResolvePendingJumps(childCommands, childLabels, childPendingJumps);
+                    // 注入文件标识——set_time_event 子块命令承载局部变量作用域
+                    TagSourceFile(childCommands);
 
                     commands.Add(new SetTimeEventCommand
                     {
@@ -248,6 +264,9 @@ public class LingFanDslEngine : IScriptEngine
             // 再在每个 label 末尾插入 EndCommand 哨兵
             InsertEndSentinels(commands, labels);
 
+            // 注入文件标识到所有局部变量相关命令——驱动运行时跨文件作用域隔离
+            TagSourceFile(commands);
+
             return new ScriptResult(true, commands.AsReadOnly(), Labels: labels);
         }
         catch (Exception ex)
@@ -258,6 +277,33 @@ public class LingFanDslEngine : IScriptEngine
     }
 
     // ========== 块编译 ==========
+
+    /// <summary>
+    /// 将当前文件标识注入到命令列表中所有尚未标识的 IFileScopedCommand.SourceFile。
+    /// <para>集中处理避免在每个命令生成点重复赋值；命令为 record，用 with 表达式保证不可变替换。</para>
+    /// <para>覆盖 let/local 写入（SetVariableCommand）、say（ShowDialogCommand）、分支（BranchCommand）、
+    /// 数组/字典操作（ArrayPushCommand/DictSetCommand）。set_time_event 子块在生成处单独调用本方法。</para>
+    /// </summary>
+    private void TagSourceFile(List<ICommand> commands)
+    {
+        var file = _currentFile;
+        if (string.IsNullOrEmpty(file)) return;
+        for (int i = 0; i < commands.Count; i++)
+        {
+            if (commands[i] is IFileScopedCommand fs && string.IsNullOrEmpty(fs.SourceFile))
+            {
+                commands[i] = fs switch
+                {
+                    SetVariableCommand x => x with { SourceFile = file },
+                    ShowDialogCommand x => x with { SourceFile = file },
+                    BranchCommand x => x with { SourceFile = file },
+                    ArrayPushCommand x => x with { SourceFile = file },
+                    DictSetCommand x => x with { SourceFile = file },
+                    _ => commands[i]
+                };
+            }
+        }
+    }
 
     /// <summary>
     /// 编译 if/else if/else 块

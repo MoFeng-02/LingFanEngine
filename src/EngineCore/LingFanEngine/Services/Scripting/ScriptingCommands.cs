@@ -28,10 +28,11 @@ public readonly record struct JumpCommand : ICommand
 /// 条件分支命令——DSL 中 if/elif/else 编译结果
 /// <para>编译时记录条件表达式和跳过指令数，运行时由 DslExecutor 求值决定是否跳过。</para>
 /// </summary>
-public readonly record struct BranchCommand : ICommand
+public readonly record struct BranchCommand : IFileScopedCommand
 {
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
     public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public string? SourceFile { get; init; }
 
     /// <summary>
     /// 条件表达式文本（如 "gold >= 100"），仅 if/elif 有值；else 和 end 为 null
@@ -451,9 +452,7 @@ public static class DslExpressionEvaluator
     /// </summary>
     private static object? ReadVariableLocal(IStateContainer state, string name)
     {
-        var local = state.Get<object>("_local_" + name.Replace('.', '_'));
-        if (local != null) return local;
-        return state.Get<object>(name);
+        return LingFanEngine.Abstractions.LocalScope.Read(state, name);
     }
 
     private static double ToDouble(object? val) =>
@@ -1048,10 +1047,11 @@ public readonly record struct NotifyCommand : ICommand
 /// 数组追加命令——DSL 2.0
 /// <para>array_push "key" "value" 编译结果。</para>
 /// </summary>
-public readonly record struct ArrayPushCommand : ICommand
+public readonly record struct ArrayPushCommand : IFileScopedCommand
 {
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
     public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public string? SourceFile { get; init; }
     public required string Key { get; init; }
     public required string ValuePart { get; init; }
     public ArrayPushCommand() { }
@@ -1071,10 +1071,11 @@ public readonly record struct ArrayPopCommand : ICommand
 /// <summary>
 /// 字典设值命令——DSL 2.0
 /// </summary>
-public readonly record struct DictSetCommand : ICommand
+public readonly record struct DictSetCommand : IFileScopedCommand
 {
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
     public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public string? SourceFile { get; init; }
     public required string Key { get; init; }
     public required string Field { get; init; }
     public required string ValuePart { get; init; }

@@ -115,6 +115,51 @@ public class DslExecutor : IDslExecutor
         BeginRunAsync();
     }
 
+    /// <summary>
+    /// 在每条命令执行前把当前作用域写入状态：file 来自命令携带的 SourceFile，label 由 labels 映射反查
+    /// 「最近前置 label」得到。当前场景由 SceneCommand / NavigateCommand 维护（__current_scene_name）。
+    /// 供 let/local 的局部作用域键使用（file + scene + label 三维隔离，同级/兄弟作用域互不冲突）。
+    /// </summary>
+    private void ApplyCommandScope(ICommand cmd, int currentIndex)
+    {
+        if (cmd is IFileScopedCommand fs && !string.IsNullOrEmpty(fs.SourceFile))
+            _state.Set(StateKeys.Scene.CurrentFile, fs.SourceFile);
+
+        var sceneName = _state.Get<string>(StateKeys.Scene.CurrentName);
+        var label = NearestPrecedingLabel(currentIndex);
+        // 场景在流程中以 label <sceneName> 表示——最近前置 label 等于当前场景名时，
+        // 视为「场景级作用域」而非独立的子标签作用域，避免键重复（_local_<file>_<scene>_<scene>_x）。
+        // 仅当最近前置 label 与场景名不同时，才视为场景内的子标签作用域。
+        if (label != null && !string.IsNullOrEmpty(sceneName)
+            && string.Equals(label, sceneName, StringComparison.Ordinal))
+        {
+            label = null;
+        }
+
+        if (label != null)
+            _state.Set(StateKeys.Scene.CurrentLabel, label);
+        else if (_state.ContainsKey(StateKeys.Scene.CurrentLabel))
+            _state.Remove(StateKeys.Scene.CurrentLabel);
+    }
+
+    private string? NearestPrecedingLabel(int currentIndex)
+    {
+        var labels = _state.Get<Dictionary<string, int>>(StateKeys.Dsl.Labels)
+                    ?? _state.Get<IReadOnlyDictionary<string, int>>(StateKeys.Dsl.Labels) as Dictionary<string, int>;
+        if (labels == null || labels.Count == 0) return null;
+        string? best = null;
+        int bestIdx = -1;
+        foreach (var (name, idx) in labels)
+        {
+            if (idx <= currentIndex && idx > bestIdx)
+            {
+                bestIdx = idx;
+                best = name;
+            }
+        }
+        return best;
+    }
+
     /// <inheritdoc/>
     public void StartFromLabel(string label)
     {
@@ -241,6 +286,9 @@ public class DslExecutor : IDslExecutor
                 }
 
                 var cmd = commands[currentIndex];
+
+                // 作用域注入：在每条命令执行前把 file/label 写入状态，供 let/local 的局部作用域键使用
+                ApplyCommandScope(cmd, currentIndex);
 
                 switch (cmd)
                 {
@@ -553,7 +601,9 @@ public class DslExecutor : IDslExecutor
                     // ========== 同步命令 ==========
 
                     case SetVariableCommand sv:
-                        if (sv.IsDefine && _state.ContainsKey(sv.Key))
+                    {
+                        var key = LocalScope.ResolveKey(_state, sv.Key);
+                        if (sv.IsDefine && _state.ContainsKey(key))
                         {
                             // define ... once：跳过
                         }
@@ -567,7 +617,7 @@ public class DslExecutor : IDslExecutor
                                 System.Collections.IEnumerable en => en.Cast<object?>().Count(),
                                 _ => 0
                             };
-                            _state.Set(sv.Key, len);
+                            _state.Set(key, len);
                         }
                         else if (sv.Value is DslForIndexPlaceholder forIdx)
                         {
@@ -576,19 +626,20 @@ public class DslExecutor : IDslExecutor
                             object? element = null;
                             if (source is System.Collections.IList list && index >= 0 && index < list.Count)
                                 element = list[index]!;
-                            _state.Set(sv.Key, element);
+                            _state.Set(key, element);
                         }
                         else if (sv.Value is DslExpressionPlaceholder placeholder)
                         {
                             var result = DslExpressionEvaluator.Evaluate(placeholder.Expression, _state);
-                            _state.Set(sv.Key, result);
+                            _state.Set(key, result);
                         }
                         else
                         {
-                            _state.Set(sv.Key, sv.Value);
+                            _state.Set(key, sv.Value);
                         }
                         _state.Set(StateKeys.Dsl.CurrentIndex, currentIndex + 1);
                         break;
+                    }
 
                     case TransitionCommand:
                         await _pipeline.SendAsync(cmd, ct);
@@ -793,6 +844,16 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
     /// </summary>
     private async Task ExecuteTimeEventCommandAsync(ICommand cmd, CancellationToken ct)
     {
+        // 作用域注入：时间事件回调命令携带 SourceFile，注入 __current_file；
+        // 时间事件不在任何 label 内，清除 __current_label 以免误用主循环残留的标签作用域
+        //（否则回调中的 let/local 会被错误归入之前某条 label 的作用域键）。
+        if (cmd is IFileScopedCommand teFs && !string.IsNullOrEmpty(teFs.SourceFile))
+        {
+            _state.Set(StateKeys.Scene.CurrentFile, teFs.SourceFile);
+            if (_state.ContainsKey(StateKeys.Scene.CurrentLabel))
+                _state.Remove(StateKeys.Scene.CurrentLabel);
+        }
+
         switch (cmd)
         {
             case ShowDialogCommand:

@@ -28,8 +28,9 @@ public interface IScriptEngine
     /// 编译脚本文本为 ICommand 列表
     /// </summary>
     /// <param name="script">脚本源代码</param>
+    /// <param name="filePath">源文件标识（可选）——用于局部变量（let/local）跨文件作用域隔离；为空表示无文件上下文</param>
     /// <returns>编译结果（命令列表或错误信息）</returns>
-    ScriptResult Compile(string script);
+    ScriptResult Compile(string script, string? filePath = null);
 
     /// <summary>
     /// 异步编译（适用 Lua 等需要 IO 的场景）

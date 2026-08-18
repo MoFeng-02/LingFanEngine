@@ -288,8 +288,8 @@ public class StoryRegistry : IStoryRegistry
             System.Diagnostics.Debug.WriteLine($"[StoryRegistry] 注册场景: {name}, 元素数={elements.Count}, entry={(string.IsNullOrWhiteSpace(entryScript) ? 0 : entryScript.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length)} 行, defines={defines?.Count ?? 0}");
         }
 
-        // 编译剩余流程脚本（含场景 entryScript 转为的 label）
-        var result = _dslEngine.Compile(flowBuilder.ToString());
+        // 编译剩余流程脚本（含场景 entryScript 转为的 label）——传入 filePath 驱动局部变量跨文件隔离
+        var result = _dslEngine.Compile(flowBuilder.ToString(), filePath);
         if (!result.Success)
         {
             System.Diagnostics.Debug.WriteLine($"[StoryRegistry] 编译失败: {filePath} -> {result.Error}");

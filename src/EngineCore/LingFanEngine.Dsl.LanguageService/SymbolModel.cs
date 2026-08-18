@@ -97,17 +97,30 @@ public readonly struct SymbolOccurrence
     public int Offset { get; }
     /// <summary>符号名的字符长度。</summary>
     public int Length { get; }
+    /// <summary>所在作用域路径（用于 let/local 场景级隔离，对齐引擎 LocalScope 的「label→scene→file」回退）。
+    /// <list type="bullet">
+    ///   <item><description><c>""</c>：文件级（未被 scene/label 包裹）——最外层作用域。</description></item>
+    ///   <item><description><c>"scene/&lt;名&gt;"</c>：被 <c>scene</c> 包裹（叙事模式场景块）。</description></item>
+    ///   <item><description><c>"label/&lt;名&gt;"</c>：被 <c>label</c> 包裹（流程模式场景/子例程块）。</description></item>
+    /// </list>
+    /// 解析依据「最近前置 scene/label 边界」计算（与引擎「最近前置 label + 当前 scene」静态近似一致）；
+    /// 同名变量在兄弟作用域互不冲突、内层可见外层（文件级），与用户确认的 JS/TS 语义一致。</summary>
+    public string ScopePath { get; }
 
-    /// <summary>默认构造：生命周期级别按 <see cref="SymbolScope.Global"/>（场景/函数/角色等大部分定义均为全局），非声明式。</summary>
+    /// <summary>默认构造：生命周期级别按 <see cref="SymbolScope.Global"/>（场景/函数/角色等大部分定义均为全局），非声明式，文件级作用域。</summary>
     public SymbolOccurrence(SymbolKind kind, SymbolRole role, string name, string filePath, int offset, int length)
-        : this(kind, role, name, filePath, offset, length, SymbolScope.Global, false) { }
+        : this(kind, role, name, filePath, offset, length, SymbolScope.Global, false, "") { }
 
-    /// <summary>显式指定生命周期级别（label→Scene、let/local→Local），非声明式。</summary>
+    /// <summary>显式指定生命周期级别（label→Scene、let/local→Local），非声明式，文件级作用域。</summary>
     public SymbolOccurrence(SymbolKind kind, SymbolRole role, string name, string filePath, int offset, int length, SymbolScope scope)
-        : this(kind, role, name, filePath, offset, length, scope, false) { }
+        : this(kind, role, name, filePath, offset, length, scope, false, "") { }
 
-    /// <summary>显式指定生命周期级别与是否声明式定义。</summary>
+    /// <summary>显式指定生命周期级别与是否声明式定义，文件级作用域。</summary>
     public SymbolOccurrence(SymbolKind kind, SymbolRole role, string name, string filePath, int offset, int length, SymbolScope scope, bool isDeclaration)
+        : this(kind, role, name, filePath, offset, length, scope, isDeclaration, "") { }
+
+    /// <summary>完整构造：含作用域路径（场景/标签级局部变量隔离用）。</summary>
+    public SymbolOccurrence(SymbolKind kind, SymbolRole role, string name, string filePath, int offset, int length, SymbolScope scope, bool isDeclaration, string scopePath)
     {
         Kind = kind;
         Role = role;
@@ -117,6 +130,7 @@ public readonly struct SymbolOccurrence
         FilePath = filePath;
         Offset = offset;
         Length = length;
+        ScopePath = scopePath ?? "";
     }
 
     public SymbolKey Key => new(Kind, Name);

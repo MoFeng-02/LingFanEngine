@@ -16,11 +16,20 @@ public sealed class DslSymbolIndex
     private readonly Dictionary<SymbolKey, List<SymbolOccurrence>> _references = new();
     // 文件 -> 该文件内全部出现（用于重索引时清理旧条目）
     private readonly Dictionary<string, List<SymbolOccurrence>> _byFile = new();
-    // 局部变量(let/local)定义表：按 文件 -> 变量名 二级索引。
-    // let/local 是「文件级局部」——仅在声明它的同一文件内可解析（不跨文件、不跨作用域），
-    // 与运行时同文件共享 StateContainer 的行为一致；跨文件的 let 引用必须判为「未定义」，
-    // 否则 fileA 的 let 会被误当成 fileB 的引用目标，造成错误跳转 / 漏报未定义。
-    private readonly Dictionary<string, Dictionary<string, SymbolOccurrence>> _localVarDefsByFile = new();
+    // 局部变量(let/local)定义表：按 文件 -> 变量名 -> 作用域声明列表 三级索引。
+    // let/local 是「场景/标签级局部」——仅在声明它的同一文件、同一作用域内可解析（不跨文件、不跨兄弟作用域），
+    // 与运行时 LocalScope 的「label→scene→file」回退一致；跨文件 / 跨兄弟作用域的 let 引用必须判为「未定义」，
+    // 否则 fileA 的 let 会被误当成 fileB 的引用目标、或 sceneB 的 {x} 误当成 sceneA 的 let 引用目标。
+    // 同名变量可在不同作用域各自声明（如 sceneA 与 sceneB 各 let "x"），故值用列表而非单值。
+    private readonly Dictionary<string, Dictionary<string, List<LocalVarDecl>>> _localVarDefsByFile = new();
+
+    /// <summary>局部变量声明 + 其所在作用域路径（"scene/名" / "label/名" / "" 文件级）。</summary>
+    private readonly struct LocalVarDecl
+    {
+        public readonly string ScopePath;
+        public readonly SymbolOccurrence Occ;
+        public LocalVarDecl(string scopePath, SymbolOccurrence occ) { ScopePath = scopePath ?? ""; Occ = occ; }
+    }
 
     /// <summary>索引（或重索引）单个文件：先清理旧条目，再解析新条目并入全局表。</summary>
     public void IndexFile(string filePath, DslToken[] tokens, ReadOnlySpan<char> source)
@@ -61,14 +70,33 @@ public sealed class DslSymbolIndex
             // 必须原样保留 IsDeclaration：7 参构造默认 isDeclaration=false，会让声明式定义（label/scene/character/func/style/define）
             // 在尾部平移后从 _definitions 消失，导致前向 jump/navigate 误报未定义、且补全候选（GetDefinedNames）变空。
             // 这是 B40：编辑「声明上方」任意行都会触发尾部平移，故声明一旦被编辑上方改动就丢失。
-            list[i] = new SymbolOccurrence(o.Kind, o.Role, o.Name, o.FilePath, o.Offset + delta, o.Length, o.Scope, o.IsDeclaration);
+            list[i] = new SymbolOccurrence(o.Kind, o.Role, o.Name, o.FilePath, o.Offset + delta, o.Length, o.Scope, o.IsDeclaration, o.ScopePath);
             AddOccurrence(list[i]);
         }
 
         // 2) 受影响行增量重索引（仅这几行，无全文 lineStarts 重扫）
-        var newOcc = CollectOccurrencesForLines(filePath, affectedLines, source);
+        //    先据「受影响区域之前」最近 scene/label 边界预置作用域，使增量重索引的行获得正确的作用域路径（见 UpdateScope）。
+        ComputeScopeAt(list, affectedStartOld, out var curScopeKind, out var curScopeName);
+        var newOcc = CollectOccurrencesForLines(filePath, affectedLines, source, ref curScopeKind, ref curScopeName);
         foreach (var o in newOcc) AddOccurrence(o);
         if (newOcc.Count > 0) list.InsertRange(lo, newOcc);
+    }
+
+    /// <summary>在受影响区域之前定位「最近前置 scene/label 边界」，作为增量重索引的起始作用域（保证局部变量作用域路径正确）。</summary>
+    private static void ComputeScopeAt(List<SymbolOccurrence> list, int beforeOffset, out string kind, out string name)
+    {
+        kind = ""; name = "";
+        for (var i = list.Count - 1; i >= 0; i--)
+        {
+            var o = list[i];
+            if (o.Offset >= beforeOffset) continue;
+            if (o.Role == SymbolRole.Definition && (o.Kind == SymbolKind.Label || o.Kind == SymbolKind.Scene))
+            {
+                kind = o.Kind == SymbolKind.Scene ? "scene" : "label";
+                name = o.Name;
+                return;
+            }
+        }
     }
 
     /// <summary>移除某文件的全部索引条目（文件关闭 / 删除时调用）。</summary>
@@ -84,14 +112,25 @@ public sealed class DslSymbolIndex
     /// <summary>解析定义位置（用于跳转定义）。支持 fallback 种类（如 jump 可指向 label 也可指向 scene）。
     /// <param name="fromFile">引用所在文件。局部变量(let/local)仅在此文件内解析——不跨文件、不跨作用域；
     /// 传 null 则退化为全局解析（仅用于不需要文件上下文的内部回溯）。</param></summary>
-    public SymbolOccurrence? Resolve(SymbolKind primary, SymbolKind? fallback, string name, string? fromFile = null)
+    public SymbolOccurrence? Resolve(SymbolKind primary, SymbolKind? fallback, string name, string? fromFile = null, string refScopePath = "")
     {
         // 变量解析：仅当 fromFile 与声明同文件时，局部定义(let/local)才优先于全局——与运行时「同文件 _local_ 遮蔽全局」严格一致，
         // 且确保「fileA 的 let」不会被误当成「fileB 的 {temp}」的引用目标（跨文件不解析）。
+        // 作用域隔离（对齐引擎 LocalScope）：引用解析先看「与引用同作用域」的声明（最内层），否则回退到「文件级」声明（内层可见外层），
+        // 兄弟作用域的声明互不可见 -> 解析失败 -> 诊断判为「未定义」。
         if (primary == SymbolKind.Variable && fromFile != null
             && _localVarDefsByFile.TryGetValue(fromFile, out var fileLocals)
-            && fileLocals.TryGetValue(name, out var localDef))
-            return localDef;
+            && fileLocals.TryGetValue(name, out var decls))
+        {
+            // 1) 最内层：与引用同作用域（scopePath 完全一致）
+            foreach (var d in decls)
+                if (string.Equals(d.ScopePath, refScopePath, StringComparison.Ordinal)) return d.Occ;
+            // 2) 外层：文件级（scopePath 为空）——JS 语义「内层可见外层」
+            if (refScopePath.Length != 0)
+                foreach (var d in decls)
+                    if (d.ScopePath.Length == 0) return d.Occ;
+            return null;   // 仅兄弟作用域有声明 -> 跨作用域不可见 -> 未定义
+        }
         if (_definitions.TryGetValue(new SymbolKey(primary, name), out var def)) return def;
         if (fallback is { } fb && _definitions.TryGetValue(new SymbolKey(fb, name), out var fbDef)) return fbDef;
         return null;
@@ -170,24 +209,25 @@ public sealed class DslSymbolIndex
         return affected;
     }
 
-    /// <summary>返回变量名及其作用域（B32）：define→全局、let/local→局部、仅 set（create-or-set）→全局。
-    /// 跨文件合并时 define 优先为全局；其余按「出现即局部」计入局部。供补全候选标注作用域徽标。
+    /// <summary>返回变量名及其作用域信息（B32 升级：含场景/标签级局部）。
+    /// 值语义：<c>"全局"</c> = define/set（全局）；否则为作用域路径 <c>""</c>(文件局部) / <c>"scene/名"</c>(场景局部) / <c>"label/名"</c>(标签局部)。
+    /// 供补全候选标注作用域徽标（文件局部 / 场景局部 / 标签局部 / 全局）。
     /// <param name="filePath">非 null 时仅扫描该文件——避免把 fileA 的 let 当成 fileB 的局部变量候选（let 文件级局部，不跨文件）。</param></summary>
-    public IReadOnlyDictionary<string, SymbolScope> GetVariablesWithScope(string? filePath = null)
+    public IReadOnlyDictionary<string, string> GetVariablesWithScope(string? filePath = null)
     {
-        var scopes = new Dictionary<string, SymbolScope>(StringComparer.Ordinal);
+        var scopes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var kvp in _byFile)
         {
             if (filePath != null && !string.Equals(kvp.Key, filePath, StringComparison.Ordinal)) continue;
             foreach (var o in kvp.Value)
             {
                 if (o.Kind != SymbolKind.Variable || o.Role != SymbolRole.Definition) continue;
-                // 作用域以 SymbolScope 为准（声明式变量也携带正确作用域）：let/local 一律局部，define 全局，仅 set（全局作用域）全局。
+                // 作用域以 SymbolScope 为准：let/local 局部（记录作用域路径），define 全局，仅 set（全局作用域）全局。
                 if (o.Scope == SymbolScope.Local)
-                    scopes[o.Name] = SymbolScope.Local;                                  // let/local → 局部（声明或赋值）
+                    scopes[o.Name] = o.ScopePath;                                   // let/local → 场景/标签/文件局部（路径区分）
                 else if (o.IsDeclaration)
-                    scopes[o.Name] = SymbolScope.Global;                                 // define 全局，覆盖一切
-                else scopes.TryAdd(o.Name, SymbolScope.Global);                          // 仅 set（全局作用域）→ 全局
+                    scopes[o.Name] = "全局";                                        // define 全局，覆盖一切
+                else scopes.TryAdd(o.Name, "全局");                                // 仅 set（全局作用域）→ 全局
             }
         }
         return scopes;
@@ -233,7 +273,7 @@ public sealed class DslSymbolIndex
                 SymbolKind.Func => SymbolKind.Label,
                 _ => (SymbolKind?)null,
             };
-            if (Resolve(o.Kind, fb, o.Name, o.FilePath) is null)
+            if (Resolve(o.Kind, fb, o.Name, o.FilePath, o.ScopePath) is null)
                 result.Add(new Diagnostic(DiagnosticSeverity.Error,
                     $"未定义的{o.Kind}「{o.Name}」", new Location(filePath, o.Offset, o.Length)));
         }
@@ -257,15 +297,21 @@ public sealed class DslSymbolIndex
             if (o.IsDeclaration && !(o.Kind == SymbolKind.Variable && o.Scope == SymbolScope.Local))
                 _definitions[o.Key] = o;
             // 局部变量(let/local)额外登记到 _localVarDefsByFile[文件]，供变量解析时优先匹配（同文件局部遮蔽全局，准确跳转）。
-            // 按文件二级索引，确保「fileA 的 let」不会解析为「fileB 的 {temp}」引用目标（不跨文件）。
+            // 按 文件 -> 变量名 -> 作用域声明列表 三级索引：同名变量可在不同作用域各自声明（sceneA/sceneB 各 let "x"），
+            // 解析时按引用所在作用域精确匹配（见 Resolve），确保「fileA 的 let」不会解析为「fileB 的 {temp}」、sceneB 的 {x} 不会误指向 sceneA 的 let。
             if (o.Kind == SymbolKind.Variable && o.IsDeclaration && o.Scope == SymbolScope.Local)
             {
                 if (!_localVarDefsByFile.TryGetValue(o.FilePath, out var map))
                 {
-                    map = new Dictionary<string, SymbolOccurrence>(StringComparer.Ordinal);
+                    map = new Dictionary<string, List<LocalVarDecl>>(StringComparer.Ordinal);
                     _localVarDefsByFile[o.FilePath] = map;
                 }
-                map[o.Name] = o;
+                if (!map.TryGetValue(o.Name, out var list))
+                {
+                    list = new List<LocalVarDecl>();
+                    map[o.Name] = list;
+                }
+                list.Add(new LocalVarDecl(o.ScopePath, o));
             }
         }
         else
@@ -285,11 +331,21 @@ public sealed class DslSymbolIndex
         {
             if (_definitions.TryGetValue(o.Key, out var existing) && existing.FilePath == o.FilePath && existing.Offset == o.Offset)
                 _definitions.Remove(o.Key);
-            // 同步清理 _localVarDefsByFile[文件] 中的局部变量定义
+            // 同步清理 _localVarDefsByFile[文件] 中的局部变量定义（按文件名 + 精确偏移定位该作用域声明）
             if (o.Kind == SymbolKind.Variable && o.Scope == SymbolScope.Local
                 && _localVarDefsByFile.TryGetValue(o.FilePath, out var map)
-                && map.TryGetValue(o.Name, out var loc) && loc.FilePath == o.FilePath && loc.Offset == o.Offset)
-                map.Remove(o.Name);
+                && map.TryGetValue(o.Name, out var list))
+            {
+                for (var i = list.Count - 1; i >= 0; i--)
+                {
+                    if (list[i].Occ.FilePath == o.FilePath && list[i].Occ.Offset == o.Offset)
+                    {
+                        list.RemoveAt(i);
+                        break;
+                    }
+                }
+                if (list.Count == 0) map.Remove(o.Name);
+            }
         }
         else if (_references.TryGetValue(o.Key, out var list))
         {
@@ -315,6 +371,10 @@ public sealed class DslSymbolIndex
         for (var i = 0; i < source.Length; i++)
             if (source[i] == '\n') lineStarts.Add(i + 1);
 
+        // 作用域栈（就近边界模型，对齐引擎 LocalScope）：随扫描维护「最近前置 scene/label 边界」。
+        // 每行的出现归入当前作用域——scene/label 声明行自身也归入其新作用域（使 scene 内的 let 与 scene 同名）。
+        var curScopeKind = "";
+        var curScopeName = "";
         var i2 = 0;
         while (i2 < tokens.Length)
         {
@@ -330,7 +390,9 @@ public sealed class DslSymbolIndex
 
             var lineStart = lineStarts[lineIdx];
             var lineText = source.Slice(lineStart, lineEnd - lineStart).ToString();
-            ProcessLine(filePath, lineTokens, source, lineText, lineStart, occurrences);
+            UpdateScope(ref curScopeKind, ref curScopeName, lineTokens, source);
+            var scopePath = curScopeKind.Length == 0 ? "" : curScopeKind + "/" + curScopeName;
+            ProcessLine(filePath, lineTokens, source, lineText, lineStart, occurrences, scopePath);
         }
 
         // 作用域修正（B32）：set 赋值的作用域应跟随其目标变量的「声明作用域」，而非一律 Global。
@@ -350,15 +412,17 @@ public sealed class DslSymbolIndex
             if (o.Kind == SymbolKind.Variable && o.Role == SymbolRole.Definition && !o.IsDeclaration
                 && declScope.TryGetValue(o.Name, out var sc) && sc != o.Scope)
             {
-                occurrences[i] = new SymbolOccurrence(o.Kind, o.Role, o.Name, o.FilePath, o.Offset, o.Length, sc, o.IsDeclaration);
+                occurrences[i] = new SymbolOccurrence(o.Kind, o.Role, o.Name, o.FilePath, o.Offset, o.Length, sc, o.IsDeclaration, o.ScopePath);
             }
         }
 
         return occurrences;
     }
 
-    /// <summary>对若干行（已分组、绝对偏移 token）收集符号出现，供增量重索引复用。</summary>
-    private static List<SymbolOccurrence> CollectOccurrencesForLines(string filePath, DslToken[][] lines, ReadOnlySpan<char> source)
+    /// <summary>对若干行（已分组、绝对偏移 token）收集符号出现，供增量重索引复用。
+    /// <param name="curScopeKind">受影响的起始作用域种类（由调用方据受影响区域之前的最近边界预置）。</param>
+    /// <param name="curScopeName">受影响的起始作用域名。</param></summary>
+    private static List<SymbolOccurrence> CollectOccurrencesForLines(string filePath, DslToken[][] lines, ReadOnlySpan<char> source, ref string curScopeKind, ref string curScopeName)
     {
         var occurrences = new List<SymbolOccurrence>();
         foreach (var line in lines)
@@ -367,9 +431,26 @@ public sealed class DslSymbolIndex
             var lineStart = line[0].Offset;
             var lineEnd = line[line.Length - 1].Offset + line[line.Length - 1].Length;
             var lineText = source.Slice(lineStart, lineEnd - lineStart).ToString();
-            ProcessLine(filePath, line, source, lineText, lineStart, occurrences);
+            UpdateScope(ref curScopeKind, ref curScopeName, line, source);
+            var scopePath = curScopeKind.Length == 0 ? "" : curScopeKind + "/" + curScopeName;
+            ProcessLine(filePath, line, source, lineText, lineStart, occurrences, scopePath);
         }
         return occurrences;
+    }
+
+    /// <summary>据某行首词（scene/label 声明）更新「最近前置作用域边界」。非边界行不改变作用域——作用域延续到下一个边界或文件末尾。</summary>
+    private static void UpdateScope(ref string curScopeKind, ref string curScopeName, DslToken[] lineTokens, ReadOnlySpan<char> source)
+    {
+        if (lineTokens.Length == 0 || lineTokens[0].Kind != DslTokenKind.Keyword) return;
+        var head = lineTokens[0].GetText(source).ToString();
+        if (head == "scene")
+        {
+            if (TryNextString(lineTokens, 1, source, out var sn)) { curScopeKind = "scene"; curScopeName = sn; }
+        }
+        else if (head == "label")
+        {
+            if (TryNextIdentifier(lineTokens, 1, source, out var ln)) { curScopeKind = "label"; curScopeName = ln; }
+        }
     }
 
     /// <summary>在按 Offset 升序的列表中二分定位首个 Offset >= target 的下标。</summary>
@@ -405,7 +486,7 @@ public sealed class DslSymbolIndex
         "random", "min", "max", "abs", "clamp", "true", "false"
     };
 
-    private static void ProcessLine(string filePath, DslToken[] lineTokens, ReadOnlySpan<char> source, string lineText, int lineStart, List<SymbolOccurrence> occurrences)
+    private static void ProcessLine(string filePath, DslToken[] lineTokens, ReadOnlySpan<char> source, string lineText, int lineStart, List<SymbolOccurrence> occurrences, string scopePath)
     {
         if (lineTokens.Length > 0 && lineTokens[0].Kind == DslTokenKind.Keyword)
         {
@@ -414,15 +495,15 @@ public sealed class DslSymbolIndex
             {
                 case "scene":
                     if (TryNextString(lineTokens, 1, source, out var sceneName))
-                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Scene, SymbolRole.Definition, sceneName, filePath, s.Offset, s.Length, SymbolScope.Global, true)); }
+                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Scene, SymbolRole.Definition, sceneName, filePath, s.Offset, s.Length, SymbolScope.Global, true, scopePath)); }
                     break;
                 case "character":
                     if (TryNextString(lineTokens, 1, source, out var charName))
-                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Character, SymbolRole.Definition, charName, filePath, s.Offset, s.Length, SymbolScope.Global, true)); }
+                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Character, SymbolRole.Definition, charName, filePath, s.Offset, s.Length, SymbolScope.Global, true, scopePath)); }
                     break;
                 case "label":
                     if (TryNextIdentifier(lineTokens, 1, source, out var labelName))
-                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Label, SymbolRole.Definition, labelName, filePath, s.Offset, s.Length, SymbolScope.Scene, true)); }
+                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Label, SymbolRole.Definition, labelName, filePath, s.Offset, s.Length, SymbolScope.Scene, true, scopePath)); }
                     break;
                 case "set":
                 case "define":
@@ -436,28 +517,28 @@ public sealed class DslSymbolIndex
                         // define / let / local 都是「声明」式定义，进入定义表（set 仅赋值，不进入定义表，见 B37）。
                         // let/local 声明局部变量（写入 _local_<name>），必须登记为定义，否则其引用会被误报「未定义」。
                         var isDecl = headText is "define" or "let" or "local";
-                        occurrences.Add(new SymbolOccurrence(SymbolKind.Variable, SymbolRole.Definition, varName, filePath, s.Offset, s.Length, scope, isDecl));
+                        occurrences.Add(new SymbolOccurrence(SymbolKind.Variable, SymbolRole.Definition, varName, filePath, s.Offset, s.Length, scope, isDecl, scopePath));
                     }
                     break;
                 case "func":
                     if (TryNextIdentifier(lineTokens, 1, source, out var funcName))
-                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Func, SymbolRole.Definition, funcName, filePath, s.Offset, s.Length, SymbolScope.Global, true)); }
+                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Func, SymbolRole.Definition, funcName, filePath, s.Offset, s.Length, SymbolScope.Global, true, scopePath)); }
                     break;
                 case "style":
                     if (TryNextString(lineTokens, 1, source, out var styleName))
-                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Style, SymbolRole.Definition, styleName, filePath, s.Offset, s.Length, SymbolScope.Global, true)); }
+                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Style, SymbolRole.Definition, styleName, filePath, s.Offset, s.Length, SymbolScope.Global, true, scopePath)); }
                     break;
                 case "jump":
                     if (TryNextIdentifier(lineTokens, 1, source, out var jumpTarget))
-                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Label, SymbolRole.Reference, jumpTarget, filePath, s.Offset, s.Length)); }
+                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Label, SymbolRole.Reference, jumpTarget, filePath, s.Offset, s.Length, SymbolScope.Global, false, scopePath)); }
                     break;
                 case "navigate":
                     if (TryNextString(lineTokens, 1, source, out var navTarget))
-                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Scene, SymbolRole.Reference, navTarget, filePath, s.Offset, s.Length)); }
+                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Scene, SymbolRole.Reference, navTarget, filePath, s.Offset, s.Length, SymbolScope.Global, false, scopePath)); }
                     break;
                 case "call":
                     if (TryNextIdentifier(lineTokens, 1, source, out var callTarget))
-                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Func, SymbolRole.Reference, callTarget, filePath, s.Offset, s.Length)); }
+                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Func, SymbolRole.Reference, callTarget, filePath, s.Offset, s.Length, SymbolScope.Global, false, scopePath)); }
                     break;
                 case "menu":
                     for (var k = 0; k + 1 < lineTokens.Length; k++)
@@ -468,7 +549,7 @@ public sealed class DslSymbolIndex
                             if (target.Kind == DslTokenKind.Identifier)
                             {
                                 var name = target.GetText(source).ToString();
-                                occurrences.Add(new SymbolOccurrence(SymbolKind.Label, SymbolRole.Reference, name, filePath, target.Offset, name.Length));
+                                occurrences.Add(new SymbolOccurrence(SymbolKind.Label, SymbolRole.Reference, name, filePath, target.Offset, name.Length, SymbolScope.Global, false, scopePath));
                             }
                         }
                     }
@@ -482,11 +563,11 @@ public sealed class DslSymbolIndex
             if (t.Kind == DslTokenKind.Comment) commentSpans.Add((t.Offset, t.Offset + t.Length));
 
         // 全行扫描 {...} 插值：覆盖「字符串内的插值」与「裸花括号表达式（if/while 条件、set 值等）」两类上下文。
-        ScanInterpolations(lineText, lineStart, occurrences, filePath, commentSpans);
+        ScanInterpolations(lineText, lineStart, occurrences, filePath, commentSpans, scopePath);
     }
 
     /// <summary>全行扫描 {...} 插值，提取其中的变量引用（表达式里的多个标识符一并收集，如 {a + b.c}）。</summary>
-    private static void ScanInterpolations(string text, int lineStart, List<SymbolOccurrence> occurrences, string filePath, List<(int, int)> commentSpans)
+    private static void ScanInterpolations(string text, int lineStart, List<SymbolOccurrence> occurrences, string filePath, List<(int, int)> commentSpans, string scopePath)
     {
         var i = 0;
         while (i < text.Length)
@@ -507,13 +588,13 @@ public sealed class DslSymbolIndex
             // 用 DslCore.DslInlineTags 单一真相源判定，避免把 {b}/{color=…} 误报成「未定义的变量」。
             // B33 重写时此判定被遗漏，导致严重的误报回归，此处恢复。
             if (DslInlineTags.IsInlineTag(expr)) { i = end + 1; continue; }
-            CollectExprReferences(expr, absOpen + 1, occurrences, filePath);
+            CollectExprReferences(expr, absOpen + 1, occurrences, filePath, scopePath);
             i = end + 1;
         }
     }
 
     /// <summary>从插值表达式（{...} 内文）提取所有变量引用。支持 {a + b.c * 2}、格式注解 {name:color}（已剥离）、三元 {x ? 1 : 2}。</summary>
-    private static void CollectExprReferences(string rawExpr, int exprOffset, List<SymbolOccurrence> occurrences, string filePath)
+    private static void CollectExprReferences(string rawExpr, int exprOffset, List<SymbolOccurrence> occurrences, string filePath, string scopePath)
     {
         // 剥离末尾的格式注解 :format（仅当 : 之后全是字母数字且无空白，形如 {name:color} / {x + 1:red}）
         var work = rawExpr;
@@ -542,7 +623,7 @@ public sealed class DslSymbolIndex
                 while (j < work.Length && (char.IsLetterOrDigit(work[j]) || work[j] == '_' || work[j] == '.')) j++;
                 var name = work.Substring(i, j - i);
                 if (IsVariableName(name) && !s_exprBuiltins.Contains(name))
-                    occurrences.Add(new SymbolOccurrence(SymbolKind.Variable, SymbolRole.Reference, name, filePath, exprOffset + i, name.Length));
+                    occurrences.Add(new SymbolOccurrence(SymbolKind.Variable, SymbolRole.Reference, name, filePath, exprOffset + i, name.Length, SymbolScope.Global, false, scopePath));
                 i = j;
             }
             else i++;

@@ -204,9 +204,7 @@ public static class ExpressionEvaluator
     /// </summary>
     private static object? ReadVariable(IStateContainer state, string name)
     {
-        var local = state.Get<object>("_local_" + name.Replace('.', '_'));
-        if (local != null) return local;
-        return state.Get<object>(name);
+        return LocalScope.Read(state, name);
     }
 
     private static object? ResolveVariable(string path, IStateContainer state)

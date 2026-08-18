@@ -13,19 +13,21 @@ public class SetVariableHandler : ICommandHandler<SetVariableCommand>, IDefaultC
 {
     public void Handle(SetVariableCommand sv, ICommandContext ctx)
     {
+        var key = LocalScope.ResolveKey(ctx.State, sv.Key);
+
         // define ... once：只在键不存在时设置
-        if (sv.IsDefine && ctx.State.ContainsKey(sv.Key))
+        if (sv.IsDefine && ctx.State.ContainsKey(key))
             return;
 
         // 处理 DslExpressionPlaceholder（运行时求值）
         if (sv.Value is DslExpressionPlaceholder placeholder)
         {
             var result = DslExpressionEvaluator.Evaluate(placeholder.Expression, ctx.State);
-            ctx.State.Set(sv.Key, result);
+            LocalScope.Write(ctx.State, sv.Key, result);
         }
         else
         {
-            ctx.State.Set(sv.Key, sv.Value);
+            LocalScope.Write(ctx.State, sv.Key, sv.Value);
         }
     }
 }

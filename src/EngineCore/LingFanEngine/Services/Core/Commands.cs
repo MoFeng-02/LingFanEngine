@@ -8,10 +8,11 @@ namespace LingFanEngine.Services.Core;
 /// 设置变量命令
 /// <para>IsDefine=true 表示"仅在变量不存在时设置"，用于 DSL define ... once 语法。</para>
 /// </summary>
-public readonly record struct SetVariableCommand : ICommand
+public readonly record struct SetVariableCommand : IFileScopedCommand
 {
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
     public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public string? SourceFile { get; init; }
     public required string Key { get; init; }
     public object? Value { get; init; }
 
@@ -87,10 +88,11 @@ public readonly record struct MergeDefinesCommand : ICommand
 /// <summary>
 /// 显示对话命令
 /// </summary>
-public readonly record struct ShowDialogCommand : ICommand
+public readonly record struct ShowDialogCommand : IFileScopedCommand
 {
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
     public CommandPriority Priority { get; init; } = CommandPriority.Normal;
+    public string? SourceFile { get; init; }
     public required string Text { get; init; }
     public string? Speaker { get; init; }
 

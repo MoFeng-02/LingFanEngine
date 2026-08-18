@@ -18,6 +18,17 @@ public interface ICommand
 }
 
 /// <summary>
+/// 携带源文件信息的命令标记接口
+/// <para>executor 在分发/执行每条命令前，将 <see cref="SourceFile"/> 写入状态键
+/// <c>__current_file</c>，使 let/local 的局部作用域键能带上文件维度（同文件作用域隔离）。</para>
+/// </summary>
+public interface IFileScopedCommand : ICommand
+{
+    /// <summary>该命令来源的 .story 文件路径（编译期已知）</summary>
+    string? SourceFile { get; }
+}
+
+/// <summary>
 /// 命令优先级
 /// </summary>
 public enum CommandPriority
