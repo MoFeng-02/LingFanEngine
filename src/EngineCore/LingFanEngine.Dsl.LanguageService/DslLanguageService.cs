@@ -46,6 +46,13 @@ public sealed class DslLanguageService : IDslLanguageService
         RecomputeEnclosing(filePath, text);
     }
 
+    /// <summary>定向刷新用：快照某文件当前定义的符号键（委托 <see cref="DslSymbolIndex.SnapshotDefinitions"/>）。</summary>
+    public HashSet<SymbolKey> SnapshotDefinitions(string path) => _symbolIndex.SnapshotDefinitions(path);
+
+    /// <summary>定向刷新用：由定义前后快照求受影响的文件集合（委托 <see cref="DslSymbolIndex.GetAffectedFiles"/>）。</summary>
+    public HashSet<string> GetAffectedFilesByDefinitionChange(string path, HashSet<SymbolKey> before)
+        => _symbolIndex.GetAffectedFiles(path, before);
+
     public void RemoveDocument(string filePath)
     {
         _documents.Remove(filePath);
@@ -142,7 +149,7 @@ public sealed class DslLanguageService : IDslLanguageService
                 {
                     // scene 块内：首词大概率是 UI 元素类型（text/button/image/...）——优先列出，再补场景块内常见语句。
                     AddKeywords(items, DslKeywords.UiElementTypes, "element");
-                    foreach (var kw in s_sceneBlockStatements) items.Add(new CompletionItem(kw, kw, "statement"));
+                    foreach (var kw in s_sceneBlockStatements) items.Add(Kw(kw, "statement"));
                 }
                 else
                 {
@@ -154,7 +161,7 @@ public sealed class DslLanguageService : IDslLanguageService
             case CompletionContext.ParameterName:
                 if (spec != null)
                     foreach (var kv in spec.NamedParams)
-                        items.Add(new CompletionItem(kv.Key, kv.Key, "parameter"));
+                        items.Add(Kw(kv.Key, "parameter"));
                 break;
 
             case CompletionContext.VariableReference:
@@ -167,6 +174,9 @@ public sealed class DslLanguageService : IDslLanguageService
                 // M8：C# 侧状态键（state.Set/Get("key")）——DSL {var} 亦可引用，双向可见。
                 foreach (var n in _projectIndex.GetCsVariableKeys())
                     if (seenVars.Add(n)) items.Add(new CompletionItem(n, n, "variable", "C# 状态键"));
+                // 表达式内置函数（random/min/max/abs/clamp）——{…} 表达式上下文直接可用。
+                foreach (var (fn, sig) in DslKeywordDocs.BuiltinFunctions)
+                    items.Add(new CompletionItem(fn, fn, "function", sig));
                 // 行内富文本标记（{b}{i}{u}{w}{fast}{p}{color=}{font=}{size=} 等）与变量同为 {…} 内合法内容。
                 foreach (var tag in DslInlineTags.AllTags)
                     items.Add(new CompletionItem(tag, tag, "tag", "行内标记"));
@@ -281,9 +291,15 @@ public sealed class DslLanguageService : IDslLanguageService
         AlignValue, None,
     }
 
+    /// <summary>带文档详情的补全项（Detail 取自 <see cref="DslKeywordDocs"/>）。</summary>
+    private static CompletionItem Kw(string kw, string kind) =>
+        DslKeywordDocs.TryGet(kw, out var d)
+            ? new CompletionItem(kw, kw, kind, d.Summary)
+            : new CompletionItem(kw, kw, kind);
+
     private static void AddKeywords(List<CompletionItem> items, IReadOnlySet<string> keywords, string kind)
     {
-        foreach (var kw in keywords) items.Add(new CompletionItem(kw, kw, kind));
+        foreach (var kw in keywords) items.Add(Kw(kw, kind));
     }
 
     /// <summary>变量作用域徽标（B32）：局部变量标「局部」，其余（define / 仅 set）标「全局」。</summary>
@@ -514,8 +530,14 @@ public sealed class DslLanguageService : IDslLanguageService
                     return new HoverInfo(value, detail, new Location(filePath, token.Value.Offset, token.Value.Length));
                 }
             }
-            var cat = DslSemanticClassifier.Classify(token.Value, source);
             var text = token.Value.GetText(source).ToString();
+            // 关键字 / 内置函数 / 字面量：优先给出功能说明，而非仅「语义类别」。
+            if (token.Value.Kind != DslTokenKind.String && DslKeywordDocs.TryGet(text, out var kd))
+            {
+                var detail = kd.Usage != null ? $"{kd.Summary}\n\n示例：\n{kd.Usage}" : kd.Summary;
+                return new HoverInfo(text, detail, new Location(filePath, token.Value.Offset, token.Value.Length));
+            }
+            var cat = DslSemanticClassifier.Classify(token.Value, source);
             return new HoverInfo(text, $"语义类别：{cat}");
         }
         return null;

@@ -65,4 +65,7 @@ public enum SemanticCategory
 
     /// <summary>资源文件路径引用（图片/音频/视频/字体等），取值来自项目资源索引；可经 Go To Definition 跳转至磁盘文件。</summary>
     Resource,
+
+    /// <summary>表达式引擎内置函数名（random / min / max / abs / clamp），在 {…} 表达式内直接可用 → function 高亮。</summary>
+    Function,
 }

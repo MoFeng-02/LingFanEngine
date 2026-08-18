@@ -16,6 +16,12 @@ public interface IDslLanguageService
     /// <summary>从索引中移除文档（文件关闭 / 删除时调用）。</summary>
     void RemoveDocument(string filePath);
 
+    /// <summary>定向刷新用：快照某文件当前定义的符号键（跨文件诊断）。</summary>
+    System.Collections.Generic.HashSet<SymbolKey> SnapshotDefinitions(string path);
+
+    /// <summary>定向刷新用：由定义前后快照求受影响的文件集合。</summary>
+    System.Collections.Generic.HashSet<string> GetAffectedFilesByDefinitionChange(string path, System.Collections.Generic.HashSet<SymbolKey> before);
+
     /// <summary>批量索引整个项目的多文件，以满足跨文件跳转 / 查找引用的解析。</summary>
     void IndexProject(System.Collections.Generic.IReadOnlyList<(string Path, string Text)> files);
 

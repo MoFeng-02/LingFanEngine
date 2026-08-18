@@ -85,7 +85,6 @@ internal sealed class DslLanguageServer
 
     private Task DispatchAsync(Request req)
     {
-        Trace($"REQ {req.Method} id={req.Id}");
         switch (req.Method)
         {
             case "initialize":                        return WithWriteLockAsync(HandleInitialize, req);
@@ -143,9 +142,9 @@ internal sealed class DslLanguageServer
         if (p == null) return Task.CompletedTask;
         var path = UriToPath(p.TextDocument.Uri);
         _docs[path] = p.TextDocument.Text;
+        var before = _service.SnapshotDefinitions(path);
         _service.UpdateDocument(path, p.TextDocument.Text);
-        Trace($"OPEN {path} chars={p.TextDocument.Text.Length}");
-        PublishAllDiagnostics();
+        PublishAffected(path, before);
         return Task.CompletedTask;
     }
 
@@ -166,8 +165,9 @@ internal sealed class DslLanguageServer
             var newText = changes[0].Text;
             var updated = src.Substring(0, so) + newText + src.Substring(eo);
             _docs[path] = updated;
+            var beforeSnap = _service.SnapshotDefinitions(path);
             _service.UpdateDocument(path, updated, new Ls.DirtyRange(so, eo - so, newText.Length));
-            PublishAllDiagnostics();
+            PublishAffected(path, beforeSnap);
             return Task.CompletedTask;
         }
 
@@ -189,8 +189,9 @@ internal sealed class DslLanguageServer
             }
         }
         _docs[path] = fullText;
+        var before = _service.SnapshotDefinitions(path);
         _service.UpdateDocument(path, fullText); // dirty=null → 整文重建（小文件开销可忽略，且零错）
-        PublishAllDiagnostics();
+        PublishAffected(path, before);
         return Task.CompletedTask;
     }
 
@@ -198,6 +199,7 @@ internal sealed class DslLanguageServer
     {
         var p = Deserialize<DidChangeWatchedFilesParams>(req, LspJsonContext.Default.DidChangeWatchedFilesParams);
         if (p == null) return Task.CompletedTask;
+        var resourceChanged = false;
         foreach (var ev in p.Changes)
         {
             var path = UriToPath(ev.Uri);
@@ -214,6 +216,7 @@ internal sealed class DslLanguageServer
                 {
                     // 资源文件删除：增量刷新资源索引（非资源类型在索引内被忽略）。
                     _service.RemoveResource(path);
+                    resourceChanged = true;
                 }
             }
             else if (isStory) // 1=Created / 2=Changed：外部编辑我们不知增量，整文重建
@@ -221,20 +224,26 @@ internal sealed class DslLanguageServer
                 try
                 {
                     var text = File.ReadAllText(path);
+                    var before = _service.SnapshotDefinitions(path);
                     _docs[path] = text;
                     _service.UpdateDocument(path, text);
+                    // 定向刷新：仅重发受本文件定义变化影响的文件（含自身）
+                    foreach (var ap in _service.GetAffectedFilesByDefinitionChange(path, before))
+                        if (_docs.ContainsKey(ap)) PublishDiagnostics(PathToUri(ap), ap);
                     LogMessage(4, $"watched: 重新索引 {(ev.Type == 1 ? "新增" : "变更")} {path}");
                 }
                 catch (Exception ex) { Log($"watched reindex skip {path}: {ex.Message}"); }
             }
-                else
-                {
-                    // 资源文件新增/变更：增量刷新资源索引（非资源类型在索引内被忽略，不会误建文档）。
-                    _service.UpdateResource(path);
-                }
+            else
+            {
+                // 资源文件新增/变更：增量刷新资源索引（非资源类型在索引内被忽略，不会误建文档）。
+                // 资源可用性影响「未找到资源」诊断，但无法用符号索引精确定向，故资源类变更仍重发全部打开文档（外部编辑，低频）。
+                _service.UpdateResource(path);
+                resourceChanged = true;
+            }
         }
-        // 外部编辑/新增/删除 .story 会改变跨文件定义集合，重发全部打开文档诊断保持一致。
-        PublishAllDiagnostics();
+        // 仅当资源类文件变更（无法用符号索引定向）时才全量重发；.story 外部编辑已走定向刷新。
+        if (resourceChanged) PublishAllDiagnostics();
         return Task.CompletedTask;
     }
 
@@ -304,7 +313,6 @@ internal sealed class DslLanguageServer
         var src = SourceOf(path);
         var offset = PositionToOffset(src, p.Position);
         var items = _service.GetCompletion(path, offset);
-        Trace($"COMPLETION items={items.Count} path={path} offset={offset}");
         var arr = new CompletionItem[items.Count];
         for (var i = 0; i < arr.Length; i++)
         {
@@ -359,7 +367,6 @@ internal sealed class DslLanguageServer
         var path = UriToPath(p.TextDocument.Uri);
         var src = SourceOf(path);
         var tokens = _service.GetSemanticTokens(path); // 偏移已升序（GetAllTokens 按行/词序产出），无需再排序
-        Trace($"SEMTOK tokens={tokens.Count} path={path}");
         var data = new List<int>(tokens.Count * 5);
         var prevLine = 0;
         var prevChar = 0;
@@ -570,6 +577,14 @@ internal sealed class DslLanguageServer
             PublishDiagnostics(PathToUri(path), path);
     }
 
+    /// <summary>定向刷新：仅重发「定义状态发生变化的符号」所影响到的文件诊断。
+    /// 依据现有跨文件索引 _references（符号→引用列表），由 changedNames 反查引用文件，性能损耗远低于全量重发。</summary>
+    private void PublishAffected(string editedPath, HashSet<Ls.SymbolKey> before)
+    {
+        foreach (var p in _service.GetAffectedFilesByDefinitionChange(editedPath, before))
+            if (_docs.ContainsKey(p)) PublishDiagnostics(PathToUri(p), p);
+    }
+
     // ---- 工具 ----
 
     private T? Deserialize<T>(Request req, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> typeInfo) where T : class
@@ -672,19 +687,6 @@ internal sealed class DslLanguageServer
     private static void Log(string message)
     {
         try { Console.Error.WriteLine($"[LingFanLsp] {message}"); } catch { /* ignore */ }
-    }
-
-    /// <summary>诊断埋点：把每个 LSP 请求/关键响应落到 exe 同目录的 lsp_trace.log（AOT 安全，File.AppendAllText 零反射）。用于定位「客户端是否真发了 didOpen/completion」。</summary>
-    private static readonly object _traceLock = new();
-    private static void Trace(string message)
-    {
-        try
-        {
-            var dir = AppContext.BaseDirectory;
-            lock (_traceLock)
-                File.AppendAllText(Path.Combine(dir, "lsp_trace.log"), $"{DateTime.Now:HH:mm:ss.fff} {message}\n");
-        }
-        catch { /* 埋点失败绝不影响主流程 */ }
     }
 
     /// <summary>向客户端推送 window/logMessage 进度/诊断通知（不影响协议主流程）。</summary>

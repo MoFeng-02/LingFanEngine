@@ -9,7 +9,7 @@ namespace LingFanEngine.Dsl.LanguageServer.Protocol;
 /// </summary>
 internal static class LspProtocol
 {
-    // 语义令牌图例：索引 == LingFanEngine.Dsl.LanguageService.SemanticCategory 枚举值（0..19）。
+    // 语义令牌图例：索引 == LingFanEngine.Dsl.LanguageService.SemanticCategory 枚举值（0..20）。
     // 与 DslLanguageService.GetSemanticTokens 产出的 tokenType 下标严格对齐。
     public static readonly string[] SemanticTokenLegend =
     {
@@ -33,6 +33,7 @@ internal static class LspProtocol
         "function",      // 17 SymbolDefinition
         "variable",     // 18 SymbolReference
         "string",       // 19 Resource（资源路径引用：图片/音频/视频/字体，可跳转至磁盘文件）
+        "function",     // 20 Function（表达式内置函数名 random/min/max/abs/clamp）
     };
 }
 

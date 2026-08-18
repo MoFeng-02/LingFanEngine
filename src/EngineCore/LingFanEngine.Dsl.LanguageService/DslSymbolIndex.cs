@@ -117,6 +117,38 @@ public sealed class DslSymbolIndex
         return set;
     }
 
+    /// <summary>快照某文件当前「作为定义」的全部符号键（用于跨文件诊断定向刷新）。
+    /// 仅扫描全局 _definitions 中 FilePath 命中该文件的条目，O(定义总数)，无反射。</summary>
+    public HashSet<SymbolKey> SnapshotDefinitions(string filePath)
+    {
+        var set = new HashSet<SymbolKey>();
+        foreach (var kvp in _definitions)
+            if (string.Equals(kvp.Value.FilePath, filePath, StringComparison.Ordinal))
+                set.Add(kvp.Key);
+        return set;
+    }
+
+    /// <summary>重索引某文件后调用：由 editedPath 的定义前后快照求「对称差」，得到定义状态发生变化的符号集合；
+    /// 再用现有 _references 索引（符号→引用列表）反查这些符号被哪些文件引用，返回需要重发诊断的全部文件路径
+    /// （含 editedPath 自身）。性能损耗 = O(变更符号数 × 引用文件数)，远低于全量重发所有打开文档。</summary>
+    public HashSet<string> GetAffectedFiles(string editedPath, HashSet<SymbolKey> before)
+    {
+        var after = SnapshotDefinitions(editedPath);
+        // changed = before ⊕ after（对称差）
+        var changed = new HashSet<SymbolKey>(before);
+        foreach (var k in after) changed.Add(k);
+        var intersection = new HashSet<SymbolKey>(before);
+        intersection.IntersectWith(after);
+        changed.ExceptWith(intersection);
+
+        var affected = new HashSet<string>(StringComparer.Ordinal) { editedPath };
+        foreach (var k in changed)
+            if (_references.TryGetValue(k, out var refs))
+                foreach (var r in refs)
+                    affected.Add(r.FilePath);
+        return affected;
+    }
+
     /// <summary>返回所有变量名及其作用域（B32）：define→全局、let/local→局部、仅 set（create-or-set）→全局。
     /// 跨文件合并时 define 优先为全局；其余按「出现即局部」计入局部。供补全候选标注作用域徽标。</summary>
     public IReadOnlyDictionary<string, SymbolScope> GetVariablesWithScope()

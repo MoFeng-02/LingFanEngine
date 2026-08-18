@@ -22,7 +22,11 @@ public static class DslSemanticClassifier
             case DslTokenKind.Symbol:
                 return SemanticCategory.Symbol;
             case DslTokenKind.Identifier:
+            {
+                var text = token.GetText(source).ToString();
+                if (DslKeywordDocs.IsBuiltinFunction(text)) return SemanticCategory.Function;
                 return SemanticCategory.Identifier;
+            }
             case DslTokenKind.Keyword:
             {
                 var text = token.GetText(source).ToString();
