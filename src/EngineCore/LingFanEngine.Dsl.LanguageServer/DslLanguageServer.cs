@@ -507,6 +507,8 @@ internal sealed class DslLanguageServer
     private Task HandleInitialize(Request req)
     {
         if (!req.Id.HasValue) return Task.CompletedTask;
+        // [PROBE] 收到 initialize 时的墙钟时间，配合 Program.Main 的 main-start 可算 spawn→就绪 间隔。
+        System.Console.Error.WriteLine($"[PROBE] init-recv {DateTime.UtcNow:HH:mm:ss.fff}");
         var init = Deserialize<InitializeParams>(req, LspJsonContext.Default.InitializeParams);
         _rootPath = ResolveRoot(init);
         LogMessage(3, $"LSP 启动：{LspBuildStamp()}（pid={System.Environment.ProcessId}）");

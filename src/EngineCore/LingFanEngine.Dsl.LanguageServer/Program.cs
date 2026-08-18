@@ -11,6 +11,8 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
+        // [PROBE] 进程启动探针：记录 Main 入口墙钟时间，用于定位「VS Code 拉起 LSP 慢」是 spawn 慢还是计算慢。
+        System.Console.Error.WriteLine($"[PROBE] main-start {DateTime.UtcNow:HH:mm:ss.fff}");
         // 标准流直接接管；不依赖任何反射式通用宿主，保证 NativeAOT 兼容。
         var input = Console.OpenStandardInput();
         var output = Console.OpenStandardOutput();
