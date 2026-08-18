@@ -615,6 +615,20 @@ public sealed class DslLanguageService : IDslLanguageService
     public string? GetSource(string filePath)
         => _documents.TryGetValue(filePath, out var doc) ? doc.Source.ToString() : null;
 
+    /// <inheritdoc/>
+    public string? FormatDocument(string filePath, int? tabSize = null, bool insertSpaces = true)
+    {
+        var source = GetSource(filePath);
+        return source is null ? null : DslFormatter.Format(source, tabSize, insertSpaces);
+    }
+
+    /// <inheritdoc/>
+    public string? FormatRange(string filePath, int startLine, int endLine, int? tabSize = null, bool insertSpaces = true)
+    {
+        var source = GetSource(filePath);
+        return source is null ? null : DslFormatter.FormatRange(source, startLine, endLine, tabSize, insertSpaces);
+    }
+
     public Task<DslAnalysisResult> GetDiagnosticsAsync(string filePath, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();

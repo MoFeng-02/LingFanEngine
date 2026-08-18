@@ -67,4 +67,10 @@ public interface IDslLanguageService
     /// <summary>取某文件的规范源码文本（供跳转/悬停等把行/列坐标换算成偏移）。
     /// 优先 didOpen 内存文本，回退到工作区扫描建立的索引文档——确保「仅被扫描、尚未 didOpen 的文件」也能正确解析坐标。</summary>
     string? GetSource(string filePath);
+
+    /// <summary>纯缩进规整（格式化）整篇文档——仅重排缩进与去尾随空白，保留内容与注释。供 textDocument/formatting。</summary>
+    string? FormatDocument(string filePath, int? tabSize = null, bool insertSpaces = true);
+
+    /// <summary>格式化指定行区间 [startLine, endLine]（闭区间，0-based）；范围外行原样保留。供 textDocument/rangeFormatting。</summary>
+    string? FormatRange(string filePath, int startLine, int endLine, int? tabSize = null, bool insertSpaces = true);
 }

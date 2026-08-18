@@ -14,4 +14,9 @@
 		<ProjectReference Include="..\LingFanEngine.Dsl.ProjectIndex\LingFanEngine.Dsl.ProjectIndex.csproj" />
 	</ItemGroup>
 
+	<!-- 允许单元测试工程访问 internal 格式化逻辑（DslFormatter 等）。Tests 程序集未强签名，故仅写程序集名。 -->
+	<ItemGroup>
+		<InternalsVisibleTo Include="LingFanEngine.Tests" />
+	</ItemGroup>
+
 </Project>

@@ -71,6 +71,10 @@ internal static class LspProtocol
 [JsonSerializable(typeof(CompletionItem[]))]
 [JsonSerializable(typeof(FoldingRange))]
 [JsonSerializable(typeof(FoldingRange[]))]
+[JsonSerializable(typeof(DocumentFormattingParams))]
+[JsonSerializable(typeof(DocumentRangeFormattingParams))]
+[JsonSerializable(typeof(FormattingOptions))]
+[JsonSerializable(typeof(TextEdit[]))]
 [JsonSerializable(typeof(SemanticTokens))]
 [JsonSerializable(typeof(LspDiagnostic))]
 [JsonSerializable(typeof(PublishDiagnosticsParams))]
@@ -95,6 +99,11 @@ internal sealed class Request
     public JsonElement? Id { get; set; }
     public string Method { get; set; } = string.Empty;
     public JsonElement? Params { get; set; }
+
+    /// <summary>运行时字段（非协议）：写请求在「入队」时构建的写链任务；worker 仅等待其完成（handler 已在链内于写锁下执行）。</summary>
+    [JsonIgnore] public Task? ChainTask;
+    /// <summary>运行时字段（非协议）：读请求在「入队」时快照的写链尾（其之前入队的所有写），用于保证读晚于前序写执行。</summary>
+    [JsonIgnore] public Task? Barrier;
 }
 
 /// <summary>JSON-RPC 2.0 成功响应。</summary>
@@ -210,6 +219,26 @@ internal sealed class SemanticTokensParams
     public TextDocumentIdentifier TextDocument { get; set; } = new();
 }
 
+/// <summary>格式化选项：tabSize = 每级缩进空格数；insertSpaces = true 用空格、false 用制表符。</summary>
+internal sealed class FormattingOptions
+{
+    public int TabSize { get; set; } = 2;
+    public bool InsertSpaces { get; set; } = true;
+}
+
+internal sealed class DocumentFormattingParams
+{
+    public TextDocumentIdentifier TextDocument { get; set; } = new();
+    public FormattingOptions Options { get; set; } = new();
+}
+
+internal sealed class DocumentRangeFormattingParams
+{
+    public TextDocumentIdentifier TextDocument { get; set; } = new();
+    public FormattingOptions Options { get; set; } = new();
+    public Range Range { get; set; } = new();
+}
+
 internal sealed class ServerInfo
 {
     public string Name { get; set; } = string.Empty;
@@ -244,6 +273,10 @@ internal sealed class ServerCapabilities
     public bool? FoldingRangeProvider { get; set; }
     public CompletionOptions? CompletionProvider { get; set; }
     public SemanticTokensOptions? SemanticTokensProvider { get; set; }
+    /// <summary>整文档格式化（textDocument/formatting）。</summary>
+    public bool? DocumentFormattingProvider { get; set; }
+    /// <summary>选区格式化（textDocument/rangeFormatting）。</summary>
+    public bool? DocumentRangeFormattingProvider { get; set; }
     /// <summary>workspace 能力（如文件监听，用于 P2 增量索引）。</summary>
     public WorkspaceCapabilities? Workspace { get; set; }
     /// <summary>window 能力（如 workDoneProgress，用于 P4 进度通知）。</summary>

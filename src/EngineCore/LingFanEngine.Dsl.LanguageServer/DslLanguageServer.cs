@@ -32,6 +32,13 @@ internal sealed class DslLanguageServer
     private string? _rootPath;
     private Channel<Request>? _channel;
 
+    /// <summary>写类方法集合（改变文档/索引/诊断状态，须沿写链串行）。其余为读类（可并发，但须晚于前序写执行）。</summary>
+    private static readonly HashSet<string> s_writeMethods = new()
+    {
+        "initialize", "initialized", "shutdown", "exit",
+        "textDocument/didOpen", "textDocument/didChange", "workspace/didChangeWatchedFiles",
+    };
+
     public DslLanguageServer(Ls.IDslLanguageService service, Stream input, Stream output)
     {
         _service = service;
@@ -62,6 +69,24 @@ internal sealed class DslLanguageServer
                 catch (EndOfStreamException) { break; }
                 catch (Exception ex) { Log($"read error: {ex.Message}"); break; }
                 if (req == null) break;
+
+                // 在「入队（流顺序）」这一刻确定写屏障：保证本读请求排在它之前入队的所有写之后执行，
+                // 即使该读被某 worker 抢先分派——从而修复并发 worker 下读早于前序写（didOpen/initialized）执行的竞态。
+                if (s_writeMethods.Contains(req.Method))
+                {
+                    var handler = ResolveHandler(req.Method);
+                    lock (_chainLock)
+                    {
+                        var prev = _writeChain;
+                        // Task.Run 卸载到线程池，避免写 handler（如 initialized 的目录枚举、didOpen 的索引）阻塞 reader 线程。
+                        _writeChain = Task.Run(() => ChainWrite(prev, handler, req));
+                        req.ChainTask = _writeChain;
+                    }
+                }
+                else
+                {
+                    lock (_chainLock) req.Barrier = _writeChain;
+                }
                 _channel!.Writer.TryWrite(req);
             }
         }
@@ -85,36 +110,43 @@ internal sealed class DslLanguageServer
 
     private Task DispatchAsync(Request req)
     {
-        switch (req.Method)
+        if (s_writeMethods.Contains(req.Method))
         {
-            case "initialize":                        return WithWriteLockAsync(HandleInitialize, req);
-            case "initialized":                       return WithWriteLockAsync(HandleInitialized, req);
-            case "shutdown":                          return WithWriteLockAsync(HandleShutdown, req);
-            case "exit":                              return WithWriteLockAsync(HandleExit, req);
-            case "textDocument/didOpen":              return WithWriteLockAsync(HandleDidOpen, req);
-            case "textDocument/didChange":            return WithWriteLockAsync(HandleDidChange, req);
-            case "workspace/didChangeWatchedFiles":   return WithWriteLockAsync(HandleWatchedFiles, req);
-            case "textDocument/hover":                return WithReadLock(HandleHover, req);
-            case "textDocument/definition":           return WithReadLock(HandleDefinition, req);
-            case "textDocument/references":            return WithReadLock(HandleReferences, req);
-            case "textDocument/completion":           return WithReadLock(HandleCompletion, req);
-            case "textDocument/foldingRange":         return WithReadLock(HandleFolding, req);
-            case "textDocument/semanticTokens/full":  return WithReadLock(HandleSemanticTokens, req);
-            default:
-                if (req.Id.HasValue)
-                    _conn.SendError(req.Id.Value, -32601, $"method not found: {req.Method}");
-                return Task.CompletedTask;
+            // 写链已在入队时构建；worker 仅等待其完成（handler 已在链内于写锁下执行）。
+            return req.ChainTask ?? Task.CompletedTask;
         }
+        var handler = ResolveHandler(req.Method);
+        if (handler == null)
+        {
+            if (req.Id.HasValue)
+                _conn.SendError(req.Id.Value, -32601, $"method not found: {req.Method}");
+            return Task.CompletedTask;
+        }
+        return WithReadLock(handler, req);
     }
+
+    /// <summary>方法 → handler 解析（与 dispatch 同源单一真相源）。写方法在入队时已据此构建写链。</summary>
+    private Func<Request, Task> ResolveHandler(string method) => method switch
+    {
+        "initialize" => HandleInitialize,
+        "initialized" => HandleInitialized,
+        "shutdown" => HandleShutdown,
+        "exit" => HandleExit,
+        "textDocument/didOpen" => HandleDidOpen,
+        "textDocument/didChange" => HandleDidChange,
+        "workspace/didChangeWatchedFiles" => HandleWatchedFiles,
+        "textDocument/hover" => HandleHover,
+        "textDocument/definition" => HandleDefinition,
+        "textDocument/references" => HandleReferences,
+        "textDocument/completion" => HandleCompletion,
+        "textDocument/foldingRange" => HandleFolding,
+        "textDocument/formatting" => HandleFormatting,
+        "textDocument/rangeFormatting" => HandleRangeFormatting,
+        "textDocument/semanticTokens/full" => HandleSemanticTokens,
+        _ => null!,
+    };
 
     /// <summary>写串行化：沿 <see cref="_writeChain"/> 顺序执行，且持写锁独占服务/文档状态。</summary>
-    private async Task WithWriteLockAsync(Func<Request, Task> handler, Request req)
-    {
-        Task prev;
-        lock (_chainLock) { prev = _writeChain; _writeChain = ChainWrite(prev, handler, req); }
-        await _writeChain;
-    }
-
     private async Task ChainWrite(Task prev, Func<Request, Task> handler, Request req)
     {
         try { await prev; } catch { /* 前序写失败不影响后续 */ }
@@ -123,12 +155,11 @@ internal sealed class DslLanguageServer
         finally { _gate.ExitWriteLock(); }
     }
 
-    /// <summary>读并发：先等当前写链完成（保证看到最新写结果），再持读锁执行（多个读可并发）。</summary>
+    /// <summary>读并发：先等「本请求之前入队的所有写」完成（保证看到最新文档状态，且晚于前序写执行），
+    /// 再持读锁执行（多个读可并发）。屏障在 <see cref="ReaderLoop"/> 入队时按流顺序快照，杜绝读早于前序写执行。</summary>
     private async Task WithReadLock(Func<Request, Task> handler, Request req)
     {
-        Task wait;
-        lock (_chainLock) wait = _writeChain;
-        await wait;
+        if (req.Barrier != null) await req.Barrier;
         _gate.EnterReadLock();
         try { await handler(req); }
         finally { _gate.ExitReadLock(); }
@@ -360,6 +391,77 @@ internal sealed class DslLanguageServer
         return Task.CompletedTask;
     }
 
+    private Task HandleFormatting(Request req)
+    {
+        var p = Deserialize<DocumentFormattingParams>(req, LspJsonContext.Default.DocumentFormattingParams);
+        if (p == null || !req.Id.HasValue) return Task.CompletedTask;
+        var path = UriToPath(p.TextDocument.Uri);
+        var src = SourceOf(path);
+        if (src is null) { SendEmptyEdits(req); return Task.CompletedTask; }
+        var insertSpaces = p.Options?.InsertSpaces != false;
+        var formatted = _service.FormatDocument(path, p.Options?.TabSize, insertSpaces) ?? src;
+        var edit = new TextEdit
+        {
+            Range = new Protocol.Range { Start = new Position { Line = 0, Character = 0 }, End = OffsetToPosition(src, src.Length) },
+            NewText = formatted,
+        };
+        _conn.SendResult(req.Id.Value, new[] { edit }, LspJsonContext.Default.TextEditArray);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleRangeFormatting(Request req)
+    {
+        var p = Deserialize<DocumentRangeFormattingParams>(req, LspJsonContext.Default.DocumentRangeFormattingParams);
+        if (p == null || !req.Id.HasValue) return Task.CompletedTask;
+        var path = UriToPath(p.TextDocument.Uri);
+        var src = SourceOf(path);
+        if (src is null) { SendEmptyEdits(req); return Task.CompletedTask; }
+        var startLine = p.Range.Start.Line;
+        var endLine = p.Range.End.Line;
+        if (p.Range.End.Character == 0) endLine--; // LSP 区间 end 行号独占；字符为 0 时上一行才是末包含行
+        if (endLine < startLine) endLine = startLine;
+
+        var insertSpaces = p.Options?.InsertSpaces != false;
+        var formatted = _service.FormatRange(path, startLine, endLine, p.Options?.TabSize, insertSpaces) ?? src;
+
+        // 取格式化结果中对应行的子串（含其换行），保证替换区间与原文逐行对齐、尾随换行不丢。
+        var fStart = LineStartOffset(formatted, startLine);
+        var fEnd = LineStartOffset(formatted, endLine + 1);
+        var rangeText = formatted[fStart..fEnd];
+
+        var startOff = LineStartOffset(src, startLine);
+        var endOff = LineStartOffset(src, endLine + 1);
+        var edit = new TextEdit
+        {
+            Range = new Protocol.Range { Start = OffsetToPosition(src, startOff), End = OffsetToPosition(src, endOff) },
+            NewText = rangeText,
+        };
+        _conn.SendResult(req.Id.Value, new[] { edit }, LspJsonContext.Default.TextEditArray);
+        return Task.CompletedTask;
+    }
+
+    private void SendEmptyEdits(Request req)
+    {
+        if (req.Id.HasValue)
+            _conn.SendResult(req.Id.Value, System.Array.Empty<TextEdit>(), LspJsonContext.Default.TextEditArray);
+    }
+
+    /// <summary>返回第 <paramref name="line"/> 行（0-based）起始字符偏移；越界返回文本长度。</summary>
+    private static int LineStartOffset(string src, int line)
+    {
+        if (line <= 0) return 0;
+        var lf = 0;
+        for (var i = 0; i < src.Length; i++)
+        {
+            if (src[i] == '\n')
+            {
+                lf++;
+                if (lf == line) return i + 1;
+            }
+        }
+        return src.Length;
+    }
+
     private Task HandleSemanticTokens(Request req)
     {
         var p = Deserialize<SemanticTokensParams>(req, LspJsonContext.Default.SemanticTokensParams);
@@ -399,6 +501,8 @@ internal sealed class DslLanguageServer
             DefinitionProvider = true,
             ReferencesProvider = true,
             FoldingRangeProvider = true,
+            DocumentFormattingProvider = true,
+            DocumentRangeFormattingProvider = true,
             CompletionProvider = new CompletionOptions { TriggerCharacters = CompletionTriggerCharacters() },
             SemanticTokensProvider = new SemanticTokensOptions
             {

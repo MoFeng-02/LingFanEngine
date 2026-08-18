@@ -38,6 +38,7 @@
     <ProjectReference Include="..\LingFanEngine\LingFanEngine.csproj" />
     <ProjectReference Include="..\LingFanEngine.Abstractions\LingFanEngine.Abstractions.csproj" />
     <ProjectReference Include="..\LingFanEngine.DslCore\LingFanEngine.DslCore.csproj" />
+    <ProjectReference Include="..\LingFanEngine.Dsl.LanguageService\LingFanEngine.Dsl.LanguageService.csproj" />
   </ItemGroup>
 
 </Project>
