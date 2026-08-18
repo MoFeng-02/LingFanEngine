@@ -590,7 +590,12 @@ internal sealed class DslLanguageServer
     private T? Deserialize<T>(Request req, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> typeInfo) where T : class
         => req.Params is { } p ? p.Deserialize(typeInfo) : null;
 
-    private string SourceOf(string path) => _docs.TryGetValue(path, out var s) ? s : string.Empty;
+    private string SourceOf(string path)
+    {
+        if (_docs.TryGetValue(path, out var s) && s.Length > 0) return s;
+        // 回退到服务层规范文档源（工作区扫描建立的索引文档），确保仅被扫描、尚未 didOpen 的文件也能换算坐标。
+        return _service.GetSource(path) ?? string.Empty;
+    }
 
     private Location MakeLocation(string path, int offset, int length)
     {

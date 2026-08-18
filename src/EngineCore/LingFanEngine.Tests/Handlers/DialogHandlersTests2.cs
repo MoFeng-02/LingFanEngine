@@ -59,4 +59,38 @@ public class DialogHandlersTests2
         ctx.State.Get<string>(StateKeys.Dialog.Text).Should().Be("你好，世界");
         ctx.State.Get<bool>(StateKeys.Dialog.Complete).Should().BeFalse();
     }
+
+    // ====== let/local 局部变量可读（B47 修复回归）======
+    // let/local 写入 _local_<name>，say 插值必须能从 _local_ 前缀读到，否则局部变量「只能写不能读」。
+
+    [Fact]
+    public void ShowDialogHandler_InterpolatesLocalVariable_Let()
+    {
+        // 模拟 DSL: let "temp" 42  -> SetVariableCommand{ Key="_local_temp", Value=42, IsDefine=true }
+        var ctx = new FakeCommandContext();
+        new SetVariableHandler().Handle(new SetVariableCommand { Key = "_local_temp", Value = 42, IsDefine = true }, ctx);
+        new ShowDialogHandler().Handle(new ShowDialogCommand { Text = "temp={temp}" }, ctx);
+        ctx.State.Get<string>(StateKeys.Dialog.Text).Should().Be("temp=42");
+    }
+
+    [Fact]
+    public void ShowDialogHandler_LocalShadowsGlobal()
+    {
+        // set "x" 10（全局 x） + let "x" 99（局部 _local_x） -> 读取应取局部
+        var ctx = new FakeCommandContext();
+        new SetVariableHandler().Handle(new SetVariableCommand { Key = "x", Value = 10 }, ctx);
+        new SetVariableHandler().Handle(new SetVariableCommand { Key = "_local_x", Value = 99, IsDefine = true }, ctx);
+        new ShowDialogHandler().Handle(new ShowDialogCommand { Text = "x={x}" }, ctx);
+        ctx.State.Get<string>(StateKeys.Dialog.Text).Should().Be("x=99");
+    }
+
+    [Fact]
+    public void ShowDialogHandler_InterpolatesLocalDottedKey()
+    {
+        // 模拟 DSL: let "player.hp" 50  -> 键为 _local_player_hp
+        var ctx = new FakeCommandContext();
+        new SetVariableHandler().Handle(new SetVariableCommand { Key = "_local_player_hp", Value = 50, IsDefine = true }, ctx);
+        new ShowDialogHandler().Handle(new ShowDialogCommand { Text = "HP={player.hp}" }, ctx);
+        ctx.State.Get<string>(StateKeys.Dialog.Text).Should().Be("HP=50");
+    }
 }

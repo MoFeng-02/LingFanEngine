@@ -63,4 +63,8 @@ public interface IDslLanguageService
 
     /// <summary>结构化块嵌套深度（基于已索引文档 + DslCore 单源块结构）；与 GetFoldingRegions 同源算法，保证折叠与格式化一致。长度 = 行数。</summary>
     int[] GetLineBlockDepths(string filePath);
+
+    /// <summary>取某文件的规范源码文本（供跳转/悬停等把行/列坐标换算成偏移）。
+    /// 优先 didOpen 内存文本，回退到工作区扫描建立的索引文档——确保「仅被扫描、尚未 didOpen 的文件」也能正确解析坐标。</summary>
+    string? GetSource(string filePath);
 }

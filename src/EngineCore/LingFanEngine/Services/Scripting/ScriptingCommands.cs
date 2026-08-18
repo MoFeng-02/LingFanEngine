@@ -279,9 +279,9 @@ public static class DslExpressionEvaluator
                 return Random.Shared.Next(min, max + 1);
         }
 
-        // 纯变量引用：仅含字母/数字/下划线/点
+        // 纯变量引用：仅含字母/数字/下划线/点（局部 _local_ 优先遮蔽全局）
         if (IsPureVariable(expr))
-            return state.Get<object>(expr);
+            return ReadVariableLocal(state, expr);
 
         // 比较表达式：gold >= 100
         var (cmpLeft, cmpOp, cmpRight) = TryParseComparison(expr);
@@ -365,10 +365,10 @@ public static class DslExpressionEvaluator
             return CompareValues(left, right, cmpOp);
         }
 
-        // 纯变量引用：非空且非 false 即为真
+        // 纯变量引用：非空且非 false 即为真（局部 _local_ 优先遮蔽全局）
         if (IsPureVariable(expr))
         {
-            var val = state.Get<object>(expr);
+            var val = ReadVariableLocal(state, expr);
             if (val == null) return false;
             if (val is bool b) return b;
             if (val is int i) return i != 0;
@@ -441,8 +441,19 @@ public static class DslExpressionEvaluator
         if (token.StartsWith('"') && token.EndsWith('"'))
             return token[1..^1];
 
-        // 变量引用：从状态容器读取
-        return state.Get<object>(token);
+        // 变量引用：从状态容器读取（局部 _local_ 优先遮蔽全局）
+        return ReadVariableLocal(state, token);
+    }
+
+    /// <summary>
+    /// 读取变量值——局部变量（let/local 写入 _local_&lt;name&gt;）优先遮蔽全局变量（set/define 写入 &lt;name&gt;）。
+    /// <para>与 ExpressionEvaluator.ReadVariable 逻辑一致，供旧版求值回退路径复用。</para>
+    /// </summary>
+    private static object? ReadVariableLocal(IStateContainer state, string name)
+    {
+        var local = state.Get<object>("_local_" + name.Replace('.', '_'));
+        if (local != null) return local;
+        return state.Get<object>(name);
     }
 
     private static double ToDouble(object? val) =>

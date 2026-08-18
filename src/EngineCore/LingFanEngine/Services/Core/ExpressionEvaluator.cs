@@ -197,16 +197,27 @@ public static class ExpressionEvaluator
     /// 解析变量路径——支持特殊时间变量、扁平 key、嵌套字典路径
     /// <para>优先级：状态容器中的显式值 > 时间特殊变量 > null</para>
     /// </summary>
+    /// <summary>
+    /// 读取变量值——局部变量（let/local 写入 _local_&lt;name&gt;）优先遮蔽全局变量（set/define 写入 &lt;name&gt;）。
+    /// <para>写路径约定见 LingFanDslEngine：let/local 的键为 "_local_" + key.Replace('.','_')，set/define 的键为字面 key。</para>
+    /// <para>读路径与写路径严格一致，故 let/local 声明的变量正确可读，且与全局同名变量各自独立、互不污染。</para>
+    /// </summary>
+    private static object? ReadVariable(IStateContainer state, string name)
+    {
+        var local = state.Get<object>("_local_" + name.Replace('.', '_'));
+        if (local != null) return local;
+        return state.Get<object>(name);
+    }
+
     private static object? ResolveVariable(string path, IStateContainer state)
     {
-        // 单段路径：先检查状态容器中的显式值
+        // 单段路径：局部(_local_)优先遮蔽全局，与写路径 let/local -> _local_<name> 一致
+        var direct = ReadVariable(state, path);
+        if (direct != null) return direct;
+
         var parts = path.Split('.');
         if (parts.Length == 1)
         {
-            var stateValue = state.Get<object>(path);
-            if (stateValue != null)
-                return stateValue;
-
             // 特殊变量：days / hours / mins / minutes（仅当状态中不存在时作为回退）
             if (path.Length <= 7)
             {
@@ -219,16 +230,11 @@ public static class ExpressionEvaluator
                     return (state.Get<long>(StateKeys.GameTime.TotalMinutes) % 60).ToString();
             }
 
-            return stateValue;
+            return null;
         }
 
-        // 多段路径：先尝试扁平 key
-        var flatValue = state.Get<object>(path);
-        if (flatValue != null)
-            return flatValue;
-
-        // 逐层递归：player → stats → hp
-        object? current = state.Get<object>(parts[0]);
+        // 多段路径：扁平 key（含局部 _local_ 前缀）已在 ReadVariable 尝试；这里走嵌套字典 player -> stats -> hp
+        object? current = ReadVariable(state, parts[0]);
         if (current == null) return null;
 
         for (int i = 1; i < parts.Length; i++)

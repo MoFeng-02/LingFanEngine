@@ -427,4 +427,45 @@ public class ExpressionEvaluatorTests
         var result = ExpressionParser.Replace("{player.stats.hp}", _state);
         result.Should().Be("80");
     }
+
+    // ====== let/local 局部变量可读（B47 修复回归）======
+    // let/local 写入 _local_<name>，读取路径必须优先解析 _local_ 前缀（局部遮蔽全局）。
+
+    [Fact]
+    public void Evaluate_LocalVariable_Readable()
+    {
+        // 模拟 let "temp" 42 -> 写入 _local_temp
+        _state.Set("_local_temp", 42);
+        DslExpressionEvaluator.Evaluate("temp", _state).Should().Be(42);
+    }
+
+    [Fact]
+    public void Evaluate_LocalShadowsGlobal()
+    {
+        _state.Set("x", 10);            // set x=10（全局）
+        _state.Set("_local_x", 99);     // let x=99（局部）
+        DslExpressionEvaluator.Evaluate("x", _state).Should().Be(99);
+    }
+
+    [Fact]
+    public void EvaluateBool_LocalVariable()
+    {
+        _state.Set("_local_flag", true);
+        DslExpressionEvaluator.EvaluateBool("flag", _state).Should().BeTrue();
+    }
+
+    [Fact]
+    public void ReplaceText_LocalVariable()
+    {
+        _state.Set("_local_name", "小明");
+        DslExpressionEvaluator.ReplaceText("hi {name}", _state).Should().Be("hi 小明");
+    }
+
+    [Fact]
+    public void Evaluate_LocalDottedKey()
+    {
+        // 模拟 let "player.hp" 50 -> 键为 _local_player_hp
+        _state.Set("_local_player_hp", 50);
+        DslExpressionEvaluator.Evaluate("player.hp", _state).Should().Be(50);
+    }
 }

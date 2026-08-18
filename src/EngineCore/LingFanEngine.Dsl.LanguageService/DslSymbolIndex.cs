@@ -16,6 +16,11 @@ public sealed class DslSymbolIndex
     private readonly Dictionary<SymbolKey, List<SymbolOccurrence>> _references = new();
     // 文件 -> 该文件内全部出现（用于重索引时清理旧条目）
     private readonly Dictionary<string, List<SymbolOccurrence>> _byFile = new();
+    // 局部变量(let/local)定义表：按 文件 -> 变量名 二级索引。
+    // let/local 是「文件级局部」——仅在声明它的同一文件内可解析（不跨文件、不跨作用域），
+    // 与运行时同文件共享 StateContainer 的行为一致；跨文件的 let 引用必须判为「未定义」，
+    // 否则 fileA 的 let 会被误当成 fileB 的引用目标，造成错误跳转 / 漏报未定义。
+    private readonly Dictionary<string, Dictionary<string, SymbolOccurrence>> _localVarDefsByFile = new();
 
     /// <summary>索引（或重索引）单个文件：先清理旧条目，再解析新条目并入全局表。</summary>
     public void IndexFile(string filePath, DslToken[] tokens, ReadOnlySpan<char> source)
@@ -76,22 +81,34 @@ public sealed class DslSymbolIndex
         }
     }
 
-    /// <summary>解析定义位置（用于跳转定义）。支持 fallback 种类（如 jump 可指向 label 也可指向 scene）。</summary>
-    public SymbolOccurrence? Resolve(SymbolKind primary, SymbolKind? fallback, string name)
+    /// <summary>解析定义位置（用于跳转定义）。支持 fallback 种类（如 jump 可指向 label 也可指向 scene）。
+    /// <param name="fromFile">引用所在文件。局部变量(let/local)仅在此文件内解析——不跨文件、不跨作用域；
+    /// 传 null 则退化为全局解析（仅用于不需要文件上下文的内部回溯）。</param></summary>
+    public SymbolOccurrence? Resolve(SymbolKind primary, SymbolKind? fallback, string name, string? fromFile = null)
     {
+        // 变量解析：仅当 fromFile 与声明同文件时，局部定义(let/local)才优先于全局——与运行时「同文件 _local_ 遮蔽全局」严格一致，
+        // 且确保「fileA 的 let」不会被误当成「fileB 的 {temp}」的引用目标（跨文件不解析）。
+        if (primary == SymbolKind.Variable && fromFile != null
+            && _localVarDefsByFile.TryGetValue(fromFile, out var fileLocals)
+            && fileLocals.TryGetValue(name, out var localDef))
+            return localDef;
         if (_definitions.TryGetValue(new SymbolKey(primary, name), out var def)) return def;
         if (fallback is { } fb && _definitions.TryGetValue(new SymbolKey(fb, name), out var fbDef)) return fbDef;
         return null;
     }
 
-    /// <summary>收集某符号的所有引用位置（用于查找所有引用）。</summary>
-    public IReadOnlyList<Location> FindReferences(SymbolKind kind, string name)
+    /// <summary>收集某符号的所有引用位置（用于查找所有引用）。
+    /// <param name="inFile">非 null 时仅返回该文件内的引用——局部变量(let/local)查找引用应限制在同文件，避免把其它文件的同名局部引用混入。</param></summary>
+    public IReadOnlyList<Location> FindReferences(SymbolKind kind, string name, string? inFile = null)
     {
         if (!_references.TryGetValue(new SymbolKey(kind, name), out var list))
             return System.Array.Empty<Location>();
-        var locations = new Location[list.Count];
-        for (var i = 0; i < list.Count; i++)
-            locations[i] = new Location(list[i].FilePath, list[i].Offset, list[i].Length);
+        var locations = new List<Location>(list.Count);
+        foreach (var o in list)
+        {
+            if (inFile != null && !string.Equals(o.FilePath, inFile, StringComparison.Ordinal)) continue;
+            locations.Add(new Location(o.FilePath, o.Offset, o.Length));
+        }
         return locations;
     }
 
@@ -145,27 +162,32 @@ public sealed class DslSymbolIndex
         foreach (var k in changed)
             if (_references.TryGetValue(k, out var refs))
                 foreach (var r in refs)
+                {
+                    // 局部变量(let/local)不跨文件解析：其定义变更只影响同文件引用，忽略其它文件的同名局部引用，避免误重发无关文件诊断。
+                    if (r.Scope == SymbolScope.Local && !string.Equals(r.FilePath, editedPath, StringComparison.Ordinal)) continue;
                     affected.Add(r.FilePath);
+                }
         return affected;
     }
 
-    /// <summary>返回所有变量名及其作用域（B32）：define→全局、let/local→局部、仅 set（create-or-set）→全局。
-    /// 跨文件合并时 define 优先为全局；其余按「出现即局部」计入局部。供补全候选标注作用域徽标。</summary>
-    public IReadOnlyDictionary<string, SymbolScope> GetVariablesWithScope()
+    /// <summary>返回变量名及其作用域（B32）：define→全局、let/local→局部、仅 set（create-or-set）→全局。
+    /// 跨文件合并时 define 优先为全局；其余按「出现即局部」计入局部。供补全候选标注作用域徽标。
+    /// <param name="filePath">非 null 时仅扫描该文件——避免把 fileA 的 let 当成 fileB 的局部变量候选（let 文件级局部，不跨文件）。</param></summary>
+    public IReadOnlyDictionary<string, SymbolScope> GetVariablesWithScope(string? filePath = null)
     {
         var scopes = new Dictionary<string, SymbolScope>(StringComparer.Ordinal);
         foreach (var kvp in _byFile)
         {
+            if (filePath != null && !string.Equals(kvp.Key, filePath, StringComparison.Ordinal)) continue;
             foreach (var o in kvp.Value)
             {
                 if (o.Kind != SymbolKind.Variable || o.Role != SymbolRole.Definition) continue;
-                if (o.IsDeclaration) scopes[o.Name] = SymbolScope.Global;                 // define 全局，覆盖一切
-                else if (o.Scope == SymbolScope.Local)
-                {
-                    if (!scopes.TryGetValue(o.Name, out var cur) || cur != SymbolScope.Global)
-                        scopes[o.Name] = SymbolScope.Local;                              // let/local → 局部
-                }
-                else scopes.TryAdd(o.Name, SymbolScope.Global);                          // 仅 set → 全局
+                // 作用域以 SymbolScope 为准（声明式变量也携带正确作用域）：let/local 一律局部，define 全局，仅 set（全局作用域）全局。
+                if (o.Scope == SymbolScope.Local)
+                    scopes[o.Name] = SymbolScope.Local;                                  // let/local → 局部（声明或赋值）
+                else if (o.IsDeclaration)
+                    scopes[o.Name] = SymbolScope.Global;                                 // define 全局，覆盖一切
+                else scopes.TryAdd(o.Name, SymbolScope.Global);                          // 仅 set（全局作用域）→ 全局
             }
         }
         return scopes;
@@ -184,6 +206,7 @@ public sealed class DslSymbolIndex
         {
             if (o.Role != SymbolRole.Definition) continue;
             if (!o.IsDeclaration) continue;
+            if (o.Scope == SymbolScope.Local) continue;   // let/local 块级局部变量，重复声明属正常写法
             if (!seenDefs.Add(o.Key))
                 result.Add(new Diagnostic(DiagnosticSeverity.Warning,
                     $"重复定义{o.Kind}「{o.Name}」", new Location(filePath, o.Offset, o.Length)));
@@ -210,7 +233,7 @@ public sealed class DslSymbolIndex
                 SymbolKind.Func => SymbolKind.Label,
                 _ => (SymbolKind?)null,
             };
-            if (Resolve(o.Kind, fb, o.Name) is null)
+            if (Resolve(o.Kind, fb, o.Name, o.FilePath) is null)
                 result.Add(new Diagnostic(DiagnosticSeverity.Error,
                     $"未定义的{o.Kind}「{o.Name}」", new Location(filePath, o.Offset, o.Length)));
         }
@@ -228,8 +251,22 @@ public sealed class DslSymbolIndex
             // set（赋值，IsDeclaration=false）是写引用，绝不进入「已定义」表——
             // 否则「把 define 移走、只留 set」时变量仍会被判为「已定义」，导致未定义引用永不爆红（B37 根因）。
             // 这也意味着：若某变量只剩 set 而无 define，它的所有读取引用（{x} / 表达式 RHS）都会被正确判为未定义并爆红。
-            if (o.IsDeclaration)
+            // 注意：let/local（局部作用域）声明【不】进入全局 _definitions——否则其跨文件可见，会经 Resolve 的全局 fallback
+            // 被其它文件的 {temp} 误当成引用目标（跨文件/跨作用域泄漏）。局部变量只登记到 _localVarDefsByFile[文件]，
+            // 仅同文件内可解析；跨文件引用自然落到「未定义」。
+            if (o.IsDeclaration && !(o.Kind == SymbolKind.Variable && o.Scope == SymbolScope.Local))
                 _definitions[o.Key] = o;
+            // 局部变量(let/local)额外登记到 _localVarDefsByFile[文件]，供变量解析时优先匹配（同文件局部遮蔽全局，准确跳转）。
+            // 按文件二级索引，确保「fileA 的 let」不会解析为「fileB 的 {temp}」引用目标（不跨文件）。
+            if (o.Kind == SymbolKind.Variable && o.IsDeclaration && o.Scope == SymbolScope.Local)
+            {
+                if (!_localVarDefsByFile.TryGetValue(o.FilePath, out var map))
+                {
+                    map = new Dictionary<string, SymbolOccurrence>(StringComparer.Ordinal);
+                    _localVarDefsByFile[o.FilePath] = map;
+                }
+                map[o.Name] = o;
+            }
         }
         else
         {
@@ -248,6 +285,11 @@ public sealed class DslSymbolIndex
         {
             if (_definitions.TryGetValue(o.Key, out var existing) && existing.FilePath == o.FilePath && existing.Offset == o.Offset)
                 _definitions.Remove(o.Key);
+            // 同步清理 _localVarDefsByFile[文件] 中的局部变量定义
+            if (o.Kind == SymbolKind.Variable && o.Scope == SymbolScope.Local
+                && _localVarDefsByFile.TryGetValue(o.FilePath, out var map)
+                && map.TryGetValue(o.Name, out var loc) && loc.FilePath == o.FilePath && loc.Offset == o.Offset)
+                map.Remove(o.Name);
         }
         else if (_references.TryGetValue(o.Key, out var list))
         {
@@ -391,7 +433,9 @@ public sealed class DslSymbolIndex
                     {
                         var s = NameSpan(lineTokens[1], source);
                         var scope = headText is "let" or "local" ? SymbolScope.Local : SymbolScope.Global;
-                        var isDecl = headText == "define";
+                        // define / let / local 都是「声明」式定义，进入定义表（set 仅赋值，不进入定义表，见 B37）。
+                        // let/local 声明局部变量（写入 _local_<name>），必须登记为定义，否则其引用会被误报「未定义」。
+                        var isDecl = headText is "define" or "let" or "local";
                         occurrences.Add(new SymbolOccurrence(SymbolKind.Variable, SymbolRole.Definition, varName, filePath, s.Offset, s.Length, scope, isDecl));
                     }
                     break;

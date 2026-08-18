@@ -166,7 +166,8 @@ public sealed class DslLanguageService : IDslLanguageService
 
             case CompletionContext.VariableReference:
                 var seenVars = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var (n, sc) in _symbolIndex.GetVariablesWithScope())
+                // 仅取本文件的变量作用域：let/local 是文件级局部，不跨文件补全（fileB 不应提示 fileA 的 let）。
+                foreach (var (n, sc) in _symbolIndex.GetVariablesWithScope(filePath))
                 {
                     seenVars.Add(n);
                     items.Add(new CompletionItem(n, n, "variable", ScopeBadge(sc)));
@@ -314,10 +315,11 @@ public sealed class DslLanguageService : IDslLanguageService
         _ => null,
     };
 
-    /// <summary>查询某变量名的作用域（用于悬浮信息标注），查不到则按全局处理。</summary>
-    private SymbolScope GetVarScope(string name)
+    /// <summary>查询某变量名在指定文件内的作用域（用于悬浮信息标注），查不到则按全局处理。
+    /// 传 filePath 使「局部」判定限定在声明所在文件——fileB 的全局 define 不会因 fileA 的 let 同名而被误标为局部。</summary>
+    private SymbolScope GetVarScope(string name, string filePath)
     {
-        var scopes = _symbolIndex.GetVariablesWithScope();
+        var scopes = _symbolIndex.GetVariablesWithScope(filePath);
         return scopes.TryGetValue(name, out var s) ? s : SymbolScope.Global;
     }
 
@@ -478,7 +480,7 @@ public sealed class DslLanguageService : IDslLanguageService
                 if (o.IsDeclaration)
                 {
                     var refs = _symbolIndex.FindReferences(o.Kind, o.Name).Count;
-                    var scopeTag = o.Kind == SymbolKind.Variable ? ScopeBadge(GetVarScope(o.Name)) : null;
+                    var scopeTag = o.Kind == SymbolKind.Variable ? ScopeBadge(GetVarScope(o.Name, filePath)) : null;
                     var detail = o.Kind == SymbolKind.Variable && scopeTag != null
                         ? $"{KindLabel(o.Kind)} 定义（{scopeTag}）\n{refs} 处引用"
                         : $"{KindLabel(o.Kind)} 定义\n{refs} 处引用";
@@ -487,8 +489,8 @@ public sealed class DslLanguageService : IDslLanguageService
 
                 // set（赋值，非声明式定义）：不标「定义」，而是标「赋值」并指向规范定义（define）。
                 var fb = FallbackKind(o.Kind);
-                var def = _symbolIndex.Resolve(o.Kind, fb, o.Name);
-                var scopeTag2 = o.Kind == SymbolKind.Variable ? ScopeBadge(GetVarScope(o.Name)) : null;
+                var def = _symbolIndex.Resolve(o.Kind, fb, o.Name, filePath);
+                var scopeTag2 = o.Kind == SymbolKind.Variable ? ScopeBadge(GetVarScope(o.Name, filePath)) : null;
                 var roleLabel = o.Kind == SymbolKind.Variable
                     ? $"变量 赋值（{scopeTag2}）"
                     : $"{KindLabel(o.Kind)} 赋值";
@@ -498,11 +500,11 @@ public sealed class DslLanguageService : IDslLanguageService
             }
 
             var fbRef = FallbackKind(o.Kind);
-            var defRef = _symbolIndex.Resolve(o.Kind, fbRef, o.Name);
+            var defRef = _symbolIndex.Resolve(o.Kind, fbRef, o.Name, filePath);
             if (defRef != null)
             {
                 var line = LineNumberOf(defRef.Value.FilePath, defRef.Value.Offset);
-                var scopeTag = o.Kind == SymbolKind.Variable ? ScopeBadge(GetVarScope(o.Name)) : null;
+                var scopeTag = o.Kind == SymbolKind.Variable ? ScopeBadge(GetVarScope(o.Name, filePath)) : null;
                 var detail = o.Kind == SymbolKind.Variable && scopeTag != null
                     ? $"{KindLabel(o.Kind)} 引用（{scopeTag}）\n定义于 {defRef.Value.FilePath}:{line}"
                     : $"{KindLabel(o.Kind)} 引用\n定义于 {defRef.Value.FilePath}:{line}";
@@ -559,7 +561,7 @@ public sealed class DslLanguageService : IDslLanguageService
         if (o.Role == SymbolRole.Reference)
         {
             var fb = FallbackKind(o.Kind);
-            var def = _symbolIndex.Resolve(o.Kind, fb, o.Name);
+            var def = _symbolIndex.Resolve(o.Kind, fb, o.Name, filePath);
             if (def != null)
                 return new DefinitionResult(true, new Location(def.Value.FilePath, def.Value.Offset, def.Value.Length), def.Value.Kind);
             return new DefinitionResult(false, null, o.Kind);
@@ -569,7 +571,7 @@ public sealed class DslLanguageService : IDslLanguageService
         if (!o.IsDeclaration)
         {
             var fb = FallbackKind(o.Kind);
-            var def = _symbolIndex.Resolve(o.Kind, fb, o.Name);
+            var def = _symbolIndex.Resolve(o.Kind, fb, o.Name, filePath);
             if (def != null && (def.Value.FilePath != o.FilePath || def.Value.Offset != o.Offset))
                 return new DefinitionResult(true, new Location(def.Value.FilePath, def.Value.Offset, def.Value.Length), def.Value.Kind);
         }
@@ -582,12 +584,28 @@ public sealed class DslLanguageService : IDslLanguageService
         if (occ == null)
             return new ReferenceResult(System.Array.Empty<Location>(), SymbolKind.Scene, string.Empty);
         var o = occ.Value;
-        var refs = new List<Location>(_symbolIndex.FindReferences(o.Kind, o.Name));
         var fb = FallbackKind(o.Kind);
-        var def = _symbolIndex.Resolve(o.Kind, fb, o.Name);
-        if (def != null) refs.Add(new Location(def.Value.FilePath, def.Value.Offset, def.Value.Length));
-        return new ReferenceResult(refs, o.Kind, o.Name);
+        // 局部变量(let/local)：引用 / 定义均限定在同文件（不跨文件解析）；其它文件同名局部引用不计入。
+        if (o.Kind == SymbolKind.Variable && o.Scope == SymbolScope.Local)
+        {
+            var def = _symbolIndex.Resolve(o.Kind, fb, o.Name, filePath);
+            var refs = def != null
+                ? new List<Location>(_symbolIndex.FindReferences(o.Kind, o.Name, def.Value.FilePath))
+                : new List<Location>();
+            if (def != null) refs.Add(new Location(def.Value.FilePath, def.Value.Offset, def.Value.Length));
+            return new ReferenceResult(refs, o.Kind, o.Name);
+        }
+        // 全局符号（define/set/label/scene/func…）：跨文件引用全收集。
+        var refsAll = new List<Location>(_symbolIndex.FindReferences(o.Kind, o.Name));
+        var gdef = _symbolIndex.Resolve(o.Kind, fb, o.Name);
+        if (gdef != null) refsAll.Add(new Location(gdef.Value.FilePath, gdef.Value.Offset, gdef.Value.Length));
+        return new ReferenceResult(refsAll, o.Kind, o.Name);
     }
+
+    /// <summary>取某文件的规范源码文本（供跳转/悬停等把行/列坐标换算成偏移）。
+    /// 优先取 didOpen 内存文本，回退到工作区扫描建立的索引文档——确保「仅被扫描、尚未 didOpen 的文件」也能正确解析坐标。</summary>
+    public string? GetSource(string filePath)
+        => _documents.TryGetValue(filePath, out var doc) ? doc.Source.ToString() : null;
 
     public Task<DslAnalysisResult> GetDiagnosticsAsync(string filePath, CancellationToken ct = default)
     {
