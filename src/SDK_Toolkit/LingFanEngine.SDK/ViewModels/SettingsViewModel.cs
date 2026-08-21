@@ -33,35 +33,7 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private string _statusMessage = "";
 
-    // P2-4: 编辑器设置
-    [ObservableProperty]
-    private string _editorFontFamily = "Consolas";
-
-    [ObservableProperty]
-    private int _editorFontSize = 14;
-
-    [ObservableProperty]
-    private string _indentStyle = "spaces";
-
-    [ObservableProperty]
-    private int _indentWidth = 4;
-
-    [ObservableProperty]
-    private bool _formatOnSave;
-
-    [ObservableProperty]
-    private bool _showLineNumbers = true;
-
-    [ObservableProperty]
-    private bool _showMinimap;
-
-    [ObservableProperty]
-    private bool _wordWrap;
-
-    [ObservableProperty]
-    private string _theme = "dark";
-
-    // P2-4: 构建设置
+    // 构建设置
     [ObservableProperty]
     private string _defaultBuildConfig = "Release";
 
@@ -160,15 +132,6 @@ public partial class SettingsViewModel : ViewModelBase
             var settings = JsonHelper.Deserialize(json, SdkJsonContext.Default.SdkSettings);
             if (settings != null)
             {
-                EditorFontFamily = settings.EditorFontFamily;
-                EditorFontSize = settings.EditorFontSize;
-                IndentStyle = settings.IndentStyle;
-                IndentWidth = settings.IndentWidth;
-                FormatOnSave = settings.FormatOnSave;
-                ShowLineNumbers = settings.ShowLineNumbers;
-                ShowMinimap = settings.ShowMinimap;
-                WordWrap = settings.WordWrap;
-                Theme = settings.Theme;
                 DefaultBuildConfig = settings.DefaultBuildConfig;
                 DefaultSelfContained = settings.DefaultSelfContained;
                 DefaultPublishAot = settings.DefaultPublishAot;
@@ -189,15 +152,6 @@ public partial class SettingsViewModel : ViewModelBase
         {
             var settings = new SdkSettings
             {
-                EditorFontFamily = EditorFontFamily,
-                EditorFontSize = EditorFontSize,
-                IndentStyle = IndentStyle,
-                IndentWidth = IndentWidth,
-                FormatOnSave = FormatOnSave,
-                ShowLineNumbers = ShowLineNumbers,
-                ShowMinimap = ShowMinimap,
-                WordWrap = WordWrap,
-                Theme = Theme,
                 DefaultBuildConfig = DefaultBuildConfig,
                 DefaultSelfContained = DefaultSelfContained,
                 DefaultPublishAot = DefaultPublishAot,

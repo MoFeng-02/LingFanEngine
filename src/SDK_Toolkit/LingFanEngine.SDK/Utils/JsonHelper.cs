@@ -14,10 +14,7 @@ namespace LingFanEngine.SDK.Utils;
 [JsonSerializable(typeof(ProjectConfig))]
 [JsonSerializable(typeof(List<RecentProject>))]
 [JsonSerializable(typeof(BuildResult))]
-[JsonSerializable(typeof(DslAnalysisResult))]
-[JsonSerializable(typeof(List<DslDiagnostic>))]
-[JsonSerializable(typeof(List<VariableInfo>))]
-[JsonSerializable(typeof(List<SceneReference>))]
+[JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSerializable(typeof(PackManifestInfo))]
 [JsonSerializable(typeof(PackResult))]
 [JsonSerializable(typeof(SdkSettings))]
@@ -26,6 +23,10 @@ namespace LingFanEngine.SDK.Utils;
 [JsonSerializable(typeof(EngineLockFile))]
 [JsonSerializable(typeof(TemplateUpdateManifest))]
 [JsonSerializable(typeof(TemplateLockFile))]
+[JsonSerializable(typeof(ModelConfig))]
+[JsonSerializable(typeof(ModelAdvancedConfig))]
+[JsonSerializable(typeof(List<ModelConfig>))]
+[JsonSerializable(typeof(ModelsFile))]
 [JsonSourceGenerationOptions(
     WriteIndented = true,
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,

@@ -18,14 +18,20 @@ public static class RouteDefinitions
     {
         return
         [
-            // 故事编辑器（KeepAlive 缓存，切换活动页时保留状态）
-            new RouteEntity<StoryEditorPage, StoryEditorViewModel>("/editor")
+            // 资源管理
+            new RouteEntity<AssetManagerPage, AssetManagerViewModel>("/assets")
             {
                 IsKeepalive = true,
             },
 
-            // 资源管理
-            new RouteEntity<AssetManagerPage, AssetManagerViewModel>("/assets")
+            // 多语言翻译
+            new RouteEntity<TranslationPage, TranslationViewModel>("/translation")
+            {
+                IsKeepalive = true,
+            },
+
+            // 模型管理
+            new RouteEntity<ModelsPage, ModelsViewModel>("/models")
             {
                 IsKeepalive = true,
             },

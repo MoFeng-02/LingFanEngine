@@ -21,6 +21,9 @@ public partial class App : Application
     private LauncherWindow? _launcher;
     private WorkspaceWindow? _workspace;
 
+    /// <summary>全局 DI 容器（供页面通过 <see cref="IRouter"/> 导航等使用）</summary>
+    public static IServiceProvider? Services { get; private set; }
+
     /// <summary>AXAML 加载——构建时编译为 C# 代码，AOT 安全</summary>
     public override void Initialize()
     {
@@ -31,6 +34,7 @@ public partial class App : Application
     public void InitializeServices(IServiceProvider services)
     {
         _services = services;
+        Services = services;
 
         // 监听项目会话——打开→切换到工作台，关闭→切换回启动器
         var session = services.GetRequiredService<IProjectSession>();

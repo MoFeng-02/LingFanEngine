@@ -4,8 +4,6 @@
              RequestedThemeVariant="Dark">
     <Application.Styles>
         <FluentTheme />
-        <!-- AvaloniaEdit 必需主题样式——AXAML 中 StyleInclude 构建时编译为 C# 代码，AOT 安全 -->
-        <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
 
         <!-- 暗色背景 -->
         <Style Selector="Window">

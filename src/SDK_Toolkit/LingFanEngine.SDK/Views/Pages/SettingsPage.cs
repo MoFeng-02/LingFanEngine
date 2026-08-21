@@ -37,7 +37,7 @@ public class SettingsPage : UserControl, INavigationAware
 
         var grid = new Grid
         {
-            RowDefinitions = RowDefinitions.Parse("Auto,Auto,Auto,Auto,Auto,*"),
+            RowDefinitions = RowDefinitions.Parse("Auto,Auto,Auto,Auto,*"),
             Margin = new Thickness(16),
         };
 
@@ -50,64 +50,9 @@ public class SettingsPage : UserControl, INavigationAware
             Margin = new Thickness(0, 0, 0, 16),
         });
 
-        // === 编辑器设置 ===
-        var editorPanel = new StackPanel { Spacing = 8, Margin = new Thickness(0, 0, 0, 16) };
-        Grid.SetRow(editorPanel, 1);
-
-        editorPanel.Children.Add(new TextBlock
-        {
-            Text = "编辑器",
-            FontSize = 14,
-            FontWeight = FontWeight.Bold,
-            Foreground = new SolidColorBrush(Color.Parse("#4FC1FF")),
-        });
-
-        editorPanel.Children.Add(CreateSettingRow("字体", CreateTextBox(
-            () => viewModel.EditorFontFamily, v => viewModel.EditorFontFamily = v)));
-
-        var fontSizeBox = new NumericUpDown
-        {
-            Value = viewModel.EditorFontSize,
-            Minimum = 8,
-            Maximum = 32,
-        };
-        fontSizeBox.ValueChanged += (_, _) => viewModel.EditorFontSize = (int)fontSizeBox.Value;
-        editorPanel.Children.Add(CreateSettingRow("字号", fontSizeBox));
-
-        var indentStyleCombo = new ComboBox { MinWidth = 120 };
-        indentStyleCombo.Items.Add("空格");
-        indentStyleCombo.Items.Add("Tab");
-        indentStyleCombo.SelectedIndex = viewModel.IndentStyle == "spaces" ? 0 : 1;
-        indentStyleCombo.SelectionChanged += (_, _) =>
-            viewModel.IndentStyle = indentStyleCombo.SelectedIndex == 0 ? "spaces" : "tabs";
-        editorPanel.Children.Add(CreateSettingRow("缩进风格", indentStyleCombo));
-
-        var indentWidthBox = new NumericUpDown
-        {
-            Value = viewModel.IndentWidth,
-            Minimum = 2,
-            Maximum = 8,
-        };
-        indentWidthBox.ValueChanged += (_, _) => viewModel.IndentWidth = (int)indentWidthBox.Value;
-        editorPanel.Children.Add(CreateSettingRow("缩进宽度", indentWidthBox));
-
-        editorPanel.Children.Add(CreateSettingRow("保存时格式化", CreateCheckBox(
-            () => viewModel.FormatOnSave, v => viewModel.FormatOnSave = v)));
-
-        editorPanel.Children.Add(CreateSettingRow("显示行号", CreateCheckBox(
-            () => viewModel.ShowLineNumbers, v => viewModel.ShowLineNumbers = v)));
-
-        editorPanel.Children.Add(CreateSettingRow("显示 Minimap", CreateCheckBox(
-            () => viewModel.ShowMinimap, v => viewModel.ShowMinimap = v)));
-
-        editorPanel.Children.Add(CreateSettingRow("自动换行", CreateCheckBox(
-            () => viewModel.WordWrap, v => viewModel.WordWrap = v)));
-
-        grid.Children.Add(editorPanel);
-
         // === 构建设置 ===
         var buildPanel = new StackPanel { Spacing = 8, Margin = new Thickness(0, 0, 0, 16) };
-        Grid.SetRow(buildPanel, 2);
+        Grid.SetRow(buildPanel, 1);
 
         buildPanel.Children.Add(new TextBlock
         {
@@ -135,7 +80,7 @@ public class SettingsPage : UserControl, INavigationAware
 
         // === SDK 信息 ===
         var sdkPanel = new StackPanel { Spacing = 8, Margin = new Thickness(0, 0, 0, 16) };
-        Grid.SetRow(sdkPanel, 3);
+        Grid.SetRow(sdkPanel, 2);
 
         sdkPanel.Children.Add(new TextBlock
         {
@@ -214,7 +159,7 @@ public class SettingsPage : UserControl, INavigationAware
             Spacing = 8,
             Margin = new Thickness(0, 0, 0, 16),
         };
-        Grid.SetRow(actionPanel, 4);
+        Grid.SetRow(actionPanel, 3);
 
         var saveBtn = new Button
         {

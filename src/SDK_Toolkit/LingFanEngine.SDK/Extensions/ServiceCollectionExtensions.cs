@@ -1,6 +1,5 @@
 ﻿﻿﻿﻿﻿using System;
 using System.Net.Http.Headers;
-using LingFanEngine.Dsl.LanguageService;
 using LingFanEngine.SDK.Constants;
 using LingFanEngine.SDK.Navigation;
 using LingFanEngine.SDK.Services.Abstractions;
@@ -27,10 +26,11 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<IProjectService>(),
             sp.GetRequiredService<ITemplateService>()));
         services.AddSingleton<ITemplateService, TemplateService>();
-        services.AddSingleton<IDslAnalyzer, DslAnalyzer>();
-        // M3：语言服务（引擎侧，仅依赖 DslCore）作为编辑器实时分析的唯一事实源
-        services.AddSingleton<IDslLanguageService, DslLanguageService>();
         services.AddSingleton<IResourceEncryptor, ResourceEncryptor>();
+        services.AddSingleton<ITranslationService, TranslationService>();
+        services.AddSingleton<IModelService, ModelService>();
+        services.AddSingleton<ITranslatorFactory, TranslatorFactory>();
+        services.AddSingleton<ModelConnectivityService>();
         services.AddSingleton<IPackToolService, PackToolService>();
         services.AddSingleton<IPublishService>(sp => new PublishService(
             sp.GetRequiredService<IPackToolService>()));
@@ -65,8 +65,9 @@ public static class ServiceCollectionExtensions
 
         // ViewModel 注册为 Singleton（覆盖 AddRoutes 的 Transient 注册）
         // 确保 Page 构造函数注入、Router 创建、侧面板 GetService 获取的是同一实例
-        services.AddSingleton<StoryEditorViewModel>();
         services.AddSingleton<AssetManagerViewModel>();
+        services.AddSingleton<TranslationViewModel>();
+        services.AddSingleton<ModelsViewModel>();
         services.AddSingleton<BuildViewModel>();
         services.AddSingleton<SettingsViewModel>();
 

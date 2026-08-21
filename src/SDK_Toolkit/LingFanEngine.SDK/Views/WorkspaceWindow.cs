@@ -7,7 +7,6 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using LingFanEngine.SDK.Services.Abstractions;
 using LingFanEngine.SDK.ViewModels;
-using LingFanEngine.SDK.Views.Pages;
 using Microsoft.Extensions.DependencyInjection;
 using MFToolkit.Routing;
 using MFToolkit.Routing.Core.Interfaces;
@@ -31,8 +30,6 @@ public class WorkspaceWindow : Window
     private readonly TextBlock _projectNameText;
 
     // 侧面板实例缓存
-    private Components.FileTreeView? _fileTree;
-    private Control? _fileTreePanel;
     private Control? _assetCategoryPanel;
     private Control? _buildConfigPanel;
 
@@ -53,8 +50,9 @@ public class WorkspaceWindow : Window
     private record ActivityItem(string Icon, string Title, string RoutePath);
     private static readonly ActivityItem[] s_activities =
     [
-        new("\uE734", "故事编辑", "/editor"),
         new("\uE8B7", "资源管理", "/assets"),
+        new("\uE72E", "多语言翻译", "/translation"),
+        new("\uE8A5", "模型管理", "/models"),
         new("\uE7B8", "构建发布", "/build"),
         new("\uE713", "设置", "/settings"),
     ];
@@ -113,8 +111,8 @@ public class WorkspaceWindow : Window
         // 订阅 Router 导航事件——Router 创建页面和 VM 实例后触发
         _router.Navigated += OnRouterNavigated;
 
-        // 初始导航到编辑器页面
-        _ = _router.NavigateAsync("/editor");
+        // 初始导航到资源管理
+        _ = _router.NavigateAsync("/assets");
 
         // 更新项目名显示
         UpdateProjectDisplay();
@@ -149,7 +147,6 @@ public class WorkspaceWindow : Window
         // 切换侧面板（使用缓存的实例）
         _sidePanel.Content = routePath switch
         {
-            "/editor" => _fileTreePanel ??= CreateFileTreePanel(),
             "/assets" => _assetCategoryPanel ??= CreateAssetCategoryPanel(),
             "/build" => _buildConfigPanel ??= CreateBuildConfigPanel(),
             _ => null
@@ -158,8 +155,9 @@ public class WorkspaceWindow : Window
         // 更新状态栏
         _statusBarText.Text = routePath switch
         {
-            "/editor" => "故事编辑器",
             "/assets" => "资源管理",
+            "/translation" => "多语言翻译",
+            "/models" => "模型管理",
             "/build" => "构建发布",
             "/settings" => "设置",
             _ => ""
@@ -250,6 +248,9 @@ public class WorkspaceWindow : Window
         {
             Background = s_activityBarBg,
             Orientation = Orientation.Vertical,
+            VerticalAlignment = VerticalAlignment.Top,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Spacing = 2,
         };
 
         // 主导航按钮（含设置）
@@ -259,12 +260,10 @@ public class WorkspaceWindow : Window
             bar.Children.Add(btn);
         }
 
-        // 弹性间隔
-        bar.Children.Add(new Border { Height = 8 });
-
         // 关闭项目按钮
         var closeBtn = CreateIconButton("\uE72C", "关闭项目", false);
         closeBtn.Click += (_, _) => CloseProject();
+        closeBtn.Margin = new Thickness(0, 16, 0, 0);
         bar.Children.Add(closeBtn);
 
         return bar;
@@ -306,6 +305,8 @@ public class WorkspaceWindow : Window
                 btn.Foreground = s_iconNormal;
         };
         btn.Click += async (_, _) => await _router.NavigateAsync(item.RoutePath);
+        // 活动栏图标窄 48×48、无标题栏——必须依赖 ToolTip 揭示功能；与 CreateIconButton 行为一致
+        ToolTip.SetTip(btn, item.Title);
 
         return btn;
     }
@@ -366,101 +367,6 @@ public class WorkspaceWindow : Window
     }
 
     // ===== 侧面板创建 =====
-
-    /// <summary>文件树侧面板——从 Router 事件参数获取 ViewModel</summary>
-    private Control CreateFileTreePanel()
-    {
-        var panel = new StackPanel
-        {
-            Background = s_sideBarBg,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-        };
-
-        // 统一标题栏（含新建文件按钮）
-        var headerPanel = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 4,
-            Margin = new Thickness(8, 6, 8, 4),
-        };
-        headerPanel.Children.Add(new TextBlock
-        {
-            Text = "故事文件",
-            FontSize = 12,
-            FontWeight = FontWeight.Bold,
-            Foreground = new SolidColorBrush(Color.Parse("#CCCCCC")),
-            VerticalAlignment = VerticalAlignment.Center,
-        });
-
-        var newFileBtn = new Button
-        {
-            Content = "+",
-            FontSize = 14,
-            Padding = new Thickness(6, 0),
-            MinWidth = 24,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Classes = { "transparent" },
-        };
-        headerPanel.Children.Add(newFileBtn);
-
-        panel.Children.Add(headerPanel);
-
-        _fileTree = new Components.FileTreeView();
-        var fileTree = _fileTree;
-
-        // 从 DI 获取 StoryEditorViewModel（Singleton 或 KeepAlive 缓存的同一实例）
-        var vm = _services.GetService<StoryEditorViewModel>();
-        if (vm != null)
-        {
-            // 传递文件树引用给页面（用于脏标记更新）
-            // 页面实例由 Router 管理，通过 Navigated 事件设置 DataContext
-            // 这里直接使用 VM 即可
-            if (_editorArea.Content is StoryEditorPage editorPage)
-            {
-                editorPage.SetExternalFileTree(fileTree);
-            }
-
-            if (vm.StoriesDirectory != null)
-                fileTree.LoadDirectory(vm.StoriesDirectory);
-
-            vm.PropertyChanged += (_, e) =>
-            {
-                if (e.PropertyName == nameof(StoryEditorViewModel.StoriesDirectory))
-                {
-                    if (vm.StoriesDirectory != null)
-                        fileTree.LoadDirectory(vm.StoriesDirectory);
-                    else
-                        fileTree.Clear(); // 项目关闭时清空文件树
-                }
-            };
-
-            // 连接全部四个事件
-            fileTree.FileOpenRequested += async path => await vm.OpenFileCommand.ExecuteAsync(path);
-            fileTree.CreateFileRequested += async filePath => await vm.CreateNewFileCommand.ExecuteAsync(filePath);
-            fileTree.FileDeleteRequested += path =>
-            {
-                vm.DeleteFileCommand.Execute(path);
-            };
-            fileTree.FileRenameRequested += (oldPath, newName) =>
-            {
-                vm.RenameFileCommand.Execute(new[] { oldPath, newName });
-            };
-
-            // 文件创建/删除/重命名后刷新文件树
-            vm.FileTreeNeedsRefresh += () => fileTree.Refresh();
-
-            // 新建文件按钮
-            newFileBtn.Click += (_, _) =>
-            {
-                if (fileTree.RootDirectory != null)
-                    fileTree.ShowNewFileDialog(fileTree.RootDirectory);
-            };
-        }
-
-        panel.Children.Add(fileTree);
-        return panel;
-    }
 
     /// <summary>资源分类侧面板</summary>
     private Control CreateAssetCategoryPanel()

@@ -18,7 +18,6 @@
 		<PackageReference Include="Avalonia" Version="12.1.1" />
 		<PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
 		<PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.1" />
-		<PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
 		<PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3">
 			<IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
 			<PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
@@ -44,7 +43,6 @@
 
 	<ItemGroup>
 	  <ProjectReference Include="..\..\EngineCore\LingFanEngine.DslCore\LingFanEngine.DslCore.csproj" />
-	  <ProjectReference Include="..\..\EngineCore\LingFanEngine.Dsl.LanguageService\LingFanEngine.Dsl.LanguageService.csproj" />
 	</ItemGroup>
 
 	<!-- 将 DLL/ 目录复制到输出目录的 DLL/ 子目录 -->
