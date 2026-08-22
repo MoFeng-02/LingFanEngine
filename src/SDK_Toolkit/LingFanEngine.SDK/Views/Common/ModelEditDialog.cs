@@ -12,6 +12,7 @@ using Avalonia.Media;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Services.Abstractions;
 using LingFanEngine.SDK.Services.Implementations;
+using LingFanEngine.SDK.Themes;
 
 namespace LingFanEngine.SDK.Views.Common;
 
@@ -41,6 +42,13 @@ public sealed class ModelEditDialog : Window
     private TextBlock _statusText = null!;
     private Button _addBtn = null!;
 
+    // 「获取模型列表」的勾选清单（默认全选，添加所选而非一次性全注册）
+    private StackPanel _fetchPanel = null!;
+    private TextBlock _fetchCountText = null!;
+    private ListBox _fetchList = null!;
+    private Button _addSelectedBtn = null!;
+    private readonly List<CheckBox> _fetchChecks = new();
+
     /// <summary>编辑结果（确认后非空，取消为 null）</summary>
     public ModelConfig? ResultModel { get; private set; }
 
@@ -57,19 +65,12 @@ public sealed class ModelEditDialog : Window
         MinWidth = 460;
         WindowDecorations = WindowDecorations.None;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Background = s_bg;
+        Background = ThemePalette.EditorBg;
         InitializeComponent();
     }
 
     // ===== 暗色主题色板（与 WorkspaceWindow/TranslationPage 一致）=====
-    private static readonly IBrush s_bg = new SolidColorBrush(Color.Parse("#1E1E1E"));
-    private static readonly IBrush s_panelBg = new SolidColorBrush(Color.Parse("#252526"));
-    private static readonly IBrush s_border = new SolidColorBrush(Color.Parse("#3C3C3C"));
-    private static readonly IBrush s_text = new SolidColorBrush(Color.Parse("#D4D4D4"));
-    private static readonly IBrush s_muted = new SolidColorBrush(Color.Parse("#8A8A8A"));
-    private static readonly IBrush s_accent = new SolidColorBrush(Color.Parse("#0E639C"));
-    private static readonly IBrush s_warn = new SolidColorBrush(Color.Parse("#CE9178"));
-    private static readonly IBrush s_success = new SolidColorBrush(Color.Parse("#4EC9B0"));
+    // 统一色板：取自 Themes/Colors.axaml（C# 经 ThemePalette.* 读取）——不再页内硬编码。
 
     private void InitializeComponent()
     {
@@ -96,7 +97,7 @@ public sealed class ModelEditDialog : Window
             Text = "自定义模型",
             FontSize = 18,
             FontWeight = FontWeight.Bold,
-            Foreground = s_text,
+            Foreground = ThemePalette.Text,
             VerticalAlignment = VerticalAlignment.Center,
         });
         Grid.SetColumn(header.Children[0], 0);
@@ -106,7 +107,7 @@ public sealed class ModelEditDialog : Window
             Content = "✕",
             Background = Brushes.Transparent,
             BorderThickness = new Thickness(0),
-            Foreground = s_muted,
+            Foreground = ThemePalette.TextMuted,
             FontSize = 16,
             Padding = new Thickness(8, 2),
             VerticalAlignment = VerticalAlignment.Center,
@@ -152,7 +153,7 @@ public sealed class ModelEditDialog : Window
         {
             Text = "例如 https://api.openai.com/v1",
             FontSize = 11,
-            Foreground = s_muted,
+            Foreground = ThemePalette.TextMuted,
         });
 
         // ===== 模型 ID（选填：拉列表后自动批量添加；手填用于不支持列表的私有端点）=====
@@ -179,7 +180,7 @@ public sealed class ModelEditDialog : Window
         {
             Text = "0/32",
             FontSize = 11,
-            Foreground = s_muted,
+            Foreground = ThemePalette.TextMuted,
             VerticalAlignment = VerticalAlignment.Bottom,
             HorizontalAlignment = HorizontalAlignment.Right,
         };
@@ -217,10 +218,10 @@ public sealed class ModelEditDialog : Window
             Content = "👁",
             Width = 36,
             Margin = new Thickness(6, 0, 0, 0),
-            Background = s_panelBg,
-            BorderBrush = s_border,
+            Background = ThemePalette.PanelBg,
+            BorderBrush = ThemePalette.Border,
             BorderThickness = new Thickness(1),
-            Foreground = s_text,
+            Foreground = ThemePalette.Text,
         };
         _eyeBtn.Click += (_, _) =>
         {
@@ -237,8 +238,8 @@ public sealed class ModelEditDialog : Window
         {
             Header = "高级配置",
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            Foreground = s_text,
-            BorderBrush = s_border,
+            Foreground = ThemePalette.Text,
+            BorderBrush = ThemePalette.Border,
             BorderThickness = new Thickness(1),
             Padding = new Thickness(10),
         };
@@ -285,10 +286,10 @@ public sealed class ModelEditDialog : Window
         {
             Content = "连通性测试",
             Padding = new Thickness(14, 6),
-            Background = s_panelBg,
-            BorderBrush = s_border,
+            Background = ThemePalette.PanelBg,
+            BorderBrush = ThemePalette.Border,
             BorderThickness = new Thickness(1),
-            Foreground = s_text,
+            Foreground = ThemePalette.Text,
             FontSize = 12,
         };
         testBtn.Click += async (_, _) => await RunConnectivityTestAsync();
@@ -296,16 +297,102 @@ public sealed class ModelEditDialog : Window
         {
             Content = "获取模型列表",
             Padding = new Thickness(14, 6),
-            Background = s_panelBg,
-            BorderBrush = s_border,
+            Background = ThemePalette.PanelBg,
+            BorderBrush = ThemePalette.Border,
             BorderThickness = new Thickness(1),
-            Foreground = s_text,
+            Foreground = ThemePalette.Text,
             FontSize = 12,
         };
         fetchBtn.Click += async (_, _) => await FetchModelsAsync();
         testRow.Children.Add(testBtn);
         testRow.Children.Add(fetchBtn);
         root.Children.Add(testRow);
+
+        // ===== 「获取模型列表」勾选清单（默认隐藏，获取成功后展示）=====
+        _fetchPanel = new StackPanel
+        {
+            Spacing = 6,
+            IsVisible = false,
+        };
+
+        var fetchHeader = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto,Auto"),
+        };
+        fetchHeader.Children.Add(new TextBlock
+        {
+            Text = "已获取模型（勾选要添加的）",
+            FontSize = 12,
+            FontWeight = FontWeight.Bold,
+            Foreground = ThemePalette.Title,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        Grid.SetColumn(fetchHeader.Children[0], 0);
+        _fetchCountText = new TextBlock
+        {
+            FontSize = 11,
+            Foreground = ThemePalette.TextMuted,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(_fetchCountText, 1);
+        fetchHeader.Children.Add(_fetchCountText);
+
+        var selectAllBtn = new Button
+        {
+            Content = "全选",
+            Padding = new Thickness(8, 2),
+            Background = Brushes.Transparent,
+            BorderBrush = ThemePalette.Border,
+            BorderThickness = new Thickness(1),
+            Foreground = ThemePalette.TextHover,
+            FontSize = 11,
+        };
+        selectAllBtn.Click += (_, _) => SetAllFetchChecks(true);
+        var deselectAllBtn = new Button
+        {
+            Content = "全不选",
+            Padding = new Thickness(8, 2),
+            Background = Brushes.Transparent,
+            BorderBrush = ThemePalette.Border,
+            BorderThickness = new Thickness(1),
+            Foreground = ThemePalette.TextHover,
+            FontSize = 11,
+            Margin = new Thickness(6, 0, 0, 0),
+        };
+        deselectAllBtn.Click += (_, _) => SetAllFetchChecks(false);
+        var selectRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children = { selectAllBtn, deselectAllBtn },
+        };
+        Grid.SetColumn(selectRow, 2);
+        fetchHeader.Children.Add(selectRow);
+        _fetchPanel.Children.Add(fetchHeader);
+
+        _fetchList = new ListBox
+        {
+            MaxHeight = 200,
+            Background = ThemePalette.PanelBg,
+            BorderBrush = ThemePalette.Border,
+            BorderThickness = new Thickness(1),
+        };
+        _fetchPanel.Children.Add(_fetchList);
+
+        _addSelectedBtn = new Button
+        {
+            Content = "添加所选",
+            Padding = new Thickness(14, 6),
+            Background = ThemePalette.Accent,
+            BorderThickness = new Thickness(0),
+            Foreground = ThemePalette.TextBright,
+            FontSize = 12,
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+        _addSelectedBtn.Click += async (_, _) => await AddCheckedModelsAsync();
+        _fetchPanel.Children.Add(_addSelectedBtn);
+
+        root.Children.Add(_fetchPanel);
+
         _statusText = new TextBlock
         {
             FontSize = 12,
@@ -318,15 +405,15 @@ public sealed class ModelEditDialog : Window
         root.Children.Add(new Border
         {
             Background = new SolidColorBrush(Color.FromArgb(20, 138, 138, 138)),
-            BorderBrush = s_border,
+            BorderBrush = ThemePalette.Border,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(4),
             Padding = new Thickness(10, 6),
             Child = new TextBlock
             {
-                Text = "ℹ 连通性测试与「获取模型列表」均调用 GET /v1/models，零成本、不消耗 Token；自动注册按「供应商+端点+模型」去重。",
+                Text = "ℹ 连通性测试与「获取模型列表」均调用 GET /v1/models，零成本、不消耗 Token；拉取后勾选要添加的（默认全选），添加时按「供应商+端点+模型」去重。",
                 FontSize = 11,
-                Foreground = s_muted,
+                Foreground = ThemePalette.TextMuted,
                 TextWrapping = TextWrapping.Wrap,
             },
         });
@@ -344,9 +431,9 @@ public sealed class ModelEditDialog : Window
             Content = "取消",
             Padding = new Thickness(16, 6),
             Background = Brushes.Transparent,
-            BorderBrush = s_border,
+            BorderBrush = ThemePalette.Border,
             BorderThickness = new Thickness(1),
-            Foreground = s_text,
+            Foreground = ThemePalette.Text,
             FontSize = 12,
         };
         cancelBtn.Click += (_, _) => Close(false);
@@ -355,9 +442,9 @@ public sealed class ModelEditDialog : Window
             Content = "重置",
             Padding = new Thickness(16, 6),
             Background = Brushes.Transparent,
-            BorderBrush = s_border,
+            BorderBrush = ThemePalette.Border,
             BorderThickness = new Thickness(1),
-            Foreground = s_text,
+            Foreground = ThemePalette.Text,
             FontSize = 12,
         };
         resetBtn.Click += (_, _) => ResetToEditing();
@@ -365,9 +452,9 @@ public sealed class ModelEditDialog : Window
         {
             Content = "添加模型",
             Padding = new Thickness(16, 6),
-            Background = s_accent,
+            Background = ThemePalette.Accent,
             BorderThickness = new Thickness(0),
-            Foreground = Brushes.White,
+            Foreground = ThemePalette.TextBright,
             FontSize = 12,
         };
         _addBtn.Click += (_, _) => Commit();
@@ -386,7 +473,7 @@ public sealed class ModelEditDialog : Window
     {
         Text = text,
         FontSize = 12,
-        Foreground = s_muted,
+        Foreground = ThemePalette.TextMuted,
         Margin = new Thickness(0, 6, 0, 2),
     };
 
@@ -431,40 +518,96 @@ public sealed class ModelEditDialog : Window
         };
     }
 
-    /// <summary>「获取模型列表」：拉取供应商 GET /v1/models 的 id 列表并批量自动注册（去重）。</summary>
+    /// <summary>「获取模型列表」：拉取供应商 GET /v1/models 的 id 列表并展示勾选清单（默认全选）。</summary>
     private async Task FetchModelsAsync()
     {
         var model = BuildFromControls();
         if (string.IsNullOrWhiteSpace(model.BaseUrl))
         {
             _statusText.Text = "请先填写 Base URL";
-            _statusText.Foreground = s_warn;
+            _statusText.Foreground = ThemePalette.Warn;
             return;
         }
 
         _statusText.Text = "正在获取模型列表...";
-        _statusText.Foreground = s_muted;
+        _statusText.Foreground = ThemePalette.TextMuted;
         try
         {
             var result = await _connectivity.TestAsync(model, CancellationToken.None);
             if (!result.IsSuccess)
             {
                 _statusText.Text = $"❌ 无法获取列表：{result.Message}";
-                _statusText.Foreground = s_warn;
+                _statusText.Foreground = ThemePalette.Warn;
                 return;
             }
             if (result.ModelIds.Count == 0)
             {
+                _fetchPanel.IsVisible = false;
                 _statusText.Text = "✅ 已连通，但该端点未返回模型列表（data[] 为空）。请改用「模型 ID」手动添加。";
-                _statusText.Foreground = s_warn;
+                _statusText.Foreground = ThemePalette.Warn;
                 return;
             }
 
-            // 继承当前对话框的 Provider / BaseUrl / ApiKey / 高级配置
+            // 展示勾选清单（默认全选），让用户挑出要添加的，而不是一次性全注册
+            PopulateFetchList(result.ModelIds);
+            _fetchPanel.IsVisible = true;
+            _statusText.Text = $"已获取 {result.ModelIds.Count} 个模型，勾选要添加的，然后点击「添加所选」。";
+            _statusText.Foreground = ThemePalette.TextMuted;
+        }
+        catch (Exception ex)
+        {
+            _statusText.Text = $"❌ 获取异常：{ex.Message}";
+            _statusText.Foreground = ThemePalette.Warn;
+        }
+    }
+
+    /// <summary>用模型 id 列表填充勾选清单（默认全选）。</summary>
+    private void PopulateFetchList(IReadOnlyList<string> ids)
+    {
+        _fetchChecks.Clear();
+        _fetchList.Items.Clear();
+        foreach (var id in ids)
+        {
+            var check = new CheckBox
+            {
+                Content = id,
+                FontSize = 13,
+                IsChecked = true,
+            };
+            _fetchChecks.Add(check);
+            _fetchList.Items.Add(check);
+        }
+        _fetchCountText.Text = $"共 {ids.Count} 个";
+        _addSelectedBtn.Content = $"添加所选（{ids.Count}）";
+    }
+
+    private void SetAllFetchChecks(bool value)
+    {
+        foreach (var c in _fetchChecks)
+            c.IsChecked = value;
+        _addSelectedBtn.Content = $"添加所选（{_fetchChecks.Count(c => c.IsChecked == true)}）";
+    }
+
+    /// <summary>添加勾选中的模型（继承当前 Provider / BaseUrl / ApiKey / 高级配置，按「供应商+端点+模型」去重）。</summary>
+    private async Task AddCheckedModelsAsync()
+    {
+        var model = BuildFromControls();
+        var selected = _fetchChecks.Where(c => c.IsChecked == true).Select(c => c.Content?.ToString() ?? "").ToList();
+        if (selected.Count == 0)
+        {
+            _statusText.Text = "请至少勾选一个模型";
+            _statusText.Foreground = ThemePalette.Warn;
+            return;
+        }
+
+        _statusText.Text = "正在添加所选模型...";
+        _statusText.Foreground = ThemePalette.TextMuted;
+        try
+        {
             var temp = (double)(_tempBox.Value ?? 0.3m);
             var batch = (int)(_batchBox.Value ?? 50m);
             var timeout = (int)(_timeoutBox.Value ?? 120m);
-            var incoming = result.ModelIds.Select(id => new ModelConfig
+            var incoming = selected.Select(id => new ModelConfig
             {
                 Id = Guid.NewGuid().ToString(),
                 Provider = model.Provider,
@@ -481,14 +624,17 @@ public sealed class ModelEditDialog : Window
             }).ToList();
 
             _modelService.RegisterModels(incoming, out var added, out var skipped);
-            _statusText.Text = $"✅ 已获取 {result.ModelIds.Count} 个模型 · 新增 {added} · 已存在跳过 {skipped}";
-            _statusText.Foreground = s_success;
+            _fetchPanel.IsVisible = false;
+            _statusText.Text = $"✅ 已添加 {added} 个模型 · 跳过已存在 {skipped}";
+            _statusText.Foreground = ThemePalette.Success;
         }
         catch (Exception ex)
         {
-            _statusText.Text = $"❌ 获取异常：{ex.Message}";
-            _statusText.Foreground = s_warn;
+            _statusText.Text = $"❌ 添加异常：{ex.Message}";
+            _statusText.Foreground = ThemePalette.Warn;
         }
+
+        await Task.CompletedTask;
     }
 
     private void Commit()
@@ -505,23 +651,23 @@ public sealed class ModelEditDialog : Window
         if (string.IsNullOrWhiteSpace(model.BaseUrl))
         {
             _statusText.Text = "请先填写 Base URL";
-            _statusText.Foreground = s_warn;
+            _statusText.Foreground = ThemePalette.Warn;
             return;
         }
         _statusText.Text = "测试中...";
-        _statusText.Foreground = s_muted;
+        _statusText.Foreground = ThemePalette.TextMuted;
         try
         {
             var result = await _connectivity.TestAsync(model, CancellationToken.None);
             _statusText.Text = result.IsSuccess
                 ? $"✅ {result.Message}"
                 : $"❌ {result.Message}";
-            _statusText.Foreground = result.IsSuccess ? s_success : s_warn;
+            _statusText.Foreground = result.IsSuccess ? ThemePalette.Success : ThemePalette.Warn;
         }
         catch (Exception ex)
         {
             _statusText.Text = $"❌ 测试异常：{ex.Message}";
-            _statusText.Foreground = s_warn;
+            _statusText.Foreground = ThemePalette.Warn;
         }
     }
 

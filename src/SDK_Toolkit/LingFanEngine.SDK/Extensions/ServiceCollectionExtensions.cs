@@ -1,5 +1,6 @@
-﻿﻿﻿﻿﻿using System;
+﻿﻿﻿﻿using System;
 using System.Net.Http.Headers;
+using LingFanEngine.SDK.AI;
 using LingFanEngine.SDK.Constants;
 using LingFanEngine.SDK.Navigation;
 using LingFanEngine.SDK.Services.Abstractions;
@@ -27,8 +28,10 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<ITemplateService>()));
         services.AddSingleton<ITemplateService, TemplateService>();
         services.AddSingleton<IResourceEncryptor, ResourceEncryptor>();
+        services.AddSingleton<IFileEditor, FileEditor>();
         services.AddSingleton<ITranslationService, TranslationService>();
         services.AddSingleton<IModelService, ModelService>();
+        services.AddSingleton<IModelClientFactory, ModelClientFactory>();
         services.AddSingleton<ITranslatorFactory, TranslatorFactory>();
         services.AddSingleton<ModelConnectivityService>();
         services.AddSingleton<IPackToolService, PackToolService>();

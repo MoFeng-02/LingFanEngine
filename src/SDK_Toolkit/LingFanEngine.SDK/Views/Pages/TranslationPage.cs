@@ -9,7 +9,9 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Services.Abstractions;
+using LingFanEngine.SDK.Themes;
 using LingFanEngine.SDK.ViewModels;
+using LingFanEngine.SDK.Views.Controls;
 using MFToolkit.Routing;
 using MFToolkit.Routing.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
@@ -45,18 +47,11 @@ public class TranslationPage : UserControl, INavigationAware
     private ProgressBar _progressBar = null!;
     private Button _syncButton = null!;
     private Button _cancelButton = null!;
+    private Control _previewPanel = null!;
+    private TextBox _previewText = null!;
 
-    // ===== 暗色主题色板（与 WorkspaceWindow 一致）=====
-    private static readonly IBrush s_bg = new SolidColorBrush(Color.Parse("#1E1E1E"));
-    private static readonly IBrush s_panelBg = new SolidColorBrush(Color.Parse("#252526"));
-    private static readonly IBrush s_border = new SolidColorBrush(Color.Parse("#3C3C3C"));
-    private static readonly IBrush s_text = new SolidColorBrush(Color.Parse("#D4D4D4"));
-    private static readonly IBrush s_muted = new SolidColorBrush(Color.Parse("#8A8A8A"));
-    private static readonly IBrush s_accent = new SolidColorBrush(Color.Parse("#0E639C"));
-    private static readonly IBrush s_success = new SolidColorBrush(Color.Parse("#4EC9B0"));
-    private static readonly IBrush s_warn = new SolidColorBrush(Color.Parse("#CE9178"));
-    private static readonly IBrush s_title = new SolidColorBrush(Color.Parse("#4FC1FF"));
-    private static readonly IBrush s_cardBg = new SolidColorBrush(Color.FromArgb(15, 255, 255, 255));
+    // ===== 统一色板：取自 Themes/Colors.axaml（C# 经 ThemePalette.* 读取，XAML 经 {DynamicResource Brush.*}）=====
+    // 不再在页内硬编码 s_* 画笔——见 LingFanEngine.SDK.Themes.Theme。
 
     public TranslationPage(TranslationViewModel viewModel)
     {
@@ -75,11 +70,11 @@ public class TranslationPage : UserControl, INavigationAware
 
     private void InitializeComponent()
     {
-        // ===== 骨架：6 行严格分栏（列表 * 弹性占满）=====
+        // ===== 骨架：7 行严格分栏（列表 * 弹性占满）=====
         var root = new Grid
         {
-            RowDefinitions = RowDefinitions.Parse("Auto,Auto,Auto,Auto,*,Auto"),
-            Background = s_bg,
+            RowDefinitions = RowDefinitions.Parse("Auto,Auto,Auto,Auto,Auto,*,Auto"),
+            Background = ThemePalette.EditorBg,
         };
 
         root.Children.Add(CreateToolbar());
@@ -101,11 +96,15 @@ public class TranslationPage : UserControl, INavigationAware
         root.Children.Add(statRow);
         Grid.SetRow(statRow, 3);
 
+        _previewPanel = CreatePreviewPanel();
+        root.Children.Add(_previewPanel);
+        Grid.SetRow(_previewPanel, 4);
+
         _entriesList = new ListBox
         {
             Margin = new Thickness(M, S, M, S),
-            Background = s_panelBg,
-            BorderBrush = s_border,
+            Background = ThemePalette.PanelBg,
+            BorderBrush = ThemePalette.Border,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(4),
             ItemsSource = _vm.Entries,
@@ -113,15 +112,15 @@ public class TranslationPage : UserControl, INavigationAware
         };
         _entriesList.ItemTemplate = new FuncDataTemplate<TranslationEntry>((entry, _) => CreateEntryRow(entry), true);
         root.Children.Add(_entriesList);
-        Grid.SetRow(_entriesList, 4);
+        Grid.SetRow(_entriesList, 5);
 
         _statusText = new TextBlock
         {
             Text = _vm.StatusMessage, TextWrapping = TextWrapping.Wrap,
-            Foreground = s_muted, FontSize = 12, Margin = new Thickness(M, 0, M, S),
+            Foreground = ThemePalette.TextMuted, FontSize = 12, Margin = new Thickness(M, 0, M, S),
         };
         root.Children.Add(_statusText);
-        Grid.SetRow(_statusText, 5);
+        Grid.SetRow(_statusText, 6);
 
         // 订阅 ViewModel 状态变化
         _vm.PropertyChanged += (_, e) =>
@@ -140,8 +139,16 @@ public class TranslationPage : UserControl, INavigationAware
                     _cancelButton.IsVisible = _vm.IsBusy;
                     break;
                 case nameof(TranslationViewModel.Mode):
-                    _aiConfigPanel.IsVisible = _vm.Mode == TranslationMode.Ai;
+                    _aiConfigPanel.IsVisible = _vm.Mode is TranslationMode.Ai or TranslationMode.Agent;
                     _apiConfigPanel.IsVisible = _vm.Mode == TranslationMode.Api;
+                    break;
+                case nameof(TranslationViewModel.HasPending):
+                    _previewPanel.IsVisible = _vm.HasPending;
+                    if (_vm.HasPending)
+                        _previewText.Text = _vm.PreviewText;
+                    break;
+                case nameof(TranslationViewModel.PreviewText):
+                    _previewText.Text = _vm.PreviewText;
                     break;
                 case nameof(TranslationViewModel.ScannedCount):
                 case nameof(TranslationViewModel.TranslatedCount):
@@ -167,7 +174,21 @@ public class TranslationPage : UserControl, INavigationAware
         // ---------- 行 1 ----------
         var row1 = new DockPanel { LastChildFill = true };
 
-        var sourceField = LabeledTextBox("源语言", _vm.SourceLang, v => _vm.SourceLang = v, width: 80, watermark: "留空=自动检测");
+        // 输出布局（Flat/Mirrored/SingleFile；切换即持久化到项目 ProjectConfig.TranslationLayout）
+        var layoutField = UiBuilders.LabeledCombo("输出布局",
+            ["扁平（按场景 json）", "子文件夹分类（镜像 story）", "单文件"],
+            LayoutToIndex(_vm.Layout),
+            v => _vm.Layout = v switch
+            {
+                1 => TranslationLayout.Mirrored,
+                2 => TranslationLayout.SingleFile,
+                _ => TranslationLayout.Flat,
+            });
+        layoutField.Margin = new Thickness(0, 0, M, 0);
+        DockPanel.SetDock(layoutField, Dock.Right);
+        row1.Children.Add(layoutField);
+
+        var sourceField = UiBuilders.LabeledTextBox("源语言", _vm.SourceLang, v => _vm.SourceLang = v, width: 80, watermark: "留空=自动检测");
         sourceField.Margin = new Thickness(0, 0, M, 0);
         DockPanel.SetDock(sourceField, Dock.Right);
         row1.Children.Add(sourceField);
@@ -186,11 +207,11 @@ public class TranslationPage : UserControl, INavigationAware
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                new TextBlock { Text = "多语言翻译", FontSize = 20, FontWeight = FontWeight.Bold, Foreground = s_text },
+                new TextBlock { Text = "多语言翻译", FontSize = 20, FontWeight = FontWeight.Bold, Foreground = ThemePalette.Text },
                 new TextBlock
                 {
                     Text = "原文即 key · 自动提取 .story + C# 文本 · 批量 AI 翻译",
-                    FontSize = 11, Foreground = s_muted,
+                    FontSize = 11, Foreground = ThemePalette.TextMuted,
                     VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 2),
                 },
             }
@@ -207,22 +228,24 @@ public class TranslationPage : UserControl, INavigationAware
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, M, 0),
         };
-        _syncButton = ActionButton("同步翻译", _vm.SyncCommand, isPrimary: true);
-        _cancelButton = ActionButton("取消", _vm.CancelSyncCommand, isCancel: true);
+        _syncButton = UiBuilders.ActionButton("同步翻译", _vm.SyncCommand, isPrimary: true);
+        _cancelButton = UiBuilders.ActionButton("取消", _vm.CancelSyncCommand, isCancel: true);
         _cancelButton.IsVisible = false;
-        actions.Children.Add(ActionButton("扫描文本", _vm.ScanCommand, isGhost: true));
+        actions.Children.Add(UiBuilders.ActionButton("扫描文本", _vm.ScanCommand, isGhost: true));
+        actions.Children.Add(UiBuilders.ActionButton("生成模式文件", _vm.GenerateModeFilesCommand, isGhost: true));
         actions.Children.Add(_syncButton);
         actions.Children.Add(_cancelButton);
         DockPanel.SetDock(actions, Dock.Right);
         row2.Children.Add(actions);
 
         // 模式选择
-        var modeField = LabeledCombo("翻译模式", ["人工翻译", "AI 智能翻译", "翻译 API"], 0, v =>
+        var modeField = UiBuilders.LabeledCombo("翻译模式", ["人工翻译", "AI 智能翻译", "翻译 API", "AI Agent 智能代理"], 0, v =>
         {
             _vm.Mode = v switch
             {
                 1 => TranslationMode.Ai,
                 2 => TranslationMode.Api,
+                3 => TranslationMode.Agent,
                 _ => TranslationMode.Manual,
             };
         });
@@ -237,7 +260,7 @@ public class TranslationPage : UserControl, INavigationAware
             IsChecked = _vm.ForceRetranslate,
             VerticalAlignment = VerticalAlignment.Center,
             FontSize = 12,
-            Foreground = s_muted,
+            Foreground = ThemePalette.TextMuted,
             Margin = new Thickness(0, 0, M, 0),
         };
         ToolTip.SetTip(forceCheck, "勾选后忽略已有译文，全部条目重新翻译；不勾则跳过已翻译条目");
@@ -262,8 +285,8 @@ public class TranslationPage : UserControl, INavigationAware
 
         return new Border
         {
-            Background = s_panelBg,
-            BorderBrush = s_border,
+            Background = ThemePalette.PanelBg,
+            BorderBrush = ThemePalette.Border,
             BorderThickness = new Thickness(0, 0, 0, 1),
             Padding = new Thickness(M, 10, M, 10),
             Child = container,
@@ -291,10 +314,10 @@ public class TranslationPage : UserControl, INavigationAware
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Children =
             {
-                Card(
+                UiBuilders.Card(
                     "AI 翻译模型（OpenAI 兼容 / Anthropic；从「模型管理」添加）",
-                    FormGrid(
-                        FormRow("模型", CreateModelCombo())),
+                    UiBuilders.FormGrid(
+                        UiBuilders.FormRow("模型", CreateModelCombo())),
                     CreateAiCardFooter()),
             }
         };
@@ -307,12 +330,12 @@ public class TranslationPage : UserControl, INavigationAware
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Children =
             {
-                Card(
+                UiBuilders.Card(
                     "翻译 API 配置 · DeepL 风格（tag_handling 自动保留富文本标记）",
-                    FormGrid(
-                        FormRow("端点", CreateTextBox(_vm.ApiEndpoint, v => _vm.ApiEndpoint = v)),
-                        FormRow("API Key", CreateTextBox(_vm.ApiKey, v => _vm.ApiKey = v, isPassword: true)),
-                        FormRow("目标语言码", CreateTextBox(_vm.ApiTargetLangCode, v => _vm.ApiTargetLangCode = v))),
+                    UiBuilders.FormGrid(
+                        UiBuilders.FormRow("端点", UiBuilders.FormTextBox(_vm.ApiEndpoint, v => _vm.ApiEndpoint = v)),
+                        UiBuilders.FormRow("API Key", UiBuilders.FormTextBox(_vm.ApiKey, v => _vm.ApiKey = v, isPassword: true)),
+                        UiBuilders.FormRow("目标语言码", UiBuilders.FormTextBox(_vm.ApiTargetLangCode, v => _vm.ApiTargetLangCode = v))),
                     null),
             }
         };
@@ -367,8 +390,8 @@ public class TranslationPage : UserControl, INavigationAware
             Content = "管理模型",
             Padding = new Thickness(14, 6),
             HorizontalAlignment = HorizontalAlignment.Left,
-            Background = s_accent,
-            Foreground = Brushes.White,
+            Background = ThemePalette.Accent,
+            Foreground = ThemePalette.TextBright,
             BorderThickness = new Thickness(0),
             FontSize = 12,
         };
@@ -383,7 +406,7 @@ public class TranslationPage : UserControl, INavigationAware
         panel.Children.Add(new TextBlock
         {
             Text = "AI 模式按所选模型批量翻译（占位符自动校验）；模型配置保存在本地 models.json。",
-            FontSize = 11, Foreground = s_muted, TextWrapping = TextWrapping.Wrap,
+            FontSize = 11, Foreground = ThemePalette.TextMuted, TextWrapping = TextWrapping.Wrap,
         });
         return panel;
     }
@@ -391,6 +414,69 @@ public class TranslationPage : UserControl, INavigationAware
     // ============================================================
     // ③ 统计行
     // ============================================================
+
+    /// <summary>布局枚举 → 下拉索引</summary>
+    private static int LayoutToIndex(TranslationLayout layout) => layout switch
+    {
+        TranslationLayout.Mirrored => 1,
+        TranslationLayout.SingleFile => 2,
+        _ => 0,
+    };
+
+    /// <summary>产出 diff 审批面板（默认隐藏；HasPending 为真时显示，展示整轮 diff + 应用/放弃按钮）</summary>
+    private Control CreatePreviewPanel()
+    {
+        var discardButton = UiBuilders.ActionButton("放弃", _vm.DiscardSyncCommand, isGhost: true);
+        var approveButton = UiBuilders.ActionButton("应用变更", _vm.ApproveSyncCommand, isPrimary: true);
+
+        var header = new DockPanel { LastChildFill = true };
+        header.Children.Add(new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = S,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children =
+            {
+                new TextBlock { Text = "变更预览 — 待审批", FontSize = 12, FontWeight = FontWeight.Bold, Foreground = ThemePalette.Title },
+                new TextBlock { Text = "整轮 diff（原子写 + 自动备份，可回滚）", FontSize = 11, Foreground = ThemePalette.TextMuted },
+            }
+        });
+        var btnGroup = new StackPanel { Orientation = Orientation.Horizontal, Spacing = S, VerticalAlignment = VerticalAlignment.Center };
+        btnGroup.Children.Add(discardButton);
+        btnGroup.Children.Add(approveButton);
+        DockPanel.SetDock(btnGroup, Dock.Right);
+        header.Children.Add(btnGroup);
+
+        _previewText = new TextBox
+        {
+            Text = _vm.PreviewText,
+            IsReadOnly = true,
+            FontFamily = FontFamily.Parse("Consolas, Cascadia Code, monospace"),
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+            MaxHeight = 180,
+            Background = ThemePalette.EditorBgDark,
+            Foreground = ThemePalette.Text,
+            BorderBrush = ThemePalette.Border,
+        };
+
+        return new Border
+        {
+            IsVisible = false,
+            Background = ThemePalette.CardBg,
+            BorderBrush = ThemePalette.Warn,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Margin = new Thickness(M, S, M, 0),
+            Padding = new Thickness(M, S, M, S),
+            Child = new StackPanel
+            {
+                Spacing = S,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Children = { header, _previewText },
+            },
+        };
+    }
 
     private Control CreateStatRow()
     {
@@ -403,7 +489,7 @@ public class TranslationPage : UserControl, INavigationAware
         _statText = new TextBlock
         {
             Text = $"共 {_vm.ScannedCount} 条 · 已翻译 {_vm.TranslatedCount} · 待翻译 {_vm.UntranslatedCount}",
-            FontSize = 12, Foreground = s_muted,
+            FontSize = 12, Foreground = ThemePalette.TextMuted,
         };
         row.Children.Add(_statText);
         return row;
@@ -443,7 +529,7 @@ public class TranslationPage : UserControl, INavigationAware
                 new TextBlock
                 {
                     Text = entry.Text, TextWrapping = TextWrapping.Wrap,
-                    Foreground = s_text, VerticalAlignment = VerticalAlignment.Center, FontSize = 13,
+                    Foreground = ThemePalette.Text, VerticalAlignment = VerticalAlignment.Center, FontSize = 13,
                     HorizontalAlignment = HorizontalAlignment.Stretch,
                 },
                 // 徽章
@@ -459,7 +545,7 @@ public class TranslationPage : UserControl, INavigationAware
                     {
                         Text = isTranslated ? "已翻译" : "未翻译",
                         FontSize = 11,
-                        Foreground = isTranslated ? s_success : s_warn,
+                        Foreground = isTranslated ? ThemePalette.Success : ThemePalette.Warn,
                     },
                 },
             }
@@ -474,138 +560,6 @@ public class TranslationPage : UserControl, INavigationAware
     // 辅助构建器（统一间距/宽度体系）
     // ============================================================
 
-    /// <summary>卡片容器：标题 + 内容 + 可选底部说明</summary>
-    private static Control Card(string title, Control body, Control? footer)
-    {
-        var content = new StackPanel { Spacing = S, HorizontalAlignment = HorizontalAlignment.Stretch };
-        content.Children.Add(new TextBlock
-        {
-            Text = title, FontSize = 12, FontWeight = FontWeight.Bold,
-            Foreground = s_title,
-        });
-        content.Children.Add(body);
-        if (footer != null)
-            content.Children.Add(footer);
-
-        return new Border
-        {
-            Background = s_cardBg,
-            BorderBrush = s_border,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(M, S + 4, M, S + 4),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            Child = content,
-        };
-    }
-
-    /// <summary>
-    /// 表单网格（单列 N 行，每行一个 <see cref="FormRow"/> 占满整行）。
-    /// <para>关键：必须是 <c>*</c> 单列，让 FormRow 整体拿到父容器全宽；
-    /// 若仍为 <c>{LabelW},*</c> 双列，FormRow 会被卡进 100px 第 0 列，
-    /// 其内部 Grid 自身又要 100px 标签 + * 输入，* 部分宽度 = 0 → NumericUpDown/TextBox 被压扁、label 文字被遮挡。</para>
-    /// </summary>
-    private static Grid FormGrid(params Control[] rows)
-    {
-        var grid = new Grid
-        {
-            ColumnDefinitions = ColumnDefinitions.Parse("*"),
-            RowDefinitions = RowDefinitions.Parse(string.Join(",", Enumerable.Repeat("Auto", rows.Length))),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-        };
-        for (var i = 0; i < rows.Length; i++)
-        {
-            Grid.SetRow(rows[i], i);
-            grid.Children.Add(rows[i]);
-        }
-        return grid;
-    }
-
-    /// <summary>表单行：标签（0 列）+ 输入控件（1 列，星号占满）</summary>
-    private static Control FormRow(string label, Control input)
-    {
-        Grid.SetColumn(input, 1);
-        input.Margin = new Thickness(S, 2, 0, 2);
-        input.VerticalAlignment = VerticalAlignment.Center;
-        input.HorizontalAlignment = HorizontalAlignment.Stretch;
-        if (input is TextBox tb) tb.MinWidth = 220;
-        if (input is ComboBox cb) cb.MinWidth = 200;
-        if (input is NumericUpDown nud) nud.MinWidth = 120;
-
-        var labelBlock = new TextBlock
-        {
-            Text = label + ":", Foreground = s_muted, FontSize = 12,
-            VerticalAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 0, S, 0),
-        };
-        Grid.SetColumn(labelBlock, 0);
-
-        return new Grid
-        {
-            ColumnDefinitions = ColumnDefinitions.Parse($"{LabelW},*"),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            Children = { labelBlock, input },
-        };
-    }
-
-    /// <summary>操作按钮（三种形态：主/幽灵/取消）</summary>
-    private static Button ActionButton(string text, ICommand? cmd, bool isPrimary = false, bool isGhost = false, bool isCancel = false)
-    {
-        var btn = new Button
-        {
-            Content = text,
-            Command = cmd,
-            Padding = new Thickness(14, 6),
-            FontSize = 12,
-        };
-        if (isPrimary)
-        {
-            btn.Background = s_accent;
-            btn.Foreground = Brushes.White;
-            btn.BorderThickness = new Thickness(0);
-        }
-        else if (isGhost || isCancel)
-        {
-            btn.Classes.Add("transparent");
-        }
-        return btn;
-    }
-
-    /// <summary>带标签的下拉框（工具栏）</summary>
-    private static Control LabeledCombo(string label, string[] items, int selected, System.Action<int> onSelect)
-    {
-        var wrap = new StackPanel
-        {
-            Orientation = Orientation.Vertical,
-            Spacing = 2,
-            Margin = new Thickness(M, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        wrap.Children.Add(new TextBlock { Text = label, FontSize = 11, Foreground = s_muted });
-        var combo = new ComboBox { ItemsSource = items, SelectedIndex = selected, FontSize = 12, Width = 140 };
-        combo.SelectionChanged += (_, _) => onSelect(combo.SelectedIndex);
-        wrap.Children.Add(combo);
-        return wrap;
-    }
-
-    /// <summary>带标签的文本框（工具栏）</summary>
-    private static Control LabeledTextBox(string label, string initial, System.Action<string> onChanged, double width, string? watermark = null)
-    {
-        var wrap = new StackPanel
-        {
-            Orientation = Orientation.Vertical,
-            Spacing = 2,
-            Margin = new Thickness(M, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        wrap.Children.Add(new TextBlock { Text = label, FontSize = 11, Foreground = s_muted });
-        var box = new TextBox { Text = initial, FontSize = 12, Width = width, PlaceholderText = watermark };
-        box.TextChanged += (_, _) => onChanged(box.Text ?? initial);
-        wrap.Children.Add(box);
-        return wrap;
-    }
-
     /// <summary>带标签的语言根目录下拉（工具栏）：locale code 预设 + 可自由输入，遵循引擎 i18n 标准（Lang/{lang}/）。</summary>
     private static Control LabeledLocaleCombo(string initial, System.Action<string> onChanged)
     {
@@ -616,7 +570,7 @@ public class TranslationPage : UserControl, INavigationAware
             Margin = new Thickness(M, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
-        wrap.Children.Add(new TextBlock { Text = "目标语言", FontSize = 11, Foreground = s_muted });
+        wrap.Children.Add(new TextBlock { Text = "目标语言", FontSize = 11, Foreground = ThemePalette.TextMuted });
 
         var combo = new ComboBox
         {
@@ -643,33 +597,5 @@ public class TranslationPage : UserControl, INavigationAware
 
         wrap.Children.Add(combo);
         return wrap;
-    }
-
-    /// <summary>表单文本框（输入列星号拉伸，HorizontalAlignment=Stretch 自动占满）</summary>
-    private static TextBox CreateTextBox(string initial, System.Action<string> setter, bool isPassword = false)
-    {
-        var tb = new TextBox
-        {
-            Text = initial,
-            FontSize = 12,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-        };
-        if (isPassword) tb.PasswordChar = '*';
-        tb.TextChanged += (_, _) => setter(tb.Text ?? "");
-        return tb;
-    }
-
-    /// <summary>表单数字框（输入列星号拉伸）</summary>
-    private static NumericUpDown CreateNumericBox(int initial, System.Action<int> setter, int min, int max)
-    {
-        var box = new NumericUpDown
-        {
-            Value = initial, Minimum = min, Maximum = max,
-            FontSize = 12,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            MaxWidth = 200,
-        };
-        box.ValueChanged += (_, _) => setter((int)box.Value);
-        return box;
     }
 }

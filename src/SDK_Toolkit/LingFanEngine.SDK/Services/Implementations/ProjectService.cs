@@ -75,17 +75,21 @@ public partial class ProjectService : ObservableObject, IProjectService
     }
 
     /// <inheritdoc/>
-    public Task DeleteAsync(string projectFilePath)
+    public async Task DeleteAsync(string projectFilePath)
     {
+        // 删除项目配置文件
         if (FileHelper.FileExists(projectFilePath))
             File.Delete(projectFilePath);
+
+        // 删除项目所在目录（整项目移除）
+        var dir = Path.GetDirectoryName(projectFilePath);
+        if (!string.IsNullOrEmpty(dir))
+            await FileHelper.DeleteDirectoryAsync(dir);
 
         // 从最近列表移除
         var recents = GetRecentProjects();
         _recentProjectsCache = recents.Where(r => r.Path != projectFilePath).ToList();
         SaveRecentProjects();
-
-        return Task.CompletedTask;
     }
 
     /// <inheritdoc/>

@@ -203,6 +203,31 @@ public partial class LauncherViewModel : ViewModelBase
         StatusMessage = "已移除记录";
     }
 
+    /// <summary>删除项目（含所有项目文件）</summary>
+    [RelayCommand]
+    private async Task DeleteProjectAsync(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return;
+
+        IsBusy = true;
+        StatusMessage = "正在删除项目...";
+        try
+        {
+            await _projectService.DeleteAsync(path);
+            LoadRecentProjects();
+            StatusMessage = "项目已删除";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"删除失败: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     /// <summary>切换新建项目面板可见性</summary>
     [RelayCommand]
     private void ToggleNewProjectPanel()

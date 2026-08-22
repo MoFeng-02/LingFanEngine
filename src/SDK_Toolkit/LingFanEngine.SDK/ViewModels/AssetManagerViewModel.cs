@@ -1,6 +1,9 @@
 using System;
 using System.Collections.ObjectModel;
+using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LingFanEngine.SDK.Constants;
@@ -15,6 +18,8 @@ public partial class AssetManagerViewModel : ViewModelBase
     private readonly IAssetManager _assetManager;
     private readonly IProjectSession _session;
     private List<AssetEntry> _allAssets = new();
+    private FileSystemWatcher? _watcher;
+    private CancellationTokenSource? _watcherDebounce;
 
     [ObservableProperty]
     private ObservableCollection<AssetEntry> _assets = new();
@@ -59,17 +64,83 @@ public partial class AssetManagerViewModel : ViewModelBase
     {
         ProjectDirectory = _session.ProjectDirectory;
         ResourcesDirectory = _session.ResourcesDirectory;
+        StartWatching();
         _ = ScanAssetsAsync();
     }
 
     private void OnProjectClosed()
     {
+        StopWatching();
         ProjectDirectory = "";
         ResourcesDirectory = "";
         _allAssets.Clear();
         Assets.Clear();
         Preview = null;
         StatusMessage = "就绪";
+    }
+
+    /// <summary>启动对资源目录的文件监听（外部动态增删/改动文件时自动防抖重扫）。</summary>
+    private void StartWatching()
+    {
+        StopWatching();
+        var dir = ResourcesDirectory;
+        if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
+            return;
+        try
+        {
+            _watcher = new FileSystemWatcher(dir)
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.DirectoryName,
+            };
+            _watcher.Changed += OnResourceChanged;
+            _watcher.Created += OnResourceChanged;
+            _watcher.Deleted += OnResourceChanged;
+            _watcher.Renamed += OnResourceChanged;
+            _watcher.Error += OnWatcherError;
+            _watcher.EnableRaisingEvents = true;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[AssetManager] 资源监听启动失败: {ex.Message}");
+        }
+    }
+
+    private void StopWatching()
+    {
+        _watcherDebounce?.Cancel();
+        _watcherDebounce = null;
+        if (_watcher != null)
+        {
+            _watcher.EnableRaisingEvents = false;
+            _watcher.Dispose();
+            _watcher = null;
+        }
+    }
+
+    private void OnResourceChanged(object sender, FileSystemEventArgs e)
+    {
+        if (e.FullPath.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+            e.FullPath.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return;
+        ScheduleRefresh();
+    }
+
+    /// <summary>监听缓冲溢出（大量快速变更）→ 全量刷新兜底，保证正确性。</summary>
+    private void OnWatcherError(object sender, ErrorEventArgs e) => ScheduleRefresh();
+
+    /// <summary>防抖刷新（合并短时间内连续事件，回到 UI 线程触发扫描）。</summary>
+    private void ScheduleRefresh()
+    {
+        _watcherDebounce?.Cancel();
+        var cts = new CancellationTokenSource();
+        _watcherDebounce = cts;
+        var token = cts.Token;
+        _ = Task.Delay(400, token).ContinueWith(t =>
+        {
+            if (token.IsCancellationRequested) return;
+            Dispatcher.UIThread.Post(() => _ = ScanAssetsAsync());
+        }, token, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
     }
 
     /// <summary>扫描项目资源</summary>

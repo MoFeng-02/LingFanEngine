@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using LingFanEngine.SDK.Services.Abstractions;
 
 namespace LingFanEngine.SDK.Models;
 
@@ -37,6 +38,9 @@ public class ProjectConfig
 
     /// <summary>构建配置</summary>
     public BuildConfig Build { get; set; } = new();
+
+    /// <summary>翻译输出布局（默认扁平 Flat；Mirrored=子文件夹分类逐 story，SingleFile=单文件）。</summary>
+    public TranslationLayout TranslationLayout { get; set; } = TranslationLayout.Flat;
 
     /// <summary>创建时间</summary>
     public DateTime CreatedAt { get; set; } = DateTime.Now;

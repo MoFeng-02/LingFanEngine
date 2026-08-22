@@ -1,0 +1,77 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- 灵泛引擎 SDK 统一色板（多主题预埋）——全应用唯一主题源。
+         用 ThemeDictionaries 承载 Light/Dark 两个变体，令牌经 DynamicResource / ThemePalette(带 themeVariant) 解析，
+         切换 RequestedThemeVariant 即可整站换肤。
+         【预埋说明】当前两个变体暂用同一暗色值占位（oss：RequestedThemeVariant=Dark），浅色方案待后续填充；
+         机制已就绪，届时只需改 Light 变体的色值。 -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+
+            <SolidColorBrush x:Key="Brush.EditorBg" Color="#1E1E1E" />
+            <SolidColorBrush x:Key="Brush.EditorBgDark" Color="#1B1B1B" />
+            <SolidColorBrush x:Key="Brush.PanelBg" Color="#252526" />
+            <SolidColorBrush x:Key="Brush.PanelDeeper" Color="#2D2D30" />
+            <SolidColorBrush x:Key="Brush.ActivityBarBg" Color="#333333" />
+            <SolidColorBrush x:Key="Brush.StatusBarBg" Color="#007ACC" />
+
+            <SolidColorBrush x:Key="Brush.Border" Color="#3C3C3C" />
+            <SolidColorBrush x:Key="Brush.Splitter" Color="#1E1E1E" />
+            <SolidColorBrush x:Key="Brush.InputBorder" Color="#3F3F46" />
+
+            <SolidColorBrush x:Key="Brush.Text" Color="#D4D4D4" />
+            <SolidColorBrush x:Key="Brush.TextMuted" Color="#8A8A8A" />
+            <SolidColorBrush x:Key="Brush.TextBright" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="Brush.TextHover" Color="#CCCCCC" />
+
+            <SolidColorBrush x:Key="Brush.IconNormal" Color="#858585" />
+            <SolidColorBrush x:Key="Brush.IconActive" Color="#FFFFFF" />
+
+            <SolidColorBrush x:Key="Brush.Accent" Color="#0E639C" />
+            <SolidColorBrush x:Key="Brush.Success" Color="#4EC9B0" />
+            <SolidColorBrush x:Key="Brush.Warn" Color="#CE9178" />
+            <SolidColorBrush x:Key="Brush.Title" Color="#4FC1FF" />
+            <SolidColorBrush x:Key="Brush.CardBg" Color="#0FFFFFFF" />
+
+            <SolidColorBrush x:Key="Brush.RunGreen" Color="#2D9D78" />
+            <SolidColorBrush x:Key="Brush.StopRed" Color="#C0392B" />
+            <SolidColorBrush x:Key="Brush.Info" Color="#88C0D0" />
+            <SolidColorBrush x:Key="Brush.BtnBg" Color="#3A3D41" />
+
+        </ResourceDictionary>
+
+        <ResourceDictionary x:Key="Dark">
+
+            <SolidColorBrush x:Key="Brush.EditorBg" Color="#1E1E1E" />
+            <SolidColorBrush x:Key="Brush.EditorBgDark" Color="#1B1B1B" />
+            <SolidColorBrush x:Key="Brush.PanelBg" Color="#252526" />
+            <SolidColorBrush x:Key="Brush.PanelDeeper" Color="#2D2D30" />
+            <SolidColorBrush x:Key="Brush.ActivityBarBg" Color="#333333" />
+            <SolidColorBrush x:Key="Brush.StatusBarBg" Color="#007ACC" />
+
+            <SolidColorBrush x:Key="Brush.Border" Color="#3C3C3C" />
+            <SolidColorBrush x:Key="Brush.Splitter" Color="#1E1E1E" />
+            <SolidColorBrush x:Key="Brush.InputBorder" Color="#3F3F46" />
+
+            <SolidColorBrush x:Key="Brush.Text" Color="#D4D4D4" />
+            <SolidColorBrush x:Key="Brush.TextMuted" Color="#8A8A8A" />
+            <SolidColorBrush x:Key="Brush.TextBright" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="Brush.TextHover" Color="#CCCCCC" />
+
+            <SolidColorBrush x:Key="Brush.IconNormal" Color="#858585" />
+            <SolidColorBrush x:Key="Brush.IconActive" Color="#FFFFFF" />
+
+            <SolidColorBrush x:Key="Brush.Accent" Color="#0E639C" />
+            <SolidColorBrush x:Key="Brush.Success" Color="#4EC9B0" />
+            <SolidColorBrush x:Key="Brush.Warn" Color="#CE9178" />
+            <SolidColorBrush x:Key="Brush.Title" Color="#4FC1FF" />
+            <SolidColorBrush x:Key="Brush.CardBg" Color="#0FFFFFFF" />
+
+            <SolidColorBrush x:Key="Brush.RunGreen" Color="#2D9D78" />
+            <SolidColorBrush x:Key="Brush.StopRed" Color="#C0392B" />
+            <SolidColorBrush x:Key="Brush.Info" Color="#88C0D0" />
+            <SolidColorBrush x:Key="Brush.BtnBg" Color="#3A3D41" />
+
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

@@ -15,30 +15,54 @@ public enum TranslationMode
 
     /// <summary>专业翻译 API——调用 DeepL/Google 等翻译服务</summary>
     Api,
+
+    /// <summary>AI Agent——让 LLM 经 tool calling 理解项目、决定翻译，写入走确定性路径 + 人在环审批</summary>
+    Agent,
 }
 
 /// <summary>
+/// 翻译文件输出布局（引擎语言根内部自由组织，见 docs-site/cookbook/如何做多语言.md）。
+/// <para>Flat=扁平（可选按场景并列）；Mirrored=镜像 Stories 子文件夹（逐 story 一个 json）；SingleFile=单个大文件。</para>
+/// </summary>
+public enum TranslationLayout
+{
+    /// <summary>扁平（默认）：Lang/{lang}/main.json（全局/UI）+ 按场景 Lang/{lang}/{scene}.json（扁平并列）</summary>
+    Flat = 0,
+
+    /// <summary>子文件夹分类：Lang/{lang}/{sceneDir}/{scene}.json 镜像 Stories；main.json 兜底</summary>
+    Mirrored = 1,
+
+    /// <summary>单个大文件：Lang/{lang}.json</summary>
+    SingleFile = 2,
+}
+
+/// <summary>扫描文本来源种类</summary>
+public enum ScannedTextKind
+{
+    /// <summary>来自某个 .story 文件（可归到某场景/文件）</summary>
+    Story,
+
+    /// <summary>来自 C# 侧 / 无法归类到某 story 的 UI 文本（归入 main.json）</summary>
+    Ui,
+}
+
+/// <summary>
+/// 带来源的扫描条目——记录可翻译文本、种类、以及所属 .story 相对 Stories 根的路径（null = UI/全局/C#）。
+/// <para>SourceStory 形如 <c>title/title_main.story</c>；用于 Mirrored 布局按 story 路由到
+/// <c>Lang/{lang}/title/title_main.json</c>。</para>
+/// </summary>
+public sealed record ScannedText(string Text, ScannedTextKind Kind, string? SourceStory);
+
+/// <summary>
 /// 翻译器抽象——单条/批量文本翻译。
-/// <para>实现：<see cref="ManualTranslator"/>（占位）/ <see cref="AiTranslator"/>（OpenAI 兼容 LLM）/ <see cref="AnthropicTranslator"/>（Claude）/ <see cref="ApiTranslator"/>（翻译 API）。</para>
+/// <para>实现：<see cref="ITranslator"/>（Manual=占位 / Ai=OpenAI 兼容 LLM / Anthropic=Claude / Api=DeepL 风格）。</para>
 /// </summary>
 public interface ITranslator
 {
-    /// <summary>翻译单条文本</summary>
-    /// <param name="text">原文</param>
-    /// <param name="targetLang">目标语言（自然语言，如「日语」「English」「法语」；AI 模式直接据此生成对应语言，API 模式由配置里的语言码决定）</param>
-    /// <param name="sourceLang">源语言（自然语言，如「中文」「English」；留空表示让翻译器自动检测）</param>
-    /// <param name="ct">取消令牌</param>
-    /// <returns>译文；失败或无法翻译时返回 null（调用方回退原文）</returns>
+    /// <summary>翻译单条文本；失败或无法翻译返回 null</summary>
     Task<string?> TranslateAsync(string text, string targetLang, string sourceLang = "", CancellationToken ct = default);
 
-    /// <summary>
-    /// 批量翻译文本（AI/API 模式核心——单次请求翻译多条，大幅降低成本与延迟）。
-    /// <para>按入参顺序返回译文数组；失败条目返回 null。默认实现逐条调用 <see cref="TranslateAsync"/>。</para>
-    /// </summary>
-    /// <param name="texts">原文列表</param>
-    /// <param name="targetLang">目标语言（自然语言，如「日语」「English」）</param>
-    /// <param name="sourceLang">源语言（自然语言，留空=自动检测）</param>
-    /// <param name="ct">取消令牌</param>
+    /// <summary>批量翻译（AI/API 单请求多条的 30× 成本摊薄）；按入参顺序返回，失败条为 null</summary>
     Task<IReadOnlyList<string?>> TranslateBatchAsync(IReadOnlyList<string> texts, string targetLang, string sourceLang = "", CancellationToken ct = default);
 }
 
@@ -56,62 +80,34 @@ public sealed class ApiTranslatorConfig
 }
 
 /// <summary>
-/// 翻译同步服务——扫描 .story + C# 全部可翻译文本，增量维护翻译文件，支持自动翻译。
-/// <para>与引擎运行时 <c>I18nService</c> 约定完全一致：翻译文件为 <c>Lang/{lang}/main.json</c> 或 <c>Lang/{lang}.json</c>，
-/// 键=原文，值=译文；找不到译文时引擎回退原文。</para>
+/// 翻译同步服务——扫描 .story + C# 全部可翻译文本，按所选布局（Flat/Mirrored/SingleFile）增量维护翻译文件，
+/// 支持 Manual/AI/API 三种模式翻译。
+/// <para>写入走 <see cref="IFileEditor"/>（原子写 + diff + 备份/回滚）：<see cref="PrepareSyncAsync"/> 只"准备"出编辑
+/// （不落盘），经整轮 diff 审批后由 <see cref="ApplyEditsAsync"/> 提交。</para>
+/// <para>与引擎 I18nService 约定一致：语言根目录 <c>Lang/{lang}/</c>（locale code），键=原文，值=译文。</para>
 /// </summary>
 public interface ITranslationService
 {
     /// <summary>
-    /// 扫描项目全部可翻译文本（.story DSL + C# 源码 API 文本）。
-    /// <para>覆盖：say/菜单/选项/输入/通知/存档标题 + UI 元素 text/button/checkbox + C# SayAsync/ExtendAsync/ShowMenuAsync/ChoiceAsync/InputAsync/Notify/AddButton/AddMenu/AddText/SetScene。</para>
+    /// 扫描项目全部可翻译文本（.story DSL + C#），返回带来源条目以便按布局路由。
     /// </summary>
-    /// <param name="projectDir">项目根目录（含 Resources/）</param>
-    /// <returns>去重后的可翻译文本集合</returns>
-    Task<IReadOnlyList<string>> ScanTranslatableTextsAsync(string projectDir);
+    Task<IReadOnlyList<ScannedText>> ScanTranslatableTextsAsync(string projectDir);
 
     /// <summary>
-    /// 为指定语言同步翻译文件——保留已有译文、追加新增文本、标记已删除文本。
-    /// <para>生成 <c>Lang/{lang}/main.json</c>（项目根目录形式，与 I18nService 目录加载约定一致）。
-    /// 新增条目 value=原文占位，由人工/机器翻译填充。</para>
+    /// 准备一次翻译同步（不落盘）：扫描 → 路由到目标文件 → 翻译新增/待翻 → 构建每文件 <see cref="FileEdit"/>。
     /// </summary>
-    Task<TranslationSyncResult> SyncAsync(string projectDir, string lang);
+    /// <returns>结果含 <see cref="TranslationSyncResult.PendingEdits"/> 与 <see cref="TranslationSyncResult.PreviewText"/>（整轮 diff 预览）</returns>
+    Task<TranslationSyncResult> PrepareSyncAsync(
+        string projectDir, string lang, TranslationLayout layout, ITranslator translator,
+        IProgress<TranslationProgress>? progress, bool forceRetranslate, string sourceLang, CancellationToken ct);
 
-    /// <summary>
-    /// 自动翻译并同步——扫描 → 翻译器翻译新增条目 → 写回翻译文件。
-    /// <para>已有译文保留不重翻；新增条目经 <paramref name="translator"/> 翻译，翻译失败回退原文。</para>
-    /// </summary>
-    /// <param name="projectDir">项目根目录</param>
-    /// <param name="lang">目标语言代码（如 en-US）</param>
-    /// <param name="translator">翻译器（Manual=占位 / Ai / Api）</param>
-    /// <param name="ct">取消令牌</param>
-    Task<TranslationSyncResult> SyncWithTranslatorAsync(string projectDir, string lang, ITranslator translator, string sourceLang = "", CancellationToken ct = default);
+    /// <summary>提交一批已准备、已审批的编辑（原子写 + 备份；部分失败时回滚已提交项）。返回成功提交次数。</summary>
+    Task<int> ApplyEditsAsync(IReadOnlyList<FileEdit> edits, CancellationToken ct = default);
 
-    /// <summary>
-    /// 自动翻译并同步（带进度回调）。
-    /// <para>扫描 → 批量翻译新增条目 → 写回翻译文件。progress 回调：已完成数/总数。</para>
-    /// </summary>
-    Task<TranslationSyncResult> SyncWithTranslatorAsync(
-        string projectDir, string lang, ITranslator translator,
-        IProgress<TranslationProgress>? progress, string sourceLang = "", CancellationToken ct = default);
+    /// <summary>回滚一批已提交的编辑（用 .bak 恢复 / 删除新建文件）。返回成功回滚次数。</summary>
+    Task<int> RollbackEditsAsync(IReadOnlyList<FileEdit> edits, CancellationToken ct = default);
 
-    /// <summary>
-    /// 自动翻译并同步（带强制重翻译开关 + 进度回调）。
-    /// <para><paramref name="forceRetranslate"/>=true 时忽略已有译文，全部条目重新翻译；
-    /// =false 时跳过已翻译条目（保留已有译文，仅翻译新增/未翻译）。</para>
-    /// </summary>
-    Task<TranslationSyncResult> SyncWithTranslatorAsync(
-        string projectDir, string lang, ITranslator translator,
-        IProgress<TranslationProgress>? progress, bool forceRetranslate, string sourceLang = "", CancellationToken ct = default);
-
-    /// <summary>
-    /// 自动翻译并同步（带强制重翻译开关，无进度回调）。
-    /// </summary>
-    Task<TranslationSyncResult> SyncWithTranslatorAsync(
-        string projectDir, string lang, ITranslator translator,
-        bool forceRetranslate, string sourceLang = "", CancellationToken ct = default);
-
-    /// <summary>列出项目中已有的翻译键集合（未翻译=值等于原文）</summary>
+    /// <summary>列出项目中已有翻译键集合（未翻译=值等于原文）。</summary>
     Task<IReadOnlyDictionary<string, bool>> GetTranslationStatusAsync(string projectDir, string lang);
 }
 
@@ -121,16 +117,16 @@ public readonly record struct TranslationProgress(int Completed, int Total, stri
 /// <summary>翻译同步结果统计</summary>
 public sealed class TranslationSyncResult
 {
-    /// <summary>新增文本数（已写入占位/译文）</summary>
+    /// <summary>新增文本数（译文/占位已计入）</summary>
     public int Added { get; set; }
 
     /// <summary>已存在且保留的翻译数</summary>
     public int Kept { get; set; }
 
-    /// <summary>扫描到的原文总数（去重后）</summary>
+    /// <summary>扫描到的原文总数（带来源条目，去重后）</summary>
     public int Scanned { get; set; }
 
-    /// <summary>上次翻译文件中已不存在的键数（标记删除，不删除）</summary>
+    /// <summary>已有翻译文件中扫描不到的键数（UI 文本/已删旧文本，仅统计不删除）</summary>
     public int Removed { get; set; }
 
     /// <summary>本次实际翻译成功的条数</summary>
@@ -139,6 +135,12 @@ public sealed class TranslationSyncResult
     /// <summary>翻译失败回退原文的条数</summary>
     public int Failed { get; set; }
 
-    /// <summary>输出文件路径</summary>
+    /// <summary>输出语言根目录路径（如 {project}/Lang/en-US）</summary>
     public string? OutputPath { get; set; }
+
+    /// <summary>待审批的每文件编辑集（<see cref="PrepareSyncAsync"/> 产物，未落盘）</summary>
+    public IReadOnlyList<FileEdit>? PendingEdits { get; set; }
+
+    /// <summary>整轮 diff 预览文本（<see cref="IFileEditor.RenderDiff"/> 拼接），供审批展示</summary>
+    public string PreviewText { get; set; } = "";
 }

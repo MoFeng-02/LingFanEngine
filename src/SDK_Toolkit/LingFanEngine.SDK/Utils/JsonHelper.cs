@@ -27,6 +27,7 @@ namespace LingFanEngine.SDK.Utils;
 [JsonSerializable(typeof(ModelAdvancedConfig))]
 [JsonSerializable(typeof(List<ModelConfig>))]
 [JsonSerializable(typeof(ModelsFile))]
+[JsonSerializable(typeof(UsageStats))]
 [JsonSourceGenerationOptions(
     WriteIndented = true,
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,

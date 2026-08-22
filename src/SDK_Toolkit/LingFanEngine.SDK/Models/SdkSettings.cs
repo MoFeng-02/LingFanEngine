@@ -1,3 +1,5 @@
+using LingFanEngine.SDK.Services.Abstractions;
+
 namespace LingFanEngine.SDK.Models;
 
 /// <summary>
@@ -10,6 +12,10 @@ public class SdkSettings
     public string DefaultBuildConfig { get; set; } = "Release";
     public bool DefaultSelfContained { get; set; } = true;
     public bool DefaultPublishAot { get; set; } = true;
+
+    // 翻译
+    /// <summary>新建项目时的默认翻译输出布局（全局用户默认；项目级 ProjectConfig.TranslationLayout 优先）。</summary>
+    public TranslationLayout DefaultTranslationLayout { get; set; } = TranslationLayout.Flat;
 
     // SDK 信息（只读）
     public string SdkVersion { get; set; } = "0.1.0";

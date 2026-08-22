@@ -58,12 +58,12 @@ public sealed class ConnectivityResult
 /// </summary>
 public sealed class ModelConnectivityService
 {
-    private readonly IHttpClientFactory? _httpClientFactory;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    /// <summary>创建连通性测试服务</summary>
-    public ModelConnectivityService(IHttpClientFactory? httpClientFactory = null)
+    /// <summary>创建连通性测试服务（统一经 IHttpClientFactory）。</summary>
+    public ModelConnectivityService(IHttpClientFactory httpClientFactory)
     {
-        _httpClientFactory = httpClientFactory;
+        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
     }
 
     /// <summary>测试模型连通性</summary>
@@ -81,9 +81,8 @@ public sealed class ModelConnectivityService
             ? "/v1/models"
             : (baseUrl.EndsWith("/v1", StringComparison.OrdinalIgnoreCase) ? "/models" : "/v1/models");
         var url = baseUrl + modelsPath;
-        using var client = _httpClientFactory?.CreateClient() ?? new HttpClient();
-        if (_httpClientFactory == null)
-            client.Timeout = TimeSpan.FromSeconds(15);
+        using var client = _httpClientFactory.CreateClient();
+        client.Timeout = TimeSpan.FromSeconds(15);
 
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         if (!string.IsNullOrWhiteSpace(model.ApiKey))

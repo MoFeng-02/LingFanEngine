@@ -1,0 +1,43 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LingFanEngine.SDK.ViewModels"
+             xmlns:m="using:LingFanEngine.SDK.Models"
+             x:Class="LingFanEngine.SDK.Views.Pages.AssetManagerPage"
+             x:DataType="vm:AssetManagerViewModel">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="16">
+
+        <!-- 标题 + 扫描 -->
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="资源管理" Classes="page-title" />
+            <Button Content="扫描资源" Command="{Binding ScanAssetsCommand}" />
+        </StackPanel>
+
+        <!-- 资源列表（拖拽导入在 code-behind 挂接） -->
+        <ListBox x:Name="AssetList"
+                 Grid.Row="1"
+                 ItemsSource="{Binding Assets}"
+                 SelectedItem="{Binding SelectedAsset}"
+                 Margin="0,8,0,8">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="m:AssetEntry">
+                    <StackPanel Orientation="Vertical" Margin="8,4">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{Binding FileName}" FontWeight="Bold" />
+                            <TextBlock Text="{Binding Type}" Foreground="{DynamicResource Brush.TextMuted}" FontSize="11" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding RelativePath}" FontSize="11"
+                                   Foreground="{DynamicResource Brush.TextMuted}" />
+                        <TextBlock Text="{Binding SizeKb, StringFormat='{}{0:F1} KB'}" FontSize="11"
+                                   Foreground="{DynamicResource Brush.TextMuted}" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!-- 状态 -->
+        <TextBlock Grid.Row="2"
+                   Text="{Binding StatusMessage}"
+                   FontSize="12"
+                   Foreground="{DynamicResource Brush.TextMuted}" />
+    </Grid>
+</UserControl>

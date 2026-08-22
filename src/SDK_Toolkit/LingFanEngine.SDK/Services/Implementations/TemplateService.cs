@@ -79,6 +79,45 @@ public class TemplateService : ITemplateService
         return PathHelper.GetTemplatePath();
     }
 
+    /// <summary>
+    /// 模板完整可用性前置校验（5.3）——按 开发目录 → 分发缓存 → 嵌入 zip 三级判源，
+    /// 任一来源缺失或为空都在创建项目前抛错，避免生成"半成品"项目目录。
+    /// </summary>
+    private void PreflightTemplateAvailability()
+    {
+        // ① 开发模式：源码模板目录
+        var templatePath = GetTemplatePath();
+        if (templatePath != null && Directory.Exists(templatePath))
+        {
+            if (!Directory.EnumerateFiles(templatePath, "*", SearchOption.AllDirectories).Any())
+                throw new InvalidOperationException($"模板完整性 preflight 失败：源码模板目录为空（{templatePath}）。");
+            return;
+        }
+
+        // ② 分发缓存：已下载的模板目录
+        if (_templateUpdateService?.GetCachedTemplateDir() is { } cached && Directory.Exists(cached))
+        {
+            if (!Directory.EnumerateFiles(cached, "*", SearchOption.AllDirectories).Any())
+                throw new InvalidOperationException($"模板完整性 preflight 失败：模板缓存目录为空（{cached}）。");
+            return;
+        }
+
+        // ③ 兜底：内嵌 template.zip
+        var assembly = Assembly.GetExecutingAssembly();
+        var zipResource = assembly.GetManifestResourceNames()
+            .FirstOrDefault(n => n.EndsWith(EmbeddedResourceName, StringComparison.OrdinalIgnoreCase));
+        if (zipResource == null)
+            throw new InvalidOperationException(
+                "模板完整性 preflight 失败：既无源码模板目录，未找到模板缓存，也无嵌入资源 template.zip。\n" +
+                "开发环境请从引擎源码树运行；分发环境请重新安装 / 更新 SDK。");
+
+        using var stream = assembly.GetManifestResourceStream(zipResource)
+            ?? throw new InvalidOperationException("模板完整性 preflight 失败：无法读取嵌入资源 template.zip。");
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+        if (archive.Entries.Count == 0)
+            throw new InvalidOperationException("模板完整性 preflight 失败：嵌入的 template.zip 为空。");
+    }
+
     /// <inheritdoc/>
     public async Task CreateProjectFromTemplateAsync(
         string outputDir, string projectName, string projectTitle,
@@ -96,11 +135,16 @@ public class TemplateService : ITemplateService
             ? $"Copyright (c) {DateTime.Now.Year}"
             : $"Copyright (c) {DateTime.Now.Year} {author}";
 
+        // 5.3 preflight：模板完整可用性前置校验（任一缺失/为空都在创建前报错，避免半成品项目目录）
+        PreflightTemplateAvailability();
+
         var projectDir = Path.Combine(outputDir, projectName);
         PathHelper.EnsureDirectory(projectDir);
 
         // 尝试开发模式（目录复制），失败则用分发模式（优先下载缓存，否则内置 ZIP 解压）
-        var templatePath = GetTemplatePath();
+        // 模板根可能带一层同名占位符包裹文件夹（_LingFanEngineTemplateTitle_），需先"拆包"，
+        // 否则该包裹会被占位符重命名成 {projectName}，导致 {projectDir}/{projectName} 双层嵌套。
+        var templatePath = ResolveTemplateContentRoot(GetTemplatePath());
         if (templatePath != null && Directory.Exists(templatePath))
         {
             await CopyTemplateDirectoryAsync(templatePath, projectDir);
@@ -108,7 +152,7 @@ public class TemplateService : ITemplateService
         else
         {
             // 分发模式：若已从 Release 下载且版本高于内置，则优先用缓存；否则回退内置嵌入 zip
-            var cached = _templateUpdateService?.GetCachedTemplateDir();
+            var cached = ResolveTemplateContentRoot(_templateUpdateService?.GetCachedTemplateDir());
             if (cached != null)
             {
                 await CopyTemplateDirectoryAsync(cached, projectDir);
@@ -166,6 +210,25 @@ public class TemplateService : ITemplateService
         }
     }
 
+    /// <summary>
+    /// 解析模板内容根：当模板根含名为占位符的包裹文件夹（_LingFanEngineTemplateTitle_）时，
+    /// 返回该文件夹作为有效模板根（其内容即项目根），这样复制/解压后不会因占位符重命名
+    /// 再套一层 {projectName}，避免 {projectDir}/{projectName} 双层嵌套。
+    /// <para>不能假设"模板根只剩包裹文件夹"——VS/IDE 会在根生成 .vs/.idea，还有 bin/obj 等，
+    /// 故改为"只要存在名为占位符的子目录即以其为根"，对兄弟目录免疫。</para>
+    /// </summary>
+    private static string? ResolveTemplateContentRoot(string? templateDir)
+    {
+        if (string.IsNullOrEmpty(templateDir) || !Directory.Exists(templateDir))
+            return templateDir;
+        foreach (var sub in Directory.GetDirectories(templateDir))
+        {
+            if (string.Equals(Path.GetFileName(sub), NamespacePlaceholder, StringComparison.Ordinal))
+                return sub;
+        }
+        return templateDir;
+    }
+
     /// <summary>从嵌入资源解压模板 ZIP</summary>
     private static void ExtractEmbeddedTemplate(string destDir)
     {
@@ -182,18 +245,23 @@ public class TemplateService : ITemplateService
             ?? throw new InvalidOperationException("无法读取嵌入资源 template.zip");
         using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
 
+        // 跳过模板根的一层占位符包裹（_LingFanEngineTemplateTitle_），避免解压后再套一层 {projectName}。
         foreach (var entry in archive.Entries)
         {
+            var entryPath = StripTemplateWrapper(entry.FullName);
+            if (string.IsNullOrEmpty(entryPath))
+                continue; // 顶层包裹目录本身
+
             if (string.IsNullOrEmpty(entry.Name))
             {
                 // 目录条目
-                var dirPath = Path.Combine(destDir, entry.FullName);
+                var dirPath = Path.Combine(destDir, entryPath);
                 PathHelper.EnsureDirectory(dirPath);
                 continue;
             }
 
             // 跳过残留文件
-            var entryName = entry.Name;
+            var entryName = Path.GetFileName(entryPath);
             if (s_skipFiles.Contains(entryName))
                 continue;
             var ext = Path.GetExtension(entryName);
@@ -202,17 +270,30 @@ public class TemplateService : ITemplateService
             if (entryName.Contains(".Backup.", StringComparison.OrdinalIgnoreCase))
                 continue;
             // 跳过 bin/obj 目录下的文件
-            if (entry.FullName.Contains("/bin/", StringComparison.OrdinalIgnoreCase) ||
-                entry.FullName.Contains("/obj/", StringComparison.OrdinalIgnoreCase))
+            if (entryPath.Contains($"/{ "bin" }/", StringComparison.OrdinalIgnoreCase) ||
+                entryPath.Contains($"/{ "obj" }/", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            var destPath = Path.Combine(destDir, entry.FullName);
+            var destPath = Path.Combine(destDir, entryPath);
             var dir = Path.GetDirectoryName(destPath);
             if (!string.IsNullOrEmpty(dir))
                 PathHelper.EnsureDirectory(dir);
 
             entry.ExtractToFile(destPath, overwrite: true);
         }
+    }
+
+    /// <summary>剥离 zip 条目路径顶层的一段占位符包裹段（_LingFanEngineTemplateTitle_）。</summary>
+    private static string StripTemplateWrapper(string entryPath)
+    {
+        if (string.IsNullOrEmpty(entryPath))
+            return entryPath;
+        var normalized = entryPath.Replace('\\', '/');
+        var idx = normalized.IndexOf('/');
+        var first = idx < 0 ? normalized : normalized[..idx];
+        if (string.Equals(first, NamespacePlaceholder, StringComparison.Ordinal))
+            return idx < 0 ? "" : normalized[(idx + 1)..];
+        return normalized;
     }
 
     /// <summary>替换目录中所有文本文件的占位符</summary>

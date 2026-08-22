@@ -17,13 +17,13 @@ namespace LingFanEngine.SDK.Services.Implementations;
 public sealed class ApiTranslator : ITranslator
 {
     private readonly ApiTranslatorConfig _config;
-    private readonly IHttpClientFactory? _httpClientFactory;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    /// <summary>创建翻译 API 翻译器</summary>
-    public ApiTranslator(ApiTranslatorConfig config, IHttpClientFactory? httpClientFactory = null)
+    /// <summary>创建翻译 API 翻译器（统一经 IHttpClientFactory，复用连接池）。</summary>
+    public ApiTranslator(ApiTranslatorConfig config, IHttpClientFactory httpClientFactory)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
-        _httpClientFactory = httpClientFactory;
+        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
     }
 
     /// <inheritdoc/>
@@ -40,9 +40,8 @@ public sealed class ApiTranslator : ITranslator
         if (string.IsNullOrWhiteSpace(_config.Endpoint) || string.IsNullOrWhiteSpace(_config.ApiKey))
             return results;
 
-        using var client = _httpClientFactory?.CreateClient() ?? new HttpClient();
-        if (_httpClientFactory == null)
-            client.Timeout = TimeSpan.FromSeconds(60);
+        using var client = _httpClientFactory.CreateClient();
+        client.Timeout = TimeSpan.FromSeconds(60);
 
         // DeepL 支持一次请求多条（重复 text 参数）；分批限制单次大小防 URL 过大
         const int batchSize = 50;

@@ -2,13 +2,21 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="LingFanEngine.SDK.App"
              RequestedThemeVariant="Dark">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="/Themes/Colors.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme />
 
         <!-- 暗色背景 -->
         <Style Selector="Window">
-            <Setter Property="Background" Value="#1E1E1E" />
-            <Setter Property="Foreground" Value="#D4D4D4" />
+            <Setter Property="Background" Value="{DynamicResource Brush.EditorBg}" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
         </Style>
 
         <!-- 导航按钮统一样式 -->
@@ -24,33 +32,33 @@
             <Setter Property="FontSize" Value="20" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Margin" Value="0,0,0,16" />
-            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.TextBright}" />
         </Style>
 
         <!-- TextBox 暗色 -->
         <Style Selector="TextBox">
-            <Setter Property="Background" Value="#2D2D30" />
-            <Setter Property="Foreground" Value="#D4D4D4" />
-            <Setter Property="BorderBrush" Value="#3C3C3C" />
+            <Setter Property="Background" Value="{DynamicResource Brush.PanelDeeper}" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
         </Style>
 
         <!-- ListBox 暗色 -->
         <Style Selector="ListBox">
-            <Setter Property="Background" Value="#252526" />
-            <Setter Property="Foreground" Value="#D4D4D4" />
-            <Setter Property="BorderBrush" Value="#3C3C3C" />
+            <Setter Property="Background" Value="{DynamicResource Brush.PanelBg}" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
         </Style>
 
         <!-- Button 暗色——排除 .transparent 类 -->
         <Style Selector="Button:not(.transparent)">
-            <Setter Property="Background" Value="#0E639C" />
-            <Setter Property="Foreground" Value="#FFFFFF" />
-            <Setter Property="BorderBrush" Value="#0E639C" />
+            <Setter Property="Background" Value="{DynamicResource Brush.Accent}" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.TextBright}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
         </Style>
 
         <!-- CheckBox 暗色 -->
         <Style Selector="CheckBox">
-            <Setter Property="Foreground" Value="#D4D4D4" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
         </Style>
     </Application.Styles>
 </Application>

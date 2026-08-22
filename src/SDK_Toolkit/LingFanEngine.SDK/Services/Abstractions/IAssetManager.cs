@@ -10,6 +10,12 @@ public interface IAssetManager
     /// <summary>扫描项目资源</summary>
     Task<List<AssetEntry>> ScanAssetsAsync(string projectDir);
 
+    /// <summary>构建资源目录树（按资源根 Stories/Media/Assets 组织层级）。</summary>
+    Task<AssetTree> BuildAssetTreeAsync(string projectDir);
+
+    /// <summary>诊断资源引用/缺失——扫描 story 中引用但项目中不存在的资源。</summary>
+    Task<AssetDiagnostics> DiagnoseAsync(string projectDir);
+
     /// <summary>导入资源到项目</summary>
     Task ImportAssetAsync(string projectDir, string sourceFile, string targetSubDir);
 

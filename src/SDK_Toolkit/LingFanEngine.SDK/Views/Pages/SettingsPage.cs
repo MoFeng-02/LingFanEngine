@@ -1,247 +1,40 @@
 using System.Collections.Generic;
-using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
-using Avalonia.Layout;
-using Avalonia.Media;
 using LingFanEngine.SDK.ViewModels;
 using MFToolkit.Routing.Core.Interfaces;
 
 namespace LingFanEngine.SDK.Views.Pages;
 
 /// <summary>
-/// 设置页面
-/// <para>编辑器设置/主题/构建/SDK 信息分组。</para>
+/// 设置页（.axaml 试点）——布局在 SettingsPage.axaml，编译绑定（x:DataType）+ 令牌配色。
+/// <para>提供公共无参构造供 Avalonia 运行时 loader（消 AVLN3001）；Router 创建后通过 DataContext 注入 VM。</para>
 /// </summary>
-public class SettingsPage : UserControl, INavigationAware
+public partial class SettingsPage : UserControl, INavigationAware
 {
-    public SettingsPage(SettingsViewModel viewModel)
+    private bool _configComboInitialized;
+
+    public SettingsPage()
     {
-        DataContext = viewModel;
-        InitializeComponent(viewModel);
+        InitializeComponent();
     }
 
     // ===== INavigationAware =====
 
-    public void OnNavigated(Dictionary<string, object?>? parameters) { }
+    public void OnNavigated(Dictionary<string, object?>? parameters) => InitBuildConfigCombo();
     public void OnNavigatingFrom() { }
     public void OnNavigatedFrom() { }
 
-    private void InitializeComponent(SettingsViewModel viewModel)
+    /// <summary>默认配置下拉：Debug/Release ↔ DefaultBuildConfig 字符串（幂等，仅在 DataContext 就绪后初始化一次）。</summary>
+    private void InitBuildConfigCombo()
     {
-        var scrollViewer = new ScrollViewer
-        {
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-        };
+        if (_configComboInitialized || DataContext is not SettingsViewModel vm)
+            return;
 
-        var grid = new Grid
-        {
-            RowDefinitions = RowDefinitions.Parse("Auto,Auto,Auto,Auto,*"),
-            Margin = new Thickness(16),
-        };
-
-        // 标题
-        grid.Children.Add(new TextBlock
-        {
-            Text = "设置",
-            FontSize = 20,
-            FontWeight = FontWeight.Bold,
-            Margin = new Thickness(0, 0, 0, 16),
-        });
-
-        // === 构建设置 ===
-        var buildPanel = new StackPanel { Spacing = 8, Margin = new Thickness(0, 0, 0, 16) };
-        Grid.SetRow(buildPanel, 1);
-
-        buildPanel.Children.Add(new TextBlock
-        {
-            Text = "构建",
-            FontSize = 14,
-            FontWeight = FontWeight.Bold,
-            Foreground = new SolidColorBrush(Color.Parse("#4FC1FF")),
-        });
-
-        var buildConfigCombo = new ComboBox { MinWidth = 120 };
-        buildConfigCombo.Items.Add("Debug");
-        buildConfigCombo.Items.Add("Release");
-        buildConfigCombo.SelectedIndex = viewModel.DefaultBuildConfig == "Debug" ? 0 : 1;
-        buildConfigCombo.SelectionChanged += (_, _) =>
-            viewModel.DefaultBuildConfig = buildConfigCombo.SelectedIndex == 0 ? "Debug" : "Release";
-        buildPanel.Children.Add(CreateSettingRow("默认配置", buildConfigCombo));
-
-        buildPanel.Children.Add(CreateSettingRow("默认自包含", CreateCheckBox(
-            () => viewModel.DefaultSelfContained, v => viewModel.DefaultSelfContained = v)));
-
-        buildPanel.Children.Add(CreateSettingRow("默认 AOT", CreateCheckBox(
-            () => viewModel.DefaultPublishAot, v => viewModel.DefaultPublishAot = v)));
-
-        grid.Children.Add(buildPanel);
-
-        // === SDK 信息 ===
-        var sdkPanel = new StackPanel { Spacing = 8, Margin = new Thickness(0, 0, 0, 16) };
-        Grid.SetRow(sdkPanel, 2);
-
-        sdkPanel.Children.Add(new TextBlock
-        {
-            Text = "SDK 信息",
-            FontSize = 14,
-            FontWeight = FontWeight.Bold,
-            Foreground = new SolidColorBrush(Color.Parse("#4FC1FF")),
-        });
-
-        sdkPanel.Children.Add(CreateInfoRow("SDK 版本", viewModel.SdkVersion));
-        sdkPanel.Children.Add(CreateInfoRow("引擎版本", viewModel.EngineVersion));
-        sdkPanel.Children.Add(CreateInfoRow("模板版本", viewModel.TemplateVersion));
-        sdkPanel.Children.Add(CreateInfoRow(".NET 版本", viewModel.DotNetVersion));
-        sdkPanel.Children.Add(CreateInfoRow("应用数据目录", viewModel.AppDataDirectory));
-
-        var openDataBtn = new Button
-        {
-            Content = "打开数据目录",
-            Command = viewModel.OpenAppDataCommand,
-            Margin = new Thickness(0, 4, 0, 0),
-        };
-        sdkPanel.Children.Add(openDataBtn);
-
-        // 引擎更新（GitHub Release 独立下载）
-        var updateBtn = new Button
-        {
-            Content = "检查引擎更新",
-            Command = viewModel.CheckEngineUpdateCommand,
-            Margin = new Thickness(0, 4, 0, 0),
-        };
-        sdkPanel.Children.Add(updateBtn);
-
-        var updateStatusText = new TextBlock
-        {
-            FontSize = 12,
-            Foreground = Brushes.Gray,
-            TextWrapping = TextWrapping.Wrap,
-            Text = viewModel.EngineUpdateMessage,
-        };
-        viewModel.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(SettingsViewModel.EngineUpdateMessage))
-                updateStatusText.Text = viewModel.EngineUpdateMessage;
-        };
-        sdkPanel.Children.Add(updateStatusText);
-
-        // 模板更新（GitHub Release 模板 zip，覆盖本地模板缓存）
-        var templateUpdateBtn = new Button
-        {
-            Content = "检查模板更新",
-            Command = viewModel.CheckTemplateUpdateCommand,
-            Margin = new Thickness(0, 10, 0, 0),
-        };
-        sdkPanel.Children.Add(templateUpdateBtn);
-
-        var templateUpdateStatusText = new TextBlock
-        {
-            FontSize = 12,
-            Foreground = Brushes.Gray,
-            TextWrapping = TextWrapping.Wrap,
-            Text = viewModel.TemplateUpdateMessage,
-        };
-        viewModel.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(SettingsViewModel.TemplateUpdateMessage))
-                templateUpdateStatusText.Text = viewModel.TemplateUpdateMessage;
-        };
-        sdkPanel.Children.Add(templateUpdateStatusText);
-
-        grid.Children.Add(sdkPanel);
-
-        // === 保存按钮 + 状态 ===
-        var actionPanel = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            Margin = new Thickness(0, 0, 0, 16),
-        };
-        Grid.SetRow(actionPanel, 3);
-
-        var saveBtn = new Button
-        {
-            Content = "保存设置",
-            Command = viewModel.SaveSettingsCommand,
-            Background = new SolidColorBrush(Color.Parse("#0E639C")),
-            Foreground = Brushes.White,
-            BorderThickness = new Thickness(0),
-            Padding = new Thickness(16, 6),
-        };
-        actionPanel.Children.Add(saveBtn);
-
-        var statusText = new TextBlock
-        {
-            VerticalAlignment = VerticalAlignment.Center,
-            FontSize = 12,
-            Foreground = Brushes.Gray,
-        };
-        statusText.Text = viewModel.StatusMessage;
-        viewModel.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(SettingsViewModel.StatusMessage))
-                statusText.Text = viewModel.StatusMessage;
-        };
-        actionPanel.Children.Add(statusText);
-
-        grid.Children.Add(actionPanel);
-
-        scrollViewer.Content = grid;
-        Content = scrollViewer;
-    }
-
-    private static StackPanel CreateSettingRow(string label, Control control)
-    {
-        return new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            Margin = new Thickness(0, 2),
-            Children =
-            {
-                new TextBlock
-                {
-                    Text = label + ":",
-                    Width = 120,
-                    VerticalAlignment = VerticalAlignment.Center,
-                },
-                control,
-            }
-        };
-    }
-
-    private static TextBox CreateTextBox(Func<string> getValue, Action<string> setValue)
-    {
-        var tb = new TextBox { MinWidth = 200, Text = getValue() };
-        tb.TextChanged += (_, _) => setValue(tb.Text);
-        return tb;
-    }
-
-    private static CheckBox CreateCheckBox(Func<bool> getValue, Action<bool> setValue)
-    {
-        var cb = new CheckBox { IsChecked = getValue() };
-        cb.IsCheckedChanged += (_, _) => setValue(cb.IsChecked ?? false);
-        return cb;
-    }
-
-    private static StackPanel CreateInfoRow(string label, string value)
-    {
-        return new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            Children =
-            {
-                new TextBlock
-                {
-                    Text = label + ":",
-                    FontWeight = FontWeight.Bold,
-                    Width = 120,
-                },
-                new TextBlock { Text = value },
-            }
-        };
+        BuildConfigCombo.Items.Add("Debug");
+        BuildConfigCombo.Items.Add("Release");
+        BuildConfigCombo.SelectedIndex = vm.DefaultBuildConfig == "Debug" ? 0 : 1;
+        BuildConfigCombo.SelectionChanged += (_, _) =>
+            vm.DefaultBuildConfig = BuildConfigCombo.SelectedIndex == 0 ? "Debug" : "Release";
+        _configComboInitialized = true;
     }
 }

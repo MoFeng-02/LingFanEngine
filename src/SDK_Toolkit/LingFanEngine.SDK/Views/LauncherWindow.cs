@@ -7,6 +7,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using System.IO;
 using LingFanEngine.SDK.Models;
+using LingFanEngine.SDK.Themes;
 using LingFanEngine.SDK.ViewModels;
 
 namespace LingFanEngine.SDK.Views;
@@ -18,16 +19,7 @@ public class LauncherWindow : Window
 {
     private readonly LauncherViewModel _viewModel;
 
-    // 暗色主题
-    private static readonly IBrush s_bg = new SolidColorBrush(Color.Parse("#1E1E1E"));
-    private static readonly IBrush s_cardBg = new SolidColorBrush(Color.Parse("#252526"));
-    private static readonly IBrush s_cardHover = new SolidColorBrush(Color.Parse("#2D2D30"));
-    private static readonly IBrush s_accent = new SolidColorBrush(Color.Parse("#0E639C"));
-    private static readonly IBrush s_accentText = new SolidColorBrush(Color.Parse("#4FC1FF"));
-    private static readonly IBrush s_text = new SolidColorBrush(Color.Parse("#CCCCCC"));
-    private static readonly IBrush s_textDim = new SolidColorBrush(Color.Parse("#888888"));
-    private static readonly IBrush s_titleBar = new SolidColorBrush(Color.Parse("#2D2D30"));
-    private static readonly IBrush s_btnBg = new SolidColorBrush(Color.Parse("#3A3D41"));
+    // 统一色板：取自 Themes/Colors.axaml（C# 经 ThemePalette.* 读取）——不再页内硬编码。
 
     // Segoe MDL2 图标字符
     private const string IconRocket = "\uE7B7";   // Rocket
@@ -35,6 +27,7 @@ public class LauncherWindow : Window
     private const string IconFolder = "\uE8B7";   // Folder
     private const string IconSearch = "\uE721";   // Search
     private const string IconPackage = "\uE7B8";  // Package
+    private const string IconTrash = "\uE74D";    // Delete
 
     public LauncherWindow(LauncherViewModel viewModel)
     {
@@ -49,7 +42,7 @@ public class LauncherWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         MinWidth = 700;
         MinHeight = 480;
-        Background = s_bg;
+        Background = ThemePalette.EditorBg;
 
         InitializeComponent();
     }
@@ -96,7 +89,7 @@ public class LauncherWindow : Window
     {
         return new Border
         {
-            Background = s_titleBar,
+            Background = ThemePalette.PanelDeeper,
             Padding = new Thickness(24, 16, 24, 16),
             Child = new StackPanel
             {
@@ -109,7 +102,7 @@ public class LauncherWindow : Window
                         Text = IconRocket,
                         FontFamily = FontFamily.Parse("Segoe MDL2 Assets"),
                         FontSize = 28,
-                        Foreground = s_accentText,
+                        Foreground = ThemePalette.Title,
                     },
                     new StackPanel
                     {
@@ -121,13 +114,13 @@ public class LauncherWindow : Window
                                 Text = "灵泛引擎 SDK",
                                 FontSize = 20,
                                 FontWeight = FontWeight.SemiBold,
-                                Foreground = Brushes.White,
+                                Foreground = ThemePalette.TextBright,
                             },
                             new TextBlock
                             {
                                 Text = "叙事 / 沙盒小说游戏创作工具",
                                 FontSize = 12,
-                                Foreground = s_textDim,
+                                Foreground = ThemePalette.TextMuted,
                             },
                         }
                     }
@@ -141,7 +134,7 @@ public class LauncherWindow : Window
     {
         var panel = new StackPanel
         {
-            Background = s_cardBg,
+            Background = ThemePalette.PanelBg,
             Spacing = 8,
         };
 
@@ -152,7 +145,7 @@ public class LauncherWindow : Window
             Spacing = 8,
         };
 
-        var newBtn = CreateIconButtonWithText(IconAdd, "新建项目", s_accent, Brushes.White);
+        var newBtn = CreateIconButtonWithText(IconAdd, "新建项目", ThemePalette.Accent, ThemePalette.TextBright);
         newBtn.Click += (_, _) => _viewModel.ToggleNewProjectPanelCommand.Execute(null);
         newProjectSection.Children.Add(newBtn);
 
@@ -196,7 +189,7 @@ public class LauncherWindow : Window
         {
             Text = "输出目录",
             FontSize = 11,
-            Foreground = s_textDim,
+            Foreground = ThemePalette.TextMuted,
         });
         var pathRow = new Grid
         {
@@ -211,8 +204,8 @@ public class LauncherWindow : Window
         {
             Content = "...",
             Padding = new Thickness(8, 4),
-            Background = s_btnBg,
-            Foreground = s_text,
+            Background = ThemePalette.BtnBg,
+            Foreground = ThemePalette.TextHover,
             BorderThickness = new Thickness(0),
         };
         browseBtn.Click += (_, _) => _viewModel.BrowseOutputDirCommand.Execute(null);
@@ -227,8 +220,8 @@ public class LauncherWindow : Window
         {
             Content = "创建",
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            Background = s_accent,
-            Foreground = Brushes.White,
+            Background = ThemePalette.Accent,
+            Foreground = ThemePalette.TextBright,
             Padding = new Thickness(12, 8),
             FontSize = 13,
             BorderThickness = new Thickness(0),
@@ -244,12 +237,12 @@ public class LauncherWindow : Window
         panel.Children.Add(new Border
         {
             Height = 1,
-            Background = new SolidColorBrush(Color.Parse("#3C3C3C")),
+            Background = ThemePalette.Border,
             Margin = new Thickness(12, 0),
         });
 
         // 打开按钮
-        var openBtn = CreateIconButtonWithText(IconFolder, "打开项目...", Brushes.Transparent, s_text);
+        var openBtn = CreateIconButtonWithText(IconFolder, "打开项目...", Brushes.Transparent, ThemePalette.TextHover);
         openBtn.Margin = new Thickness(12, 8, 12, 0);
         openBtn.Click += (_, _) => _viewModel.BrowseProjectCommand.Execute(null);
         panel.Children.Add(openBtn);
@@ -300,7 +293,7 @@ public class LauncherWindow : Window
         {
             Text = label,
             FontSize = 11,
-            Foreground = s_textDim,
+            Foreground = ThemePalette.TextMuted,
         });
         var box = new TextBox { FontSize = 12 };
         stack.Children.Add(box);
@@ -324,7 +317,7 @@ public class LauncherWindow : Window
     /// <summary>项目卡片网格</summary>
     private Control CreateProjectGrid()
     {
-        var grid = new Grid { Background = s_bg };
+        var grid = new Grid { Background = ThemePalette.EditorBg };
 
         // 空状态提示
         var emptyHint = new StackPanel
@@ -340,13 +333,13 @@ public class LauncherWindow : Window
             FontFamily = FontFamily.Parse("Segoe MDL2 Assets"),
             FontSize = 48,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Foreground = s_textDim,
+            Foreground = ThemePalette.TextMuted,
         });
         emptyHint.Children.Add(new TextBlock
         {
             Text = "还没有项目\n点击左侧「新建项目」或「打开项目」开始",
             FontSize = 14,
-            Foreground = s_textDim,
+            Foreground = ThemePalette.TextMuted,
             TextAlignment = TextAlignment.Center,
         });
         grid.Children.Add(emptyHint);
@@ -391,9 +384,9 @@ public class LauncherWindow : Window
         {
             var card = new Border
             {
-                Background = s_cardBg,
+                Background = ThemePalette.PanelBg,
                 CornerRadius = new CornerRadius(6),
-                BorderBrush = new SolidColorBrush(Color.Parse("#3C3C3C")),
+                BorderBrush = ThemePalette.Border,
                 BorderThickness = new Thickness(1),
                 Padding = new Thickness(16),
                 Cursor = new Cursor(StandardCursorType.Hand),
@@ -417,14 +410,14 @@ public class LauncherWindow : Window
                         FontFamily = FontFamily.Parse("Segoe MDL2 Assets"),
                         FontSize = 20,
                         VerticalAlignment = VerticalAlignment.Center,
-                        Foreground = s_accentText,
+                        Foreground = ThemePalette.Title,
                     },
                     new TextBlock
                     {
                         Text = item?.Name ?? "",
                         FontSize = 16,
                         FontWeight = FontWeight.SemiBold,
-                        Foreground = Brushes.White,
+                        Foreground = ThemePalette.TextBright,
                         VerticalAlignment = VerticalAlignment.Center,
                     }
                 }
@@ -436,45 +429,152 @@ public class LauncherWindow : Window
             {
                 Text = item?.Path ?? "",
                 FontSize = 11,
-                Foreground = s_textDim,
+                Foreground = ThemePalette.TextMuted,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 Margin = new Thickness(0, 8, 0, 0),
             };
             Grid.SetRow(pathText, 1);
             cardContent.Children.Add(pathText);
 
-            // 底部信息行
-            var bottomRow = new StackPanel
+            // 底部信息行：时间 + 操作按钮
+            var bottomRow = new Grid
+            {
+                ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+            };
+            var timeText = new TextBlock
+            {
+                Text = item?.LastOpened.ToString("yyyy-MM-dd HH:mm") ?? "",
+                FontSize = 11,
+                Foreground = ThemePalette.TextMuted,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            Grid.SetColumn(timeText, 0);
+            bottomRow.Children.Add(timeText);
+
+            // 删除按钮（整卡片点击=打开；删除单独显式暴露）
+            var deleteIcon = new TextBlock
+            {
+                Text = IconTrash,
+                FontFamily = FontFamily.Parse("Segoe MDL2 Assets"),
+                FontSize = 13,
+                Foreground = ThemePalette.TextMuted,
+                VerticalAlignment = VerticalAlignment.Center,
+                Cursor = new Cursor(StandardCursorType.Hand),
+                Margin = new Thickness(6, 0, 0, 0),
+            };
+            Grid.SetColumn(deleteIcon, 1);
+            bottomRow.Children.Add(deleteIcon);
+
+            // 内联删除确认面板（默认隐藏，替换底部行）
+            var confirmRow = new StackPanel
+            {
+                Spacing = 6,
+                IsVisible = false,
+            };
+
+            // 首行：提示 + 是否连同文件一起删除
+            var confirmTop = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+            };
+            confirmTop.Children.Add(new TextBlock
+            {
+                Text = "删除该项目？",
+                FontSize = 11,
+                Foreground = ThemePalette.StopRed,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            var deleteFilesCheck = new CheckBox
+            {
+                Content = "同时删除文件",
+                FontSize = 11,
+                Foreground = ThemePalette.TextMuted,
+                IsChecked = false,
+            };
+            confirmTop.Children.Add(deleteFilesCheck);
+            confirmRow.Children.Add(confirmTop);
+
+            // 次行：确认 / 取消
+            var confirmBtns = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 Spacing = 8,
-                Children =
-                {
-                    new TextBlock
-                    {
-                        Text = item?.LastOpened.ToString("yyyy-MM-dd HH:mm") ?? "",
-                        FontSize = 11,
-                        Foreground = s_textDim,
-                    },
-                    new TextBlock
-                    {
-                        Text = "> 打开",
-                        FontSize = 11,
-                        Foreground = s_accentText,
-                    }
-                }
             };
+            var confirmDeleteBtn = new Button
+            {
+                Content = "删除",
+                FontSize = 11,
+                Padding = new Thickness(8, 2),
+                Background = ThemePalette.StopRed,
+                Foreground = ThemePalette.TextBright,
+                BorderThickness = new Thickness(0),
+            };
+            var cancelDeleteBtn = new Button
+            {
+                Content = "取消",
+                FontSize = 11,
+                Padding = new Thickness(8, 2),
+                Background = ThemePalette.BtnBg,
+                Foreground = ThemePalette.TextHover,
+                BorderThickness = new Thickness(0),
+            };
+            confirmBtns.Children.Add(confirmDeleteBtn);
+            confirmBtns.Children.Add(cancelDeleteBtn);
+            confirmRow.Children.Add(confirmBtns);
+
             Grid.SetRow(bottomRow, 2);
+            Grid.SetRow(confirmRow, 2);
             cardContent.Children.Add(bottomRow);
+            cardContent.Children.Add(confirmRow);
 
             card.Child = cardContent;
 
             // 交互
-            card.PointerEntered += (_, _) => card.Background = s_cardHover;
-            card.PointerExited += (_, _) => card.Background = s_cardBg;
-            card.PointerPressed += async (_, e) =>
+            var confirming = false;
+            void ShowConfirm()
+            {
+                confirming = true;
+                bottomRow.IsVisible = false;
+                confirmRow.IsVisible = true;
+            }
+
+            deleteIcon.PointerEntered += (_, _) => deleteIcon.Foreground = ThemePalette.StopRed;
+            deleteIcon.PointerExited += (_, _) => deleteIcon.Foreground = ThemePalette.TextMuted;
+            deleteIcon.PointerPressed += (_, e) =>
             {
                 if (e.Pointer.IsPrimary)
+                {
+                    e.Handled = true;
+                    ShowConfirm();
+                }
+            };
+
+            cancelDeleteBtn.Click += (_, _) =>
+            {
+                confirming = false;
+                confirmRow.IsVisible = false;
+                bottomRow.IsVisible = true;
+            };
+
+            confirmDeleteBtn.Click += async (_, _) =>
+            {
+                // 勾选"同时删除文件" → 删除真实项目 + 记录；否则仅从最近列表移除此记录
+                if (deleteFilesCheck.IsChecked == true)
+                {
+                    await _viewModel.DeleteProjectCommand.ExecuteAsync(item?.Path);
+                }
+                else if (item != null)
+                {
+                    _viewModel.RemoveRecentCommand.Execute(item.Path);
+                }
+            };
+
+            card.PointerEntered += (_, _) => card.Background = ThemePalette.PanelDeeper;
+            card.PointerExited += (_, _) => card.Background = ThemePalette.PanelBg;
+            card.PointerPressed += async (_, e) =>
+            {
+                if (e.Pointer.IsPrimary && !confirming)
                 {
                     await _viewModel.OpenProjectCommand.ExecuteAsync(item?.Path);
                 }
@@ -501,7 +601,7 @@ public class LauncherWindow : Window
         var statusText = new TextBlock
         {
             FontSize = 11,
-            Foreground = s_textDim,
+            Foreground = ThemePalette.TextMuted,
         };
 
         // AOT 安全：手动监听 StatusMessage
@@ -514,8 +614,8 @@ public class LauncherWindow : Window
 
         return new Border
         {
-            Background = s_titleBar,
-            BorderBrush = new SolidColorBrush(Color.Parse("#3C3C3C")),
+            Background = ThemePalette.PanelDeeper,
+            BorderBrush = ThemePalette.Border,
             BorderThickness = new Thickness(0, 1, 0, 0),
             Padding = new Thickness(16, 4),
             Child = new StackPanel
@@ -525,10 +625,10 @@ public class LauncherWindow : Window
                 Children =
                 {
                     statusText,
-                    new TextBlock { Text = "|", FontSize = 11, Foreground = s_textDim },
-                    new TextBlock { Text = "SDK v0.1.1", FontSize = 11, Foreground = s_textDim },
-                    new TextBlock { Text = "|", FontSize = 11, Foreground = s_textDim },
-                    new TextBlock { Text = ".NET 10", FontSize = 11, Foreground = s_textDim },
+                    new TextBlock { Text = "|", FontSize = 11, Foreground = ThemePalette.TextMuted },
+                    new TextBlock { Text = "SDK v0.1.1", FontSize = 11, Foreground = ThemePalette.TextMuted },
+                    new TextBlock { Text = "|", FontSize = 11, Foreground = ThemePalette.TextMuted },
+                    new TextBlock { Text = ".NET 10", FontSize = 11, Foreground = ThemePalette.TextMuted },
                 }
             }
         };

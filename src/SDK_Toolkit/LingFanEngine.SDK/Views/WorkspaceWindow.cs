@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Avalonia;
 using Avalonia.Controls;
@@ -6,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using LingFanEngine.SDK.Services.Abstractions;
+using LingFanEngine.SDK.Themes;
 using LingFanEngine.SDK.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using MFToolkit.Routing;
@@ -33,18 +35,14 @@ public class WorkspaceWindow : Window
     private Control? _assetCategoryPanel;
     private Control? _buildConfigPanel;
 
+    // 活动栏按钮（按路由路径索引，供高亮；避免神奇下标 Children[N]）
+    private readonly Dictionary<string, Button> _activityButtons = new();
+
     // 当前活动路由路径（用于活动栏高亮）
     private string _currentRoute = "";
 
-    // 暗色主题
-    private static readonly IBrush s_activityBarBg = new SolidColorBrush(Color.Parse("#333333"));
-    private static readonly IBrush s_sideBarBg = new SolidColorBrush(Color.Parse("#252526"));
-    private static readonly IBrush s_editorBg = new SolidColorBrush(Color.Parse("#1E1E1E"));
-    private static readonly IBrush s_statusBarBg = new SolidColorBrush(Color.Parse("#007ACC"));
-    private static readonly IBrush s_iconActive = new SolidColorBrush(Color.Parse("#FFFFFF"));
-    private static readonly IBrush s_iconNormal = new SolidColorBrush(Color.Parse("#858585"));
-    private static readonly IBrush s_iconHover = new SolidColorBrush(Color.Parse("#CCCCCC"));
-    private static readonly IBrush s_splitterBg = new SolidColorBrush(Color.Parse("#1E1E1E"));
+    // 统一色板：取自 Themes/Colors.axaml（C# 经 ThemePalette.* 读取）——不再页内硬编码 s_* 画笔
+    // 见 LingFanEngine.SDK.Themes.Theme。
 
     // 活动栏项：图标 / 提示 / 路由路径
     private record ActivityItem(string Icon, string Title, string RoutePath);
@@ -71,7 +69,7 @@ public class WorkspaceWindow : Window
         Height = 800;
         MinWidth = 900;
         MinHeight = 600;
-        Background = s_editorBg;
+        Background = ThemePalette.EditorBg;
 
         // 组件
         _sidePanel = new ContentControl
@@ -81,22 +79,24 @@ public class WorkspaceWindow : Window
         };
         _editorArea = new ContentControl
         {
-            Background = s_editorBg,
+            Background = ThemePalette.EditorBg,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             VerticalContentAlignment = VerticalAlignment.Stretch,
         };
         _statusBarText = new TextBlock
         {
             FontSize = 12,
-            Foreground = Brushes.White,
+            Foreground = ThemePalette.TextBright,
             VerticalAlignment = VerticalAlignment.Center,
         };
         _projectNameText = new TextBlock
         {
             FontSize = 12,
-            Foreground = Brushes.White,
+            Foreground = ThemePalette.TextBright,
             VerticalAlignment = VerticalAlignment.Center,
             FontWeight = FontWeight.Medium,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
 
         // 加载窗口状态
@@ -136,7 +136,10 @@ public class WorkspaceWindow : Window
         }
 
         // 切换编辑区内容
-        _editorArea.Content = page;
+        // 防止 keepalive 复用的页面实例被重复挂到同一 ContentPresenter（重复导航/重入会抛
+        // "The control ... already has a visual parent ContentPresenter"）：同实例则跳过。
+        if (!ReferenceEquals(_editorArea.Content, page))
+            _editorArea.Content = page;
 
         // 更新当前路由
         _currentRoute = routePath;
@@ -164,25 +167,11 @@ public class WorkspaceWindow : Window
         };
     }
 
-    /// <summary>更新活动栏高亮</summary>
+    /// <summary>更新活动栏高亮（按存储按钮引用，杜绝神奇下标）</summary>
     private void UpdateActivityBarHighlight()
     {
-        if (Content is Grid rootGrid && rootGrid.Children[0] is Grid mainGrid)
-        {
-            if (mainGrid.Children[0] is StackPanel bar)
-            {
-                // 遍历所有活动栏按钮（s_activities 对应的前 N 个）
-                for (int i = 0; i < s_activities.Length && i < bar.Children.Count; i++)
-                {
-                    if (bar.Children[i] is Button btn)
-                    {
-                        btn.Foreground = s_activities[i].RoutePath == _currentRoute
-                            ? s_iconActive
-                            : s_iconNormal;
-                    }
-                }
-            }
-        }
+        foreach (var (path, btn) in _activityButtons)
+            btn.Foreground = path == _currentRoute ? ThemePalette.IconActive : ThemePalette.IconNormal;
     }
 
     private void InitializeComponent()
@@ -204,14 +193,14 @@ public class WorkspaceWindow : Window
         Grid.SetColumn(activityBar, 0);
 
         // ===== 分隔线 =====
-        var sep1 = new Border { Width = 1, Background = new SolidColorBrush(Color.Parse("#1E1E1E")) };
+        var sep1 = new Border { Width = 1, Background = ThemePalette.EditorBg };
         mainGrid.Children.Add(sep1);
         Grid.SetColumn(sep1, 1);
 
         // ===== 侧面板 (220px) =====
         var sideBorder = new Border
         {
-            Background = s_sideBarBg,
+            Background = ThemePalette.PanelBg,
             Child = _sidePanel,
         };
         mainGrid.Children.Add(sideBorder);
@@ -221,7 +210,7 @@ public class WorkspaceWindow : Window
         var splitter = new GridSplitter
         {
             Width = 4,
-            Background = s_splitterBg,
+            Background = ThemePalette.Splitter,
             ResizeDirection = GridResizeDirection.Columns,
         };
         mainGrid.Children.Add(splitter);
@@ -246,7 +235,7 @@ public class WorkspaceWindow : Window
     {
         var bar = new StackPanel
         {
-            Background = s_activityBarBg,
+            Background = ThemePalette.ActivityBarBg,
             Orientation = Orientation.Vertical,
             VerticalAlignment = VerticalAlignment.Top,
             HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -275,7 +264,7 @@ public class WorkspaceWindow : Window
         var btn = new Button
         {
             Background = Brushes.Transparent,
-            Foreground = s_iconNormal,
+            Foreground = ThemePalette.IconNormal,
             BorderThickness = new Thickness(0),
             Padding = new Thickness(0),
             Width = 48,
@@ -297,14 +286,15 @@ public class WorkspaceWindow : Window
         btn.PointerEntered += (_, _) =>
         {
             if (_currentRoute != item.RoutePath)
-                btn.Foreground = s_iconHover;
+                btn.Foreground = ThemePalette.TextHover;
         };
         btn.PointerExited += (_, _) =>
         {
             if (_currentRoute != item.RoutePath)
-                btn.Foreground = s_iconNormal;
+                btn.Foreground = ThemePalette.IconNormal;
         };
         btn.Click += async (_, _) => await _router.NavigateAsync(item.RoutePath);
+        _activityButtons[item.RoutePath] = btn;
         // 活动栏图标窄 48×48、无标题栏——必须依赖 ToolTip 揭示功能；与 CreateIconButton 行为一致
         ToolTip.SetTip(btn, item.Title);
 
@@ -317,7 +307,7 @@ public class WorkspaceWindow : Window
         var btn = new Button
         {
             Background = Brushes.Transparent,
-            Foreground = isActive ? s_iconActive : s_iconNormal,
+            Foreground = isActive ? ThemePalette.IconActive : ThemePalette.IconNormal,
             BorderThickness = new Thickness(0),
             Padding = new Thickness(0),
             Width = 48,
@@ -366,23 +356,49 @@ public class WorkspaceWindow : Window
         }
     }
 
+    /// <summary>状态栏左段内层 Grid：项目名(*列，超宽省略号截断)  |  状态文本(Auto)。</summary>
+    private Control CreateLeftStatusBar()
+    {
+        var sep = new TextBlock
+        {
+            Text = "|",
+            FontSize = 12,
+            Foreground = ThemePalette.TextMuted,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 8, 0),
+        };
+        var inner = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto,Auto"),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        inner.Children.Add(_projectNameText);
+        Grid.SetColumn(_projectNameText, 0);
+        inner.Children.Add(sep);
+        Grid.SetColumn(sep, 1);
+        inner.Children.Add(_statusBarText);
+        Grid.SetColumn(_statusBarText, 2);
+        return inner;
+    }
+
     // ===== 侧面板创建 =====
 
     /// <summary>资源分类侧面板</summary>
     private Control CreateAssetCategoryPanel()
     {
-        var panel = new StackPanel { Background = s_sideBarBg };
+        var panel = new StackPanel { Background = ThemePalette.PanelBg };
 
         panel.Children.Add(new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#333333")),
+            Background = ThemePalette.ActivityBarBg,
             Padding = new Thickness(12, 8),
             Child = new TextBlock
             {
                 Text = "资源分类",
                 FontSize = 12,
                 FontWeight = FontWeight.Bold,
-                Foreground = new SolidColorBrush(Color.Parse("#CCCCCC")),
+                Foreground = ThemePalette.TextHover,
             }
         });
 
@@ -410,8 +426,8 @@ public class WorkspaceWindow : Window
             {
                 Content = "扫描资源",
                 Margin = new Thickness(8, 8, 8, 0),
-                Background = new SolidColorBrush(Color.Parse("#0E639C")),
-                Foreground = Brushes.White,
+                Background = ThemePalette.Accent,
+                Foreground = ThemePalette.TextBright,
                 BorderThickness = new Thickness(0),
                 Padding = new Thickness(12, 6),
                 FontSize = 12,
@@ -433,7 +449,7 @@ public class WorkspaceWindow : Window
     {
         var panel = new StackPanel
         {
-            Background = s_sideBarBg,
+            Background = ThemePalette.PanelBg,
             Margin = new Thickness(8, 8, 8, 8),
             Spacing = 8,
         };
@@ -443,7 +459,7 @@ public class WorkspaceWindow : Window
             Text = "构建概览",
             FontSize = 12,
             FontWeight = FontWeight.Bold,
-            Foreground = new SolidColorBrush(Color.Parse("#CCCCCC")),
+            Foreground = ThemePalette.TextHover,
         });
 
         var vm = _services.GetService<BuildViewModel>();
@@ -453,7 +469,7 @@ public class WorkspaceWindow : Window
             var platformSummary = new TextBlock
             {
                 FontSize = 12,
-                Foreground = new SolidColorBrush(Color.Parse("#AAAAAA")),
+                Foreground = ThemePalette.TextMuted,
                 TextWrapping = Avalonia.Media.TextWrapping.Wrap,
             };
             void UpdatePlatformSummary()
@@ -477,7 +493,7 @@ public class WorkspaceWindow : Window
             var encSummary = new TextBlock
             {
                 FontSize = 12,
-                Foreground = new SolidColorBrush(Color.Parse("#AAAAAA")),
+                Foreground = ThemePalette.TextMuted,
                 TextWrapping = Avalonia.Media.TextWrapping.Wrap,
             };
             void UpdateEncSummary()
@@ -506,7 +522,7 @@ public class WorkspaceWindow : Window
             var aotSummary = new TextBlock
             {
                 FontSize = 12,
-                Foreground = new SolidColorBrush(Color.Parse("#AAAAAA")),
+                Foreground = ThemePalette.TextMuted,
             };
             void UpdateAotSummary() => aotSummary.Text = $"AOT: {(vm.PublishAot ? "启用" : "禁用")}";
             UpdateAotSummary();
@@ -517,7 +533,7 @@ public class WorkspaceWindow : Window
             };
             panel.Children.Add(aotSummary);
 
-            panel.Children.Add(new Border { Height = 1, Background = new SolidColorBrush(Color.Parse("#333333")) });
+            panel.Children.Add(new Border { Height = 1, Background = ThemePalette.ActivityBarBg });
 
             // 构建按钮
             var buildBtn = new Button
@@ -526,8 +542,8 @@ public class WorkspaceWindow : Window
                 Command = vm.BuildCommand,
                 FontSize = 13,
                 Padding = new Thickness(16, 6),
-                Background = new SolidColorBrush(Color.Parse("#0E639C")),
-                Foreground = Brushes.White,
+                Background = ThemePalette.Accent,
+                Foreground = ThemePalette.TextBright,
                 BorderThickness = new Thickness(0),
                 HorizontalAlignment = HorizontalAlignment.Stretch,
             };
@@ -554,35 +570,29 @@ public class WorkspaceWindow : Window
 
     private Control CreateStatusBar()
     {
+        var leftSection = CreateLeftStatusBar();
+        var versionText = new TextBlock
+        {
+            Text = "灵泛引擎 SDK v0.1.0",
+            FontSize = 11,
+            Foreground = new SolidColorBrush(Color.FromArgb(150, 255, 255, 255)),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(16, 0, 4, 0),
+        };
+        var outerGrid = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+        };
+        outerGrid.Children.Add(leftSection);
+        Grid.SetColumn(leftSection, 0);
+        outerGrid.Children.Add(versionText);
+        Grid.SetColumn(versionText, 1);
+
         return new Border
         {
-            Background = s_statusBarBg,
+            Background = ThemePalette.StatusBarBg,
             Padding = new Thickness(8, 2),
-            Child = new Grid
-            {
-                ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
-                Children =
-                {
-                    new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Spacing = 16,
-                        Children =
-                        {
-                            _projectNameText,
-                            new TextBlock { Text = "|", FontSize = 12, Foreground = new SolidColorBrush(Color.FromArgb(100, 255, 255, 255)) },
-                            _statusBarText,
-                        }
-                    },
-                    new TextBlock
-                    {
-                        Text = "灵泛引擎 SDK v0.1.0",
-                        FontSize = 11,
-                        Foreground = new SolidColorBrush(Color.FromArgb(150, 255, 255, 255)),
-                        VerticalAlignment = VerticalAlignment.Center,
-                    }
-                }
-            }
+            Child = outerGrid,
         };
     }
 
@@ -590,6 +600,12 @@ public class WorkspaceWindow : Window
 
     private void OnWindowClosed(object? sender, EventArgs e)
     {
+        // 释放当前挂载的页面与侧面板，使 Router keepalive 缓存的页实例在窗口关闭后失去可视父级，
+        // 避免下一个项目打开时新建的工作台复用"仍被旧窗口挂载"的页实例而抛
+        // "The control ... already has a visual parent ContentPresenter"。
+        _editorArea.Content = null;
+        _sidePanel.Content = null;
+
         SaveWindowState();
     }
 
