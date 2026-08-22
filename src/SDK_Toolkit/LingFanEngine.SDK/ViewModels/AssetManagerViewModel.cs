@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using LingFanEngine.SDK.I18n;
 using LingFanEngine.SDK.Constants;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Services.Abstractions;
@@ -31,7 +32,7 @@ public partial class AssetManagerViewModel : ViewModelBase
     private AssetPreview? _preview;
 
     [ObservableProperty]
-    private string _statusMessage = "就绪";
+    private string _statusMessage = SdkLocalizer.Loc("St_Ready");
 
     [ObservableProperty]
     private string _projectDirectory = "";
@@ -43,6 +44,10 @@ public partial class AssetManagerViewModel : ViewModelBase
     /// <summary>当前筛选的分类索引（0=全部, 1=故事, 2=图片, 3=音频, 4=视频, 5=其他）</summary>
     [ObservableProperty]
     private int _selectedCategoryIndex = 0;
+
+    // ===== 本地化静态文案（供 AssetManagerPage 绑定） =====
+    public string PageTitle => SdkLocalizer.Loc("Nav_Assets");
+    public string ScanLabel => SdkLocalizer.Loc("Action_Scan");
 
     public AssetManagerViewModel(IAssetManager assetManager, IProjectSession session)
     {
@@ -76,7 +81,7 @@ public partial class AssetManagerViewModel : ViewModelBase
         _allAssets.Clear();
         Assets.Clear();
         Preview = null;
-        StatusMessage = "就绪";
+        StatusMessage = SdkLocalizer.Loc("St_Ready");
     }
 
     /// <summary>启动对资源目录的文件监听（外部动态增删/改动文件时自动防抖重扫）。</summary>
@@ -149,21 +154,21 @@ public partial class AssetManagerViewModel : ViewModelBase
     {
         if (string.IsNullOrEmpty(ResourcesDirectory))
         {
-            StatusMessage = "请先打开项目";
+            StatusMessage = SdkLocalizer.Loc("St_NeedProject");
             return;
         }
 
         try
         {
-            StatusMessage = "正在扫描资源...";
+            StatusMessage = SdkLocalizer.Loc("St_Scanning");
             var entries = await _assetManager.ScanAssetsAsync(ResourcesDirectory);
             _allAssets = entries.ToList();
             ApplyCategoryFilter();
-            StatusMessage = $"找到 {entries.Count} 个资源";
+            StatusMessage = SdkLocalizer.Loc("St_FoundN", entries.Count);
         }
         catch (Exception ex)
         {
-            StatusMessage = $"扫描失败: {ex.Message}";
+            StatusMessage = SdkLocalizer.Loc("St_ScanFail", ex.Message);
         }
     }
 
@@ -213,7 +218,7 @@ public partial class AssetManagerViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            StatusMessage = $"预览失败: {ex.Message}";
+            StatusMessage = SdkLocalizer.Loc("St_PreviewFail", ex.Message);
         }
     }
 
@@ -223,7 +228,7 @@ public partial class AssetManagerViewModel : ViewModelBase
     {
         if (string.IsNullOrEmpty(ResourcesDirectory))
         {
-            StatusMessage = "请先打开项目";
+            StatusMessage = SdkLocalizer.Loc("St_NeedProject");
             return;
         }
 
@@ -248,13 +253,13 @@ public partial class AssetManagerViewModel : ViewModelBase
             }
             catch (Exception ex)
             {
-                StatusMessage = $"导入失败 {System.IO.Path.GetFileName(filePath)}: {ex.Message}";
+                StatusMessage = SdkLocalizer.Loc("St_ImportFail", System.IO.Path.GetFileName(filePath), ex.Message);
             }
         }
 
         if (imported > 0)
         {
-            StatusMessage = $"已导入 {imported} 个资源";
+            StatusMessage = SdkLocalizer.Loc("St_ImportedN", imported);
             await ScanAssetsAsync();
         }
     }

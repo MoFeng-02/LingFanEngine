@@ -4,6 +4,9 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<LangVersion>latest</LangVersion>
+		<!-- 默认（中性）语言：简体中文；AppLang.*.resx 随当前 UI 文化回退 -->
+		<NeutralLanguage>zh-Hans</NeutralLanguage>
+		<GenerateSatelliteAssembliesForCore>true</GenerateSatelliteAssembliesForCore>
 		<!-- Native AOT 兼容声明（库项目，实际 AOT 编译在可执行项目上） -->
 		<IsAotCompatible>true</IsAotCompatible>
 		<JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>

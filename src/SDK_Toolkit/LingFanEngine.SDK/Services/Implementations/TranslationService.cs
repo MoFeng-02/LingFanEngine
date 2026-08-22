@@ -503,9 +503,10 @@ public class TranslationService : ITranslationService
         var groups = RouteByLayout(scanned, langDir, lang, layout);
         var targetFiles = groups.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
 
-        // 每文件：保留自有键 + 收集待翻
+        // 每文件：保留自有键 + 收集待翻（按"唯一文本"聚合，跨文件去重，避免同一句在多个文件被重复翻译）
         var perFile = new Dictionary<string, PerFile>(StringComparer.Ordinal);
-        var pending = new List<(string File, string Text)>();
+        var pendingTexts = new List<string>();                                        // 待翻的唯一文本（保序）
+        var textToFiles = new Dictionary<string, List<string>>(StringComparer.Ordinal); // text → 需要该译文的所有文件
         foreach (var file in targetFiles)
         {
             ct.ThrowIfCancellationRequested();
@@ -520,19 +521,23 @@ public class TranslationService : ITranslationService
                 if (!forceRetranslate && already)
                 {
                     result.Kept++;
-                    if (!pf.Merged.ContainsKey(text))
-                        pf.Merged[text] = existingAll[text]; // IsTranslated 蕴含存在且非空
+                    // 用权威译文直接覆盖文件旧值（残留空串/旧回显），保证同文本各文件一致且不留旧占位
+                    pf.Merged[text] = existingAll[text];
                     continue;
                 }
-                pending.Add((file, text));
+                if (!textToFiles.TryGetValue(text, out var files))
+                {
+                    files = new List<string>();
+                    textToFiles[text] = files;
+                    pendingTexts.Add(text);
+                }
+                files.Add(file);
             }
         }
 
-        // 一次性批译全部待翻（保留跨模块高效批量）
-        if (pending.Count > 0)
+        // 一次性批译全部待翻的唯一文本（跨模块高效批量；同一文本只翻一次，结果广播到它的所有文件）
+        if (pendingTexts.Count > 0)
         {
-            var texts = pending.Select(p => p.Text).ToList();
-
             // 让 LLM 翻译器把每批进度实时回传给宿主（其余 Manual/Api 翻译器无进度，忽略）
             var llm = translator as LlmTranslator;
             IProgress<TranslationProgress>? priorProgress = null;
@@ -544,38 +549,54 @@ public class TranslationService : ITranslationService
             IReadOnlyList<string?> translations;
             try
             {
-                translations = await translator.TranslateBatchAsync(texts, lang, sourceLang, ct).ConfigureAwait(false);
+                translations = await translator.TranslateBatchAsync(pendingTexts, lang, sourceLang, ct).ConfigureAwait(false);
             }
             finally
             {
                 if (llm != null) llm.Progress = priorProgress;
             }
 
-            for (var i = 0; i < pending.Count; i++)
+            for (var k = 0; k < pendingTexts.Count; k++)
             {
                 ct.ThrowIfCancellationRequested();
-                var (file, text) = pending[i];
-                var tr = translations.Count > i ? translations[i] : null;
-                var pf = perFile[file];
+                var text = pendingTexts[k];
+                var tr = translations.Count > k ? translations[k] : null;
+
+                // 三态判定：null→回退、空→留空、回显原文→留空待补、真译→采纳
+                string value;
                 if (tr is null)
                 {
-                    // 翻译失败/无结果：回退已有译文或原文，保证键不丢
                     var fallback = existingAll.TryGetValue(text, out var ev) && !string.IsNullOrWhiteSpace(ev) ? ev : text;
-                    pf.Merged[text] = fallback;
+                    value = fallback;
                     result.Failed++;
                 }
                 else if (tr.Length == 0)
                 {
-                    // Manual/生成占位（译文留空）：写入空串，交由人工/外部 AI 填充，不计为"已翻译"
-                    pf.Merged[text] = "";
+                    value = ""; // Manual/生成占位，译文留空待外部填充
+                }
+                else if (string.Equals(tr, text, StringComparison.Ordinal))
+                {
+                    // 模型回显原文（未真正翻译）：只复用"另一处已有的真译文"（≠源且非空）避免污染；
+                    // 否则清空待补——绝不把中文原文当译文残留在文件里
+                    var ex = existingAll.TryGetValue(text, out var ev2)
+                             && !string.IsNullOrWhiteSpace(ev2)
+                             && !string.Equals(ev2, text, StringComparison.Ordinal) ? ev2 : "";
+                    value = ex;
+                    if (string.IsNullOrWhiteSpace(ex)) result.Failed++;
+                    else result.Translated++;
                 }
                 else
                 {
-                    pf.Merged[text] = tr;
+                    value = tr;
                     result.Translated++;
                 }
+
+                // 广播到所有需要该文本的文件
+                foreach (var file in textToFiles[text])
+                    perFile[file].Merged[text] = value;
+
                 result.Added++;
-                progress?.Report(new TranslationProgress(i + 1, pending.Count, text));
+                progress?.Report(new TranslationProgress(k + 1, pendingTexts.Count, ""));
             }
         }
 

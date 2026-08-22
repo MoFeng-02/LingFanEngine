@@ -1,9 +1,13 @@
 using System;
+using System.IO;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using LingFanEngine.SDK.I18n;
+using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Services.Abstractions;
+using LingFanEngine.SDK.Utils;
 using LingFanEngine.SDK.ViewModels;
 using LingFanEngine.SDK.Views;
 using Microsoft.Extensions.DependencyInjection;
@@ -36,6 +40,9 @@ public partial class App : Application
         _services = services;
         Services = services;
 
+        // 启动即按保存的界面语言设置资源文化（须在任何窗口构建/Loc 读取之前）
+        ApplySavedUiLanguage();
+
         // 监听项目会话——打开→切换到工作台，关闭→切换回启动器
         var session = services.GetRequiredService<IProjectSession>();
         session.ProjectOpened += () =>
@@ -57,6 +64,23 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>读取持久化的界面语言并设置资源文化（无/无效时沿用系统回退到中文）。</summary>
+    private static void ApplySavedUiLanguage()
+    {
+        try
+        {
+            var path = PathHelper.GetSdkSettingsFilePath();
+            if (!File.Exists(path)) return;
+            var s = JsonHelper.Deserialize<SdkSettings>(File.ReadAllText(path), SdkJsonContext.Default.SdkSettings);
+            if (!string.IsNullOrWhiteSpace(s?.UILanguage))
+                SdkLocalizer.SetCulture(s.UILanguage);
+        }
+        catch
+        {
+            // 读取/解析失败则沿用默认语言，不阻塞启动
+        }
     }
 
     /// <summary>显示启动器窗口</summary>

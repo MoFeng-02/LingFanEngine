@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using System.IO;
+using LingFanEngine.SDK.I18n;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Themes;
 using LingFanEngine.SDK.ViewModels;
@@ -34,7 +35,7 @@ public class LauncherWindow : Window
         _viewModel = viewModel;
         DataContext = viewModel;
 
-        Title = "灵泛引擎 SDK — 启动器";
+        Title = SdkLocalizer.Loc("Window_Title");
         // 应用默认图标（与 EXE ApplicationIcon 一致）
         Icon = new WindowIcon(Path.Combine(AppContext.BaseDirectory, "Icons", "LingFanIcon_64x64.png"));
         Width = 900;
@@ -111,14 +112,14 @@ public class LauncherWindow : Window
                         {
                             new TextBlock
                             {
-                                Text = "灵泛引擎 SDK",
+                                Text = SdkLocalizer.Loc("Brand_Title"),
                                 FontSize = 20,
                                 FontWeight = FontWeight.SemiBold,
                                 Foreground = ThemePalette.TextBright,
                             },
                             new TextBlock
                             {
-                                Text = "叙事 / 沙盒小说游戏创作工具",
+                                Text = SdkLocalizer.Loc("Brand_Tagline"),
                                 FontSize = 12,
                                 Foreground = ThemePalette.TextMuted,
                             },
@@ -145,7 +146,7 @@ public class LauncherWindow : Window
             Spacing = 8,
         };
 
-        var newBtn = CreateIconButtonWithText(IconAdd, "新建项目", ThemePalette.Accent, ThemePalette.TextBright);
+        var newBtn = CreateIconButtonWithText(IconAdd, SdkLocalizer.Loc("Action_NewProject"), ThemePalette.Accent, ThemePalette.TextBright);
         newBtn.Click += (_, _) => _viewModel.ToggleNewProjectPanelCommand.Execute(null);
         newProjectSection.Children.Add(newBtn);
 
@@ -163,23 +164,23 @@ public class LauncherWindow : Window
                 formPanel.IsVisible = _viewModel.IsNewProjectPanelVisible;
         };
 
-        var (namePanel, nameBox) = CreateFormField("项目名称");
+        var (namePanel, nameBox) = CreateFormField(SdkLocalizer.Loc("Form_ProjectName"));
         BindTwoWayText(nameBox, () => _viewModel.NewProjectName, v => _viewModel.NewProjectName = v, nameof(LauncherViewModel.NewProjectName));
         formPanel.Children.Add(namePanel);
 
-        var (titlePanel, titleBox) = CreateFormField("游戏名称");
+        var (titlePanel, titleBox) = CreateFormField(SdkLocalizer.Loc("Form_GameTitle"));
         BindTwoWayText(titleBox, () => _viewModel.NewProjectTitle, v => _viewModel.NewProjectTitle = v, nameof(LauncherViewModel.NewProjectTitle));
         formPanel.Children.Add(titlePanel);
 
-        var (authorPanel, authorBox) = CreateFormField("作者");
+        var (authorPanel, authorBox) = CreateFormField(SdkLocalizer.Loc("Form_Author"));
         BindTwoWayText(authorBox, () => _viewModel.NewProjectAuthor, v => _viewModel.NewProjectAuthor = v, nameof(LauncherViewModel.NewProjectAuthor));
         formPanel.Children.Add(authorPanel);
 
-        var (versionPanel, versionBox) = CreateFormField("版本号");
+        var (versionPanel, versionBox) = CreateFormField(SdkLocalizer.Loc("Form_Version"));
         BindTwoWayText(versionBox, () => _viewModel.NewProjectVersion, v => _viewModel.NewProjectVersion = v, nameof(LauncherViewModel.NewProjectVersion));
         formPanel.Children.Add(versionPanel);
 
-        var (descPanel, descBox) = CreateFormField("描述（可选）");
+        var (descPanel, descBox) = CreateFormField(SdkLocalizer.Loc("Form_Description"));
         BindTwoWayText(descBox, () => _viewModel.NewProjectDescription, v => _viewModel.NewProjectDescription = v, nameof(LauncherViewModel.NewProjectDescription));
         formPanel.Children.Add(descPanel);
 
@@ -187,7 +188,7 @@ public class LauncherWindow : Window
         var pathPanel = new StackPanel { Spacing = 4 };
         pathPanel.Children.Add(new TextBlock
         {
-            Text = "输出目录",
+            Text = SdkLocalizer.Loc("Form_OutputDir"),
             FontSize = 11,
             Foreground = ThemePalette.TextMuted,
         });
@@ -218,7 +219,7 @@ public class LauncherWindow : Window
         // 创建按钮
         var createBtn = new Button
         {
-            Content = "创建",
+            Content = SdkLocalizer.Loc("Action_Create"),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Background = ThemePalette.Accent,
             Foreground = ThemePalette.TextBright,
@@ -242,7 +243,7 @@ public class LauncherWindow : Window
         });
 
         // 打开按钮
-        var openBtn = CreateIconButtonWithText(IconFolder, "打开项目...", Brushes.Transparent, ThemePalette.TextHover);
+        var openBtn = CreateIconButtonWithText(IconFolder, SdkLocalizer.Loc("Action_OpenProject"), Brushes.Transparent, ThemePalette.TextHover);
         openBtn.Margin = new Thickness(12, 8, 12, 0);
         openBtn.Click += (_, _) => _viewModel.BrowseProjectCommand.Execute(null);
         panel.Children.Add(openBtn);
@@ -337,7 +338,7 @@ public class LauncherWindow : Window
         });
         emptyHint.Children.Add(new TextBlock
         {
-            Text = "还没有项目\n点击左侧「新建项目」或「打开项目」开始",
+            Text = SdkLocalizer.Loc("Empty_Hint"),
             FontSize = 14,
             Foreground = ThemePalette.TextMuted,
             TextAlignment = TextAlignment.Center,
@@ -480,14 +481,14 @@ public class LauncherWindow : Window
             };
             confirmTop.Children.Add(new TextBlock
             {
-                Text = "删除该项目？",
+                Text = SdkLocalizer.Loc("Confirm_DeleteTitle"),
                 FontSize = 11,
                 Foreground = ThemePalette.StopRed,
                 VerticalAlignment = VerticalAlignment.Center,
             });
             var deleteFilesCheck = new CheckBox
             {
-                Content = "同时删除文件",
+                Content = SdkLocalizer.Loc("Confirm_DeleteFiles"),
                 FontSize = 11,
                 Foreground = ThemePalette.TextMuted,
                 IsChecked = false,
@@ -503,7 +504,7 @@ public class LauncherWindow : Window
             };
             var confirmDeleteBtn = new Button
             {
-                Content = "删除",
+                Content = SdkLocalizer.Loc("Action_Delete"),
                 FontSize = 11,
                 Padding = new Thickness(8, 2),
                 Background = ThemePalette.StopRed,
@@ -512,7 +513,7 @@ public class LauncherWindow : Window
             };
             var cancelDeleteBtn = new Button
             {
-                Content = "取消",
+                Content = SdkLocalizer.Loc("Action_Cancel"),
                 FontSize = 11,
                 Padding = new Thickness(8, 2),
                 Background = ThemePalette.BtnBg,

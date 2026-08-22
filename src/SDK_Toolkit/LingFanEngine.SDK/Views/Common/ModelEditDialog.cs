@@ -9,6 +9,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using LingFanEngine.SDK.I18n;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Services.Abstractions;
 using LingFanEngine.SDK.Services.Implementations;
@@ -37,7 +38,7 @@ public sealed class ModelEditDialog : Window
     private Button _eyeBtn = null!;
     private bool _keyVisible;
     private NumericUpDown _tempBox = null!;
-    private NumericUpDown _batchBox = null!;
+    private Slider _batchBox = null!;
     private NumericUpDown _timeoutBox = null!;
     private TextBlock _statusText = null!;
     private Button _addBtn = null!;
@@ -59,7 +60,7 @@ public sealed class ModelEditDialog : Window
         _connectivity = connectivity;
         _modelService = modelService;
 
-        Title = "自定义模型";
+        Title = SdkLocalizer.Loc("Dlg_Title");
         Width = 560;
         Height = 560;
         MinWidth = 460;
@@ -94,7 +95,7 @@ public sealed class ModelEditDialog : Window
         };
         header.Children.Add(new TextBlock
         {
-            Text = "自定义模型",
+            Text = SdkLocalizer.Loc("Dlg_Title"),
             FontSize = 18,
             FontWeight = FontWeight.Bold,
             Foreground = ThemePalette.Text,
@@ -124,7 +125,7 @@ public sealed class ModelEditDialog : Window
         root.Children.Add(header);
 
         // ===== API 格式 =====
-        root.Children.Add(CreateLabeled("API 格式 *"));
+        root.Children.Add(CreateLabeled(SdkLocalizer.Loc("Form_ApiFormat")));
         _providerCombo = new ComboBox
         {
             HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -151,19 +152,19 @@ public sealed class ModelEditDialog : Window
         root.Children.Add(_baseUrlBox);
         root.Children.Add(new TextBlock
         {
-            Text = "例如 https://api.openai.com/v1",
+            Text = SdkLocalizer.Loc("Hint_BaseUrlExample"),
             FontSize = 11,
             Foreground = ThemePalette.TextMuted,
         });
 
         // ===== 模型 ID（选填：拉列表后自动批量添加；手填用于不支持列表的私有端点）=====
-        root.Children.Add(CreateLabeled("模型 ID（选填）"));
+        root.Children.Add(CreateLabeled(SdkLocalizer.Loc("Form_ModelId")));
         _modelIdBox = new TextBox
         {
             Text = _editing.ModelId,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             FontSize = 13,
-            PlaceholderText = "可选 · 留空则改用「获取模型列表」批量添加",
+            PlaceholderText = SdkLocalizer.Loc("Ph_ModelId"),
         };
         _modelIdBox.TextChanged += (_, _) => UpdateAddEnabled();
         root.Children.Add(_modelIdBox);
@@ -174,7 +175,7 @@ public sealed class ModelEditDialog : Window
             ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
             Margin = new Thickness(0, 4, 0, 0),
         };
-        nameRow.Children.Add(CreateLabeled("模型展示名称"));
+        nameRow.Children.Add(CreateLabeled(SdkLocalizer.Loc("Form_DisplayName")));
         Grid.SetColumn(nameRow.Children[0], 0);
         _counter = new TextBlock
         {
@@ -194,13 +195,13 @@ public sealed class ModelEditDialog : Window
             HorizontalAlignment = HorizontalAlignment.Stretch,
             FontSize = 13,
             MaxLength = 32,
-            PlaceholderText = "选填，留空则列表显示模型 ID",
+            PlaceholderText = SdkLocalizer.Loc("Ph_DisplayName"),
         };
         _displayBox.TextChanged += (_, _) => _counter.Text = $"{_displayBox.Text.Length}/32";
         root.Children.Add(_displayBox);
 
         // ===== API 密钥（密码框 + 👁）=====
-        root.Children.Add(CreateLabeled("API 密钥 *"));
+        root.Children.Add(CreateLabeled(SdkLocalizer.Loc("Form_ApiKey")));
         var keyRow = new Grid
         {
             ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
@@ -236,7 +237,7 @@ public sealed class ModelEditDialog : Window
         // ===== 高级配置（折叠）=====
         var expander = new Expander
         {
-            Header = "高级配置",
+            Header = SdkLocalizer.Loc("Adv_Header"),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Foreground = ThemePalette.Text,
             BorderBrush = ThemePalette.Border,
@@ -244,7 +245,7 @@ public sealed class ModelEditDialog : Window
             Padding = new Thickness(10),
         };
         var adv = new StackPanel { Spacing = 8, Margin = new Thickness(0, 6, 0, 0) };
-        adv.Children.Add(CreateLabeled("温度（0-1，建议 0.2-0.3）"));
+        adv.Children.Add(CreateLabeled(SdkLocalizer.Loc("Form_Temperature")));
         _tempBox = new NumericUpDown
         {
             Value = (decimal)_editing.Advanced.Temperature,
@@ -255,16 +256,32 @@ public sealed class ModelEditDialog : Window
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         adv.Children.Add(_tempBox);
-        adv.Children.Add(CreateLabeled("每批条数（1-200）"));
-        _batchBox = new NumericUpDown
+        adv.Children.Add(CreateLabeled(SdkLocalizer.Loc("Form_BatchTip")));
+        _batchBox = new Slider
         {
-            Value = _editing.Advanced.BatchSize,
             Minimum = 1,
-            Maximum = 200,
+            Maximum = 36,
+            TickFrequency = 1,
+            IsSnapToTickEnabled = true,
+            Value = _editing.Advanced.BatchSize,
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
-        adv.Children.Add(_batchBox);
-        adv.Children.Add(CreateLabeled("超时（秒）"));
+        var batchValue = new TextBlock
+        {
+            Text = _editing.Advanced.BatchSize.ToString(),
+            FontSize = 11,
+            Foreground = ThemePalette.TextBright,
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+        _batchBox.ValueChanged += (_, _) => batchValue.Text = ((int)_batchBox.Value).ToString();
+        adv.Children.Add(new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+            Children = { _batchBox, batchValue },
+        });
+        Grid.SetColumn(_batchBox, 0);
+        Grid.SetColumn(batchValue, 1);
+        adv.Children.Add(CreateLabeled(SdkLocalizer.Loc("Form_Timeout")));
         _timeoutBox = new NumericUpDown
         {
             Value = _editing.Advanced.TimeoutSeconds,
@@ -284,7 +301,7 @@ public sealed class ModelEditDialog : Window
         };
         var testBtn = new Button
         {
-            Content = "连通性测试",
+            Content = SdkLocalizer.Loc("Action_ConnectTest"),
             Padding = new Thickness(14, 6),
             Background = ThemePalette.PanelBg,
             BorderBrush = ThemePalette.Border,
@@ -295,7 +312,7 @@ public sealed class ModelEditDialog : Window
         testBtn.Click += async (_, _) => await RunConnectivityTestAsync();
         var fetchBtn = new Button
         {
-            Content = "获取模型列表",
+            Content = SdkLocalizer.Loc("Action_FetchModels"),
             Padding = new Thickness(14, 6),
             Background = ThemePalette.PanelBg,
             BorderBrush = ThemePalette.Border,
@@ -321,7 +338,7 @@ public sealed class ModelEditDialog : Window
         };
         fetchHeader.Children.Add(new TextBlock
         {
-            Text = "已获取模型（勾选要添加的）",
+            Text = SdkLocalizer.Loc("Dlg_FetchedHint"),
             FontSize = 12,
             FontWeight = FontWeight.Bold,
             Foreground = ThemePalette.Title,
@@ -339,7 +356,7 @@ public sealed class ModelEditDialog : Window
 
         var selectAllBtn = new Button
         {
-            Content = "全选",
+            Content = SdkLocalizer.Loc("Action_SelectAll"),
             Padding = new Thickness(8, 2),
             Background = Brushes.Transparent,
             BorderBrush = ThemePalette.Border,
@@ -350,7 +367,7 @@ public sealed class ModelEditDialog : Window
         selectAllBtn.Click += (_, _) => SetAllFetchChecks(true);
         var deselectAllBtn = new Button
         {
-            Content = "全不选",
+            Content = SdkLocalizer.Loc("Action_DeselectAll"),
             Padding = new Thickness(8, 2),
             Background = Brushes.Transparent,
             BorderBrush = ThemePalette.Border,
@@ -380,7 +397,7 @@ public sealed class ModelEditDialog : Window
 
         _addSelectedBtn = new Button
         {
-            Content = "添加所选",
+            Content = SdkLocalizer.Loc("Action_AddSelPlain"),
             Padding = new Thickness(14, 6),
             Background = ThemePalette.Accent,
             BorderThickness = new Thickness(0),
@@ -411,7 +428,7 @@ public sealed class ModelEditDialog : Window
             Padding = new Thickness(10, 6),
             Child = new TextBlock
             {
-                Text = "ℹ 连通性测试与「获取模型列表」均调用 GET /v1/models，零成本、不消耗 Token；拉取后勾选要添加的（默认全选），添加时按「供应商+端点+模型」去重。",
+                Text = SdkLocalizer.Loc("Dlg_InfoNote"),
                 FontSize = 11,
                 Foreground = ThemePalette.TextMuted,
                 TextWrapping = TextWrapping.Wrap,
@@ -428,7 +445,7 @@ public sealed class ModelEditDialog : Window
         };
         var cancelBtn = new Button
         {
-            Content = "取消",
+            Content = SdkLocalizer.Loc("Action_Cancel"),
             Padding = new Thickness(16, 6),
             Background = Brushes.Transparent,
             BorderBrush = ThemePalette.Border,
@@ -439,7 +456,7 @@ public sealed class ModelEditDialog : Window
         cancelBtn.Click += (_, _) => Close(false);
         var resetBtn = new Button
         {
-            Content = "重置",
+            Content = SdkLocalizer.Loc("Action_Reset"),
             Padding = new Thickness(16, 6),
             Background = Brushes.Transparent,
             BorderBrush = ThemePalette.Border,
@@ -450,7 +467,7 @@ public sealed class ModelEditDialog : Window
         resetBtn.Click += (_, _) => ResetToEditing();
         _addBtn = new Button
         {
-            Content = "添加模型",
+            Content = SdkLocalizer.Loc("Action_AddModel"),
             Padding = new Thickness(16, 6),
             Background = ThemePalette.Accent,
             BorderThickness = new Thickness(0),
@@ -512,7 +529,7 @@ public sealed class ModelEditDialog : Window
             Advanced = new ModelAdvancedConfig
             {
                 Temperature = (double)(_tempBox.Value ?? 0.3m),
-                BatchSize = (int)(_batchBox.Value ?? 50m),
+                BatchSize = (int)_batchBox.Value,
                 TimeoutSeconds = (int)(_timeoutBox.Value ?? 120m),
             },
         };
@@ -524,26 +541,26 @@ public sealed class ModelEditDialog : Window
         var model = BuildFromControls();
         if (string.IsNullOrWhiteSpace(model.BaseUrl))
         {
-            _statusText.Text = "请先填写 Base URL";
+            _statusText.Text = SdkLocalizer.Loc("St_NeedBaseUrl");
             _statusText.Foreground = ThemePalette.Warn;
             return;
         }
 
-        _statusText.Text = "正在获取模型列表...";
+        _statusText.Text = SdkLocalizer.Loc("St_Fetching");
         _statusText.Foreground = ThemePalette.TextMuted;
         try
         {
             var result = await _connectivity.TestAsync(model, CancellationToken.None);
             if (!result.IsSuccess)
             {
-                _statusText.Text = $"❌ 无法获取列表：{result.Message}";
+                _statusText.Text = SdkLocalizer.Loc("St_FetchFail", result.Message);
                 _statusText.Foreground = ThemePalette.Warn;
                 return;
             }
             if (result.ModelIds.Count == 0)
             {
                 _fetchPanel.IsVisible = false;
-                _statusText.Text = "✅ 已连通，但该端点未返回模型列表（data[] 为空）。请改用「模型 ID」手动添加。";
+                _statusText.Text = SdkLocalizer.Loc("St_FetchEmpty");
                 _statusText.Foreground = ThemePalette.Warn;
                 return;
             }
@@ -551,12 +568,12 @@ public sealed class ModelEditDialog : Window
             // 展示勾选清单（默认全选），让用户挑出要添加的，而不是一次性全注册
             PopulateFetchList(result.ModelIds);
             _fetchPanel.IsVisible = true;
-            _statusText.Text = $"已获取 {result.ModelIds.Count} 个模型，勾选要添加的，然后点击「添加所选」。";
+            _statusText.Text = SdkLocalizer.Loc("St_Fetched", result.ModelIds.Count);
             _statusText.Foreground = ThemePalette.TextMuted;
         }
         catch (Exception ex)
         {
-            _statusText.Text = $"❌ 获取异常：{ex.Message}";
+            _statusText.Text = SdkLocalizer.Loc("St_FetchError", ex.Message);
             _statusText.Foreground = ThemePalette.Warn;
         }
     }
@@ -577,15 +594,15 @@ public sealed class ModelEditDialog : Window
             _fetchChecks.Add(check);
             _fetchList.Items.Add(check);
         }
-        _fetchCountText.Text = $"共 {ids.Count} 个";
-        _addSelectedBtn.Content = $"添加所选（{ids.Count}）";
+        _fetchCountText.Text = ids.Count.ToString();
+        _addSelectedBtn.Content = SdkLocalizer.Loc("Action_AddSelected", ids.Count);
     }
 
     private void SetAllFetchChecks(bool value)
     {
         foreach (var c in _fetchChecks)
             c.IsChecked = value;
-        _addSelectedBtn.Content = $"添加所选（{_fetchChecks.Count(c => c.IsChecked == true)}）";
+        _addSelectedBtn.Content = SdkLocalizer.Loc("Action_AddSelected", _fetchChecks.Count(c => c.IsChecked == true));
     }
 
     /// <summary>添加勾选中的模型（继承当前 Provider / BaseUrl / ApiKey / 高级配置，按「供应商+端点+模型」去重）。</summary>
@@ -595,17 +612,17 @@ public sealed class ModelEditDialog : Window
         var selected = _fetchChecks.Where(c => c.IsChecked == true).Select(c => c.Content?.ToString() ?? "").ToList();
         if (selected.Count == 0)
         {
-            _statusText.Text = "请至少勾选一个模型";
+            _statusText.Text = SdkLocalizer.Loc("St_NeedSelect");
             _statusText.Foreground = ThemePalette.Warn;
             return;
         }
 
-        _statusText.Text = "正在添加所选模型...";
+        _statusText.Text = SdkLocalizer.Loc("St_Adding");
         _statusText.Foreground = ThemePalette.TextMuted;
         try
         {
             var temp = (double)(_tempBox.Value ?? 0.3m);
-            var batch = (int)(_batchBox.Value ?? 50m);
+            var batch = (int)_batchBox.Value;
             var timeout = (int)(_timeoutBox.Value ?? 120m);
             var incoming = selected.Select(id => new ModelConfig
             {
@@ -625,12 +642,12 @@ public sealed class ModelEditDialog : Window
 
             _modelService.RegisterModels(incoming, out var added, out var skipped);
             _fetchPanel.IsVisible = false;
-            _statusText.Text = $"✅ 已添加 {added} 个模型 · 跳过已存在 {skipped}";
+            _statusText.Text = SdkLocalizer.Loc("St_Added", added, skipped);
             _statusText.Foreground = ThemePalette.Success;
         }
         catch (Exception ex)
         {
-            _statusText.Text = $"❌ 添加异常：{ex.Message}";
+            _statusText.Text = SdkLocalizer.Loc("St_AddError", ex.Message);
             _statusText.Foreground = ThemePalette.Warn;
         }
 
@@ -650,11 +667,11 @@ public sealed class ModelEditDialog : Window
         var model = BuildFromControls();
         if (string.IsNullOrWhiteSpace(model.BaseUrl))
         {
-            _statusText.Text = "请先填写 Base URL";
+            _statusText.Text = SdkLocalizer.Loc("St_NeedBaseUrl");
             _statusText.Foreground = ThemePalette.Warn;
             return;
         }
-        _statusText.Text = "测试中...";
+        _statusText.Text = SdkLocalizer.Loc("St_Testing");
         _statusText.Foreground = ThemePalette.TextMuted;
         try
         {
@@ -666,7 +683,7 @@ public sealed class ModelEditDialog : Window
         }
         catch (Exception ex)
         {
-            _statusText.Text = $"❌ 测试异常：{ex.Message}";
+            _statusText.Text = SdkLocalizer.Loc("St_TestError", ex.Message);
             _statusText.Foreground = ThemePalette.Warn;
         }
     }

@@ -8,6 +8,10 @@ namespace LingFanEngine.SDK.Models;
 /// </summary>
 public class SdkSettings
 {
+    // 界面
+    /// <summary>SDK 界面语言（BCP 47，如 zh-Hans / en-US / ja-JP；空=默认中文）。</summary>
+    public string UILanguage { get; set; } = "zh-Hans";
+
     // 构建
     public string DefaultBuildConfig { get; set; } = "Release";
     public bool DefaultSelfContained { get; set; } = true;

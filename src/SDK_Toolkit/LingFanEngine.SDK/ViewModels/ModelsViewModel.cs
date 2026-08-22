@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using LingFanEngine.SDK.I18n;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Services.Abstractions;
 using LingFanEngine.SDK.Services.Implementations;
@@ -29,6 +30,18 @@ public partial class ModelsViewModel : ViewModelBase
 
     /// <summary>当前默认模型 Id（列表高亮用）</summary>
     public string? DefaultId => _modelService.DefaultModelId;
+
+    // ===== 本地化静态文案（供页面绑定） =====
+    public string PageTitle => SdkLocalizer.Loc("Models_Title");
+    public string PageDescription => SdkLocalizer.Loc("Models_Desc");
+    public string AddHint => SdkLocalizer.Loc("Models_Hint");
+    public string EmptyHintText => SdkLocalizer.Loc("Models_Empty");
+    public string AddModelLabel => SdkLocalizer.Loc("Action_AddModel");
+    public string EditModelLabel => SdkLocalizer.Loc("Action_EditModel");
+    public string DeleteModelLabel => SdkLocalizer.Loc("Action_DeleteModel");
+    public string SetDefaultLabel => SdkLocalizer.Loc("Action_SetDefault");
+    public string DefaultBadge => SdkLocalizer.Loc("Models_Default");
+    public string ModelCountFormat => SdkLocalizer.Loc("Models_Count");
 
     /// <summary>创建模型管理 ViewModel</summary>
     public ModelsViewModel(IModelService modelService)
@@ -74,7 +87,7 @@ public partial class ModelsViewModel : ViewModelBase
             host = uri.Host.ToLowerInvariant();
 
         if (string.IsNullOrWhiteSpace(host))
-            return m.Provider == ModelProvider.Anthropic ? "Anthropic" : "自定义接口";
+            return m.Provider == ModelProvider.Anthropic ? "Anthropic" : SdkLocalizer.Loc("Models_Unnamed");
 
         // ---- 预定品牌映射（展示名）----
         if (host.Contains("openai") || host.Contains("azure-openai")) return "OpenAI";

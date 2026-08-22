@@ -7,6 +7,7 @@ using Avalonia.Controls.Shapes;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
+using LingFanEngine.SDK.I18n;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Services.Abstractions;
 using LingFanEngine.SDK.Themes;
@@ -30,6 +31,8 @@ namespace LingFanEngine.SDK.Views.Pages;
 public class TranslationPage : UserControl, INavigationAware
 {
     private readonly TranslationViewModel _vm;
+    private bool _vmEventsWired;
+    private bool _cultureSubscribed;
 
     // ===== 布局常量（统一间距体系）=====
     private const double M = 16;   // 页面边距
@@ -57,8 +60,17 @@ public class TranslationPage : UserControl, INavigationAware
     {
         _vm = viewModel;
         DataContext = viewModel;
+        if (!_cultureSubscribed)
+        {
+            _cultureSubscribed = true;
+            // 语言切换 → 整页受控重建（重读所有 SdkLocalizer.Loc 静态文案）
+            SdkLocalizer.CultureChanged += RebuildForCulture;
+        }
         InitializeComponent();
     }
+
+    /// <summary>语言切换时重建页面内容；VM 持久事件已单次接线，重复构建不会叠加订阅。</summary>
+    private void RebuildForCulture() => InitializeComponent();
 
     public void OnNavigated(Dictionary<string, object?>? parameters)
     {
@@ -122,7 +134,20 @@ public class TranslationPage : UserControl, INavigationAware
         root.Children.Add(_statusText);
         Grid.SetRow(_statusText, 6);
 
-        // 订阅 ViewModel 状态变化
+        WireVmEvents();
+
+        Content = root;
+    }
+
+    /// <summary>
+    /// VM 持久事件仅接线一次：语言切换重建时字段会被重新指向新控件，
+    /// 已注册的处理器经字段读取最新控件引用，故重建不会叠加订阅。
+    /// </summary>
+    private void WireVmEvents()
+    {
+        if (_vmEventsWired) return;
+        _vmEventsWired = true;
+
         _vm.PropertyChanged += (_, e) =>
         {
             switch (e.PropertyName)
@@ -153,12 +178,18 @@ public class TranslationPage : UserControl, INavigationAware
                 case nameof(TranslationViewModel.ScannedCount):
                 case nameof(TranslationViewModel.TranslatedCount):
                 case nameof(TranslationViewModel.UntranslatedCount):
-                    _statText.Text = $"共 {_vm.ScannedCount} 条 · 已翻译 {_vm.TranslatedCount} · 待翻译 {_vm.UntranslatedCount}";
+                    _statText.Text = SdkLocalizer.Loc("Tr_Stat", _vm.ScannedCount, _vm.TranslatedCount, _vm.UntranslatedCount);
                     break;
             }
         };
 
-        Content = root;
+        // 模型列表变化（如从管理页返回）或选中切换后重新同步下拉选中项
+        _vm.Models.CollectionChanged += (_, _) => SyncModelComboSelection();
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(TranslationViewModel.SelectedModelId))
+                SyncModelComboSelection();
+        };
     }
 
     // ============================================================
@@ -175,8 +206,8 @@ public class TranslationPage : UserControl, INavigationAware
         var row1 = new DockPanel { LastChildFill = true };
 
         // 输出布局（Flat/Mirrored/SingleFile；切换即持久化到项目 ProjectConfig.TranslationLayout）
-        var layoutField = UiBuilders.LabeledCombo("输出布局",
-            ["扁平（按场景 json）", "子文件夹分类（镜像 story）", "单文件"],
+        var layoutField = UiBuilders.LabeledCombo(SdkLocalizer.Loc("Tr_Layout"),
+            [SdkLocalizer.Loc("Layout_Flat"), SdkLocalizer.Loc("Layout_Mirrored"), SdkLocalizer.Loc("Layout_Single")],
             LayoutToIndex(_vm.Layout),
             v => _vm.Layout = v switch
             {
@@ -188,7 +219,7 @@ public class TranslationPage : UserControl, INavigationAware
         DockPanel.SetDock(layoutField, Dock.Right);
         row1.Children.Add(layoutField);
 
-        var sourceField = UiBuilders.LabeledTextBox("源语言", _vm.SourceLang, v => _vm.SourceLang = v, width: 80, watermark: "留空=自动检测");
+        var sourceField = UiBuilders.LabeledTextBox(SdkLocalizer.Loc("Tr_SourceLang"), _vm.SourceLang, v => _vm.SourceLang = v, width: 80, watermark: SdkLocalizer.Loc("Wm_AutoDetect"));
         sourceField.Margin = new Thickness(0, 0, M, 0);
         DockPanel.SetDock(sourceField, Dock.Right);
         row1.Children.Add(sourceField);
@@ -199,23 +230,23 @@ public class TranslationPage : UserControl, INavigationAware
         DockPanel.SetDock(targetField, Dock.Right);
         row1.Children.Add(targetField);
 
-        // 标题（占满剩余，左对齐垂直居中）
-        row1.Children.Add(new StackPanel
+        // 标题（占满剩余，左对齐垂直居中）；副标题置于 * 列受宽度约束，超长省略号，
+        // 避免长译文左移/叠到右侧目标语言下拉框下
+        var titleText = new TextBlock { Text = SdkLocalizer.Loc("Tr_Title"), FontSize = 20, FontWeight = FontWeight.Bold, Foreground = ThemePalette.Text };
+        var subText = new TextBlock
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 10,
-            VerticalAlignment = VerticalAlignment.Center,
-            Children =
-            {
-                new TextBlock { Text = "多语言翻译", FontSize = 20, FontWeight = FontWeight.Bold, Foreground = ThemePalette.Text },
-                new TextBlock
-                {
-                    Text = "原文即 key · 自动提取 .story + C# 文本 · 批量 AI 翻译",
-                    FontSize = 11, Foreground = ThemePalette.TextMuted,
-                    VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 2),
-                },
-            }
-        });
+            Text = SdkLocalizer.Loc("Tr_Sub"),
+            FontSize = 11, Foreground = ThemePalette.TextMuted,
+            VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 2),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.NoWrap,
+        };
+        var titleGrid = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("Auto,*") };
+        titleGrid.Children.Add(titleText);
+        Grid.SetColumn(titleText, 0);
+        titleGrid.Children.Add(subText);
+        Grid.SetColumn(subText, 1);
+        row1.Children.Add(titleGrid);
 
         // ---------- 行 2 ----------
         var row2 = new DockPanel { LastChildFill = true };
@@ -228,18 +259,21 @@ public class TranslationPage : UserControl, INavigationAware
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, M, 0),
         };
-        _syncButton = UiBuilders.ActionButton("同步翻译", _vm.SyncCommand, isPrimary: true);
-        _cancelButton = UiBuilders.ActionButton("取消", _vm.CancelSyncCommand, isCancel: true);
+        _syncButton = UiBuilders.ActionButton(SdkLocalizer.Loc("Action_Sync"), _vm.SyncCommand, isPrimary: true);
+        _cancelButton = UiBuilders.ActionButton(SdkLocalizer.Loc("Action_Cancel"), _vm.CancelSyncCommand, isCancel: true);
         _cancelButton.IsVisible = false;
-        actions.Children.Add(UiBuilders.ActionButton("扫描文本", _vm.ScanCommand, isGhost: true));
-        actions.Children.Add(UiBuilders.ActionButton("生成模式文件", _vm.GenerateModeFilesCommand, isGhost: true));
+        actions.Children.Add(UiBuilders.ActionButton(SdkLocalizer.Loc("Action_ScanText"), _vm.ScanCommand, isGhost: true));
+        var genBtn = UiBuilders.ActionButton(SdkLocalizer.Loc("Action_Generate"), _vm.GenerateModeFilesCommand, isGhost: true);
+        // 引导：生成的是可交给外部 AI 批量翻译的占位框架（ToolTip 提示）
+        ToolTip.SetTip(genBtn, SdkLocalizer.Loc("Tip_GenerateFrame"));
+        actions.Children.Add(genBtn);
         actions.Children.Add(_syncButton);
         actions.Children.Add(_cancelButton);
         DockPanel.SetDock(actions, Dock.Right);
         row2.Children.Add(actions);
 
         // 模式选择
-        var modeField = UiBuilders.LabeledCombo("翻译模式", ["人工翻译", "AI 智能翻译", "翻译 API", "AI Agent 智能代理"], 0, v =>
+        var modeField = UiBuilders.LabeledCombo(SdkLocalizer.Loc("Tr_Mode"), [SdkLocalizer.Loc("Mode_Manual"), SdkLocalizer.Loc("Mode_Ai"), SdkLocalizer.Loc("Mode_Api"), SdkLocalizer.Loc("Mode_Agent")], 0, v =>
         {
             _vm.Mode = v switch
             {
@@ -256,14 +290,14 @@ public class TranslationPage : UserControl, INavigationAware
         // 强制重翻译（不勾=跳过已翻译，勾=全部重翻）
         var forceCheck = new CheckBox
         {
-            Content = "强制重翻译",
+            Content = SdkLocalizer.Loc("Force_Retranslate"),
             IsChecked = _vm.ForceRetranslate,
             VerticalAlignment = VerticalAlignment.Center,
             FontSize = 12,
             Foreground = ThemePalette.TextMuted,
             Margin = new Thickness(0, 0, M, 0),
         };
-        ToolTip.SetTip(forceCheck, "勾选后忽略已有译文，全部条目重新翻译；不勾则跳过已翻译条目");
+        ToolTip.SetTip(forceCheck, SdkLocalizer.Loc("Tip_ForceRetranslate"));
         forceCheck.IsCheckedChanged += (_, _) => _vm.ForceRetranslate = forceCheck.IsChecked ?? false;
         DockPanel.SetDock(forceCheck, Dock.Right);
         row2.Children.Add(forceCheck);
@@ -315,9 +349,9 @@ public class TranslationPage : UserControl, INavigationAware
             Children =
             {
                 UiBuilders.Card(
-                    "AI 翻译模型（OpenAI 兼容 / Anthropic；从「模型管理」添加）",
+                    SdkLocalizer.Loc("Tr_AiSection"),
                     UiBuilders.FormGrid(
-                        UiBuilders.FormRow("模型", CreateModelCombo())),
+                        UiBuilders.FormRow(SdkLocalizer.Loc("Form_Model"), CreateModelCombo())),
                     CreateAiCardFooter()),
             }
         };
@@ -331,11 +365,11 @@ public class TranslationPage : UserControl, INavigationAware
             Children =
             {
                 UiBuilders.Card(
-                    "翻译 API 配置 · DeepL 风格（tag_handling 自动保留富文本标记）",
+                    SdkLocalizer.Loc("Tr_ApiSection"),
                     UiBuilders.FormGrid(
-                        UiBuilders.FormRow("端点", UiBuilders.FormTextBox(_vm.ApiEndpoint, v => _vm.ApiEndpoint = v)),
+                        UiBuilders.FormRow(SdkLocalizer.Loc("Form_Endpoint"), UiBuilders.FormTextBox(_vm.ApiEndpoint, v => _vm.ApiEndpoint = v)),
                         UiBuilders.FormRow("API Key", UiBuilders.FormTextBox(_vm.ApiKey, v => _vm.ApiKey = v, isPassword: true)),
-                        UiBuilders.FormRow("目标语言码", UiBuilders.FormTextBox(_vm.ApiTargetLangCode, v => _vm.ApiTargetLangCode = v))),
+                        UiBuilders.FormRow(SdkLocalizer.Loc("Form_ApiTarget"), UiBuilders.FormTextBox(_vm.ApiTargetLangCode, v => _vm.ApiTargetLangCode = v))),
                     null),
             }
         };
@@ -355,20 +389,13 @@ public class TranslationPage : UserControl, INavigationAware
             ItemsSource = _vm.Models,
             ItemTemplate = new FuncDataTemplate<ModelConfig>((m, _) =>
                 new TextBlock { Text = m?.DisplayOrId ?? "", FontSize = 12 }),
-            PlaceholderText = "请选择模型",
+            PlaceholderText = SdkLocalizer.Loc("Ph_SelectModel"),
         };
         SyncModelComboSelection();
         _modelCombo.SelectionChanged += (_, _) =>
         {
             if (_modelCombo.SelectedItem is ModelConfig m)
                 _vm.SelectedModelId = m.Id;
-        };
-        // 模型列表变化（如从管理页返回）后重新同步选中项
-        _vm.Models.CollectionChanged += (_, _) => SyncModelComboSelection();
-        _vm.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(TranslationViewModel.SelectedModelId))
-                SyncModelComboSelection();
         };
         return _modelCombo;
     }
@@ -387,7 +414,7 @@ public class TranslationPage : UserControl, INavigationAware
 
         var btn = new Button
         {
-            Content = "管理模型",
+            Content = SdkLocalizer.Loc("Action_ManageModels"),
             Padding = new Thickness(14, 6),
             HorizontalAlignment = HorizontalAlignment.Left,
             Background = ThemePalette.Accent,
@@ -405,7 +432,7 @@ public class TranslationPage : UserControl, INavigationAware
 
         panel.Children.Add(new TextBlock
         {
-            Text = "AI 模式按所选模型批量翻译（占位符自动校验）；模型配置保存在本地 models.json。",
+            Text = SdkLocalizer.Loc("Hint_AiMode"),
             FontSize = 11, Foreground = ThemePalette.TextMuted, TextWrapping = TextWrapping.Wrap,
         });
         return panel;
@@ -426,8 +453,8 @@ public class TranslationPage : UserControl, INavigationAware
     /// <summary>产出 diff 审批面板（默认隐藏；HasPending 为真时显示，展示整轮 diff + 应用/放弃按钮）</summary>
     private Control CreatePreviewPanel()
     {
-        var discardButton = UiBuilders.ActionButton("放弃", _vm.DiscardSyncCommand, isGhost: true);
-        var approveButton = UiBuilders.ActionButton("应用变更", _vm.ApproveSyncCommand, isPrimary: true);
+        var discardButton = UiBuilders.ActionButton(SdkLocalizer.Loc("Action_Discard"), _vm.DiscardSyncCommand, isGhost: true);
+        var approveButton = UiBuilders.ActionButton(SdkLocalizer.Loc("Action_Apply"), _vm.ApproveSyncCommand, isPrimary: true);
 
         var header = new DockPanel { LastChildFill = true };
         header.Children.Add(new StackPanel
@@ -437,8 +464,8 @@ public class TranslationPage : UserControl, INavigationAware
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                new TextBlock { Text = "变更预览 — 待审批", FontSize = 12, FontWeight = FontWeight.Bold, Foreground = ThemePalette.Title },
-                new TextBlock { Text = "整轮 diff（原子写 + 自动备份，可回滚）", FontSize = 11, Foreground = ThemePalette.TextMuted },
+                new TextBlock { Text = SdkLocalizer.Loc("Tr_PreviewTitle"), FontSize = 12, FontWeight = FontWeight.Bold, Foreground = ThemePalette.Title },
+                new TextBlock { Text = SdkLocalizer.Loc("Tr_PreviewSub"), FontSize = 11, Foreground = ThemePalette.TextMuted },
             }
         });
         var btnGroup = new StackPanel { Orientation = Orientation.Horizontal, Spacing = S, VerticalAlignment = VerticalAlignment.Center };
@@ -488,7 +515,7 @@ public class TranslationPage : UserControl, INavigationAware
         };
         _statText = new TextBlock
         {
-            Text = $"共 {_vm.ScannedCount} 条 · 已翻译 {_vm.TranslatedCount} · 待翻译 {_vm.UntranslatedCount}",
+            Text = SdkLocalizer.Loc("Tr_Stat", _vm.ScannedCount, _vm.TranslatedCount, _vm.UntranslatedCount),
             FontSize = 12, Foreground = ThemePalette.TextMuted,
         };
         row.Children.Add(_statText);
@@ -543,7 +570,7 @@ public class TranslationPage : UserControl, INavigationAware
                     VerticalAlignment = VerticalAlignment.Center,
                     Child = new TextBlock
                     {
-                        Text = isTranslated ? "已翻译" : "未翻译",
+                        Text = isTranslated ? SdkLocalizer.Loc("Word_Translated") : SdkLocalizer.Loc("Word_Untranslated"),
                         FontSize = 11,
                         Foreground = isTranslated ? ThemePalette.Success : ThemePalette.Warn,
                     },
@@ -570,7 +597,7 @@ public class TranslationPage : UserControl, INavigationAware
             Margin = new Thickness(M, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
-        wrap.Children.Add(new TextBlock { Text = "目标语言", FontSize = 11, Foreground = ThemePalette.TextMuted });
+        wrap.Children.Add(new TextBlock { Text = SdkLocalizer.Loc("Tr_TargetLang"), FontSize = 11, Foreground = ThemePalette.TextMuted });
 
         var combo = new ComboBox
         {
@@ -580,9 +607,9 @@ public class TranslationPage : UserControl, INavigationAware
             FontSize = 12,
             MinWidth = 110,
             MaxWidth = 160,
-            PlaceholderText = "en-US / ja-JP",
+            PlaceholderText = SdkLocalizer.Loc("Ph_LangCode"),
         };
-        ToolTip.SetTip(combo, "语言根目录名（引擎标准：en-US/ja-JP/ko-KR…），决定 Lang/{lang}/ 目录、语言切换与可用语言列表");
+        ToolTip.SetTip(combo, SdkLocalizer.Loc("Tip_LangCode"));
 
         // 选预设 → 直接采用；自由输入 → SelectedItem 为 null 时取 Text
         combo.SelectionChanged += (_, _) =>

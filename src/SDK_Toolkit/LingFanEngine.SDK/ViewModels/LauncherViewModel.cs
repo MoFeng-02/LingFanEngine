@@ -7,6 +7,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using LingFanEngine.SDK.I18n;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Services.Abstractions;
 
@@ -45,7 +46,7 @@ public partial class LauncherViewModel : ViewModelBase
     private string _newProjectPath = "";
 
     [ObservableProperty]
-    private string _statusMessage = "选择或创建一个项目开始";
+    private string _statusMessage = SdkLocalizer.Loc("Status_Idle");
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CreateProjectCommand))]
@@ -74,7 +75,7 @@ public partial class LauncherViewModel : ViewModelBase
     private async Task CreateProjectAsync()
     {
         IsBusy = true;
-        StatusMessage = "正在创建项目...";
+        StatusMessage = SdkLocalizer.Loc("Status_Creating");
         try
         {
             var outputDir = string.IsNullOrEmpty(NewProjectPath)
@@ -86,18 +87,18 @@ public partial class LauncherViewModel : ViewModelBase
                 NewProjectVersion, NewProjectDescription);
             if (success)
             {
-                StatusMessage = $"项目 {NewProjectTitle} 创建成功！";
+                StatusMessage = SdkLocalizer.Loc("Status_Created", NewProjectTitle);
                 LoadRecentProjects();
                 ProjectEntered?.Invoke();
             }
             else
             {
-                StatusMessage = "项目创建失败";
+                StatusMessage = SdkLocalizer.Loc("Status_CreateFailed");
             }
         }
         catch (Exception ex)
         {
-            StatusMessage = $"创建失败: {ex.Message}";
+            StatusMessage = SdkLocalizer.Loc("Status_CreateError", ex.Message);
         }
         finally
         {
@@ -115,24 +116,24 @@ public partial class LauncherViewModel : ViewModelBase
             return;
 
         IsBusy = true;
-        StatusMessage = "正在加载项目...";
+        StatusMessage = SdkLocalizer.Loc("Status_Loading");
         try
         {
             var success = await _session.OpenAsync(projectFilePath);
             if (success)
             {
-                StatusMessage = $"项目 {_session.CurrentProject?.Title} 加载成功！";
+                StatusMessage = SdkLocalizer.Loc("Status_Loaded", _session.CurrentProject?.Title);
                 LoadRecentProjects();
                 ProjectEntered?.Invoke();
             }
             else
             {
-                StatusMessage = "无法加载项目文件";
+                StatusMessage = SdkLocalizer.Loc("Status_LoadFailed");
             }
         }
         catch (Exception ex)
         {
-            StatusMessage = $"加载失败: {ex.Message}";
+            StatusMessage = SdkLocalizer.Loc("Status_LoadError", ex.Message);
         }
         finally
         {
@@ -147,21 +148,21 @@ public partial class LauncherViewModel : ViewModelBase
         var topLevel = GetTopLevel();
         if (topLevel == null)
         {
-            StatusMessage = "无法获取窗口";
+            StatusMessage = SdkLocalizer.Loc("Error_NoWindow");
             return;
         }
 
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "选择灵泛引擎项目文件",
+            Title = SdkLocalizer.Loc("Picker_OpenTitle"),
             AllowMultiple = false,
             FileTypeFilter = new[]
             {
-                new FilePickerFileType("灵泛引擎项目")
+                new FilePickerFileType(SdkLocalizer.Loc("FileType_Project"))
                 {
                     Patterns = new[] { "*.lfengine" },
                 },
-                new FilePickerFileType("所有文件")
+                new FilePickerFileType(SdkLocalizer.Loc("FileType_All"))
                 {
                     Patterns = new[] { "*.*" },
                 },
@@ -184,7 +185,7 @@ public partial class LauncherViewModel : ViewModelBase
 
         var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "选择项目输出目录",
+            Title = SdkLocalizer.Loc("Picker_OutputTitle"),
             AllowMultiple = false,
         });
 
@@ -200,7 +201,7 @@ public partial class LauncherViewModel : ViewModelBase
     {
         _projectService.RemoveRecentAsync(path).FireAndForget();
         LoadRecentProjects();
-        StatusMessage = "已移除记录";
+        StatusMessage = SdkLocalizer.Loc("Status_RecordRemoved");
     }
 
     /// <summary>删除项目（含所有项目文件）</summary>
@@ -211,16 +212,16 @@ public partial class LauncherViewModel : ViewModelBase
             return;
 
         IsBusy = true;
-        StatusMessage = "正在删除项目...";
+        StatusMessage = SdkLocalizer.Loc("Status_Deleting");
         try
         {
             await _projectService.DeleteAsync(path);
             LoadRecentProjects();
-            StatusMessage = "项目已删除";
+            StatusMessage = SdkLocalizer.Loc("Status_Deleted");
         }
         catch (Exception ex)
         {
-            StatusMessage = $"删除失败: {ex.Message}";
+            StatusMessage = SdkLocalizer.Loc("Status_DeleteError", ex.Message);
         }
         finally
         {

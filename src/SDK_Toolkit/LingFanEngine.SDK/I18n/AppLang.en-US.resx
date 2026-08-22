@@ -1,0 +1,352 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+	<!-- 
+		Microsoft ResX Schema
+
+		Version 1.3
+
+		The primary goals of this format is to allow a simple XML format 
+		that is mostly human readable. The generation and parsing of the 
+		various data types are done through the TypeConverter classes 
+		associated with the data types.
+
+		Example:
+
+		... ado.net/XML headers & schema ...
+		<resheader name="resmimetype">text/microsoft-resx</resheader>
+		<resheader name="version">1.3</resheader>
+		<resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+		<resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+		<data name="Name1">this is my long string</data>
+		<data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+		<data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+			[base64 mime encoded serialized .NET Framework object]
+		</data>
+		<data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+			[base64 mime encoded string representing a byte array form of the .NET Framework object]
+		</data>
+
+		There are any number of "resheader" rows that contain simple 
+		name/value pairs.
+
+		Each data row contains a name, and value. The row also contains a 
+		type or mimetype. Type corresponds to a .NET class that support 
+		text/value conversion through the TypeConverter architecture. 
+		Classes that don't support this are serialized and stored with the 
+		mimetype set.
+
+		The mimetype is used for serialized objects, and tells the 
+		ResXResourceReader how to depersist the object. This is currently not 
+		extensible. For a given mimetype the value must be set accordingly:
+
+		Note - application/x-microsoft.net.object.binary.base64 is the format 
+		that the ResXResourceWriter will generate, however the reader can 
+		read any of the formats listed below.
+
+		mimetype: application/x-microsoft.net.object.binary.base64
+		value   : The object must be serialized with 
+			: System.Serialization.Formatters.Binary.BinaryFormatter
+			: and then encoded with base64 encoding.
+
+		mimetype: application/x-microsoft.net.object.soap.base64
+		value   : The object must be serialized with 
+			: System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+			: and then encoded with base64 encoding.
+
+		mimetype: application/x-microsoft.net.object.bytearray.base64
+		value   : The object must be serialized into a byte array 
+			: using a System.ComponentModel.TypeConverter
+			: and then encoded with base64 encoding.
+	-->
+	
+	<xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+		<xsd:element name="root" msdata:IsDataSet="true">
+			<xsd:complexType>
+				<xsd:choice maxOccurs="unbounded">
+					<xsd:element name="data">
+						<xsd:complexType>
+							<xsd:sequence>
+								<xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+								<xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+							</xsd:sequence>
+							<xsd:attribute name="name" type="xsd:string" msdata:Ordinal="1" />
+							<xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+							<xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+						</xsd:complexType>
+					</xsd:element>
+					<xsd:element name="resheader">
+						<xsd:complexType>
+							<xsd:sequence>
+								<xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+							</xsd:sequence>
+							<xsd:attribute name="name" type="xsd:string" use="required" />
+						</xsd:complexType>
+					</xsd:element>
+				</xsd:choice>
+			</xsd:complexType>
+		</xsd:element>
+	</xsd:schema>
+	<resheader name="resmimetype">
+		<value>text/microsoft-resx</value>
+	</resheader>
+	<resheader name="version">
+		<value>1.3</value>
+	</resheader>
+	<resheader name="reader">
+		<value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=2.0.3500.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+	</resheader>
+	<resheader name="writer">
+		<value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=2.0.3500.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+	</resheader>
+	<data name="Window_Title" xml:space="preserve"><value>LingFan Engine SDK — Launcher</value></data>
+	<data name="Brand_Title" xml:space="preserve"><value>LingFan Engine SDK</value></data>
+	<data name="Brand_Tagline" xml:space="preserve"><value>Tool for creating narrative / sandbox visual novels</value></data>
+	<data name="Action_NewProject" xml:space="preserve"><value>New Project</value></data>
+	<data name="Action_OpenProject" xml:space="preserve"><value>Open Project...</value></data>
+	<data name="Action_Create" xml:space="preserve"><value>Create</value></data>
+	<data name="Action_Delete" xml:space="preserve"><value>Delete</value></data>
+	<data name="Action_Cancel" xml:space="preserve"><value>Cancel</value></data>
+	<data name="Form_ProjectName" xml:space="preserve"><value>Project Name</value></data>
+	<data name="Form_GameTitle" xml:space="preserve"><value>Game Title</value></data>
+	<data name="Form_Author" xml:space="preserve"><value>Author</value></data>
+	<data name="Form_Version" xml:space="preserve"><value>Version</value></data>
+	<data name="Form_Description" xml:space="preserve"><value>Description (optional)</value></data>
+	<data name="Form_OutputDir" xml:space="preserve"><value>Output Directory</value></data>
+	<data name="Picker_OpenTitle" xml:space="preserve"><value>Select LingFan Engine project file</value></data>
+	<data name="FileType_Project" xml:space="preserve"><value>LingFan Engine Project</value></data>
+	<data name="FileType_All" xml:space="preserve"><value>All Files</value></data>
+	<data name="Picker_OutputTitle" xml:space="preserve"><value>Select Project Output Directory</value></data>
+	<data name="Empty_Hint" xml:space="preserve"><value>No projects yet
+Click "New Project" or "Open Project" on the left to start</value></data>
+	<data name="Confirm_DeleteTitle" xml:space="preserve"><value>Delete this project?</value></data>
+	<data name="Confirm_DeleteFiles" xml:space="preserve"><value>Also delete files</value></data>
+	<data name="Status_Idle" xml:space="preserve"><value>Select or create a project to start</value></data>
+	<data name="Status_Creating" xml:space="preserve"><value>Creating project...</value></data>
+	<data name="Status_Created" xml:space="preserve"><value>Project {0} created successfully!</value></data>
+	<data name="Status_CreateFailed" xml:space="preserve"><value>Failed to create project</value></data>
+	<data name="Status_CreateError" xml:space="preserve"><value>Create failed: {0}</value></data>
+	<data name="Status_Loading" xml:space="preserve"><value>Loading project...</value></data>
+	<data name="Status_Loaded" xml:space="preserve"><value>Project {0} loaded successfully!</value></data>
+	<data name="Status_LoadFailed" xml:space="preserve"><value>Could not load project file</value></data>
+	<data name="Status_LoadError" xml:space="preserve"><value>Load failed: {0}</value></data>
+	<data name="Status_RecordRemoved" xml:space="preserve"><value>Record removed</value></data>
+	<data name="Status_Deleting" xml:space="preserve"><value>Deleting project...</value></data>
+	<data name="Status_Deleted" xml:space="preserve"><value>Project deleted</value></data>
+	<data name="Status_DeleteError" xml:space="preserve"><value>Delete failed: {0}</value></data>
+	<data name="Error_NoWindow" xml:space="preserve"><value>Could not get window</value></data>
+	<data name="Ws_Title" xml:space="preserve"><value>LingFan Engine SDK — Workspace</value></data>
+	<data name="Ws_TitleProject" xml:space="preserve"><value>LingFan Engine SDK — {0}</value></data>
+	<data name="Nav_Assets" xml:space="preserve"><value>Assets</value></data>
+	<data name="Nav_Translation" xml:space="preserve"><value>Localization</value></data>
+	<data name="Nav_Models" xml:space="preserve"><value>Models</value></data>
+	<data name="Nav_Build" xml:space="preserve"><value>Build &amp; Publish</value></data>
+	<data name="Nav_Settings" xml:space="preserve"><value>Settings</value></data>
+	<data name="Action_CloseProject" xml:space="preserve"><value>Close Project</value></data>
+	<data name="Status_NoProject" xml:space="preserve"><value>No project open</value></data>
+	<data name="Asset_Category" xml:space="preserve"><value>Asset Categories</value></data>
+	<data name="Asset_CatAll" xml:space="preserve"><value>All Assets</value></data>
+	<data name="Asset_CatStory" xml:space="preserve"><value>Story Files</value></data>
+	<data name="Asset_CatImage" xml:space="preserve"><value>Images</value></data>
+	<data name="Asset_CatAudio" xml:space="preserve"><value>Audio</value></data>
+	<data name="Asset_CatVideo" xml:space="preserve"><value>Video</value></data>
+	<data name="Asset_CatOther" xml:space="preserve"><value>Other</value></data>
+	<data name="Action_Scan" xml:space="preserve"><value>Scan Assets</value></data>
+	<data name="Build_Overview" xml:space="preserve"><value>Build Overview</value></data>
+	<data name="Build_Platform" xml:space="preserve"><value>Platforms: {0}</value></data>
+	<data name="Build_None" xml:space="preserve"><value>(none)</value></data>
+	<data name="Build_EncNone" xml:space="preserve"><value>Encryption: disabled</value></data>
+	<data name="Build_EncNoRes" xml:space="preserve"><value>Encryption: enabled (resources not encrypted)</value></data>
+	<data name="Build_EncRes" xml:space="preserve"><value>Encryption: resources encrypted ({0} file types)</value></data>
+	<data name="Build_Aot" xml:space="preserve"><value>AOT: {0}</value></data>
+	<data name="Word_Enabled" xml:space="preserve"><value>enabled</value></data>
+	<data name="Word_Disabled" xml:space="preserve"><value>disabled</value></data>
+	<data name="Action_StartBuild" xml:space="preserve"><value>Start Build</value></data>
+	<data name="Models_Title" xml:space="preserve"><value>Model Management</value></data>
+	<data name="Models_Desc" xml:space="preserve"><value>AI translation models (OpenAI-compatible / Anthropic); stored in local models.json.</value></data>
+	<data name="Models_Hint" xml:space="preserve"><value>Click "Add Model" → fill Base URL and API Key → "Fetch Model List" to select in bulk, or enter a Model ID directly.</value></data>
+	<data name="Models_Empty" xml:space="preserve"><value>No models yet. Click "Add Model" at the top right to start.</value></data>
+	<data name="Action_AddModel" xml:space="preserve"><value>Add Model</value></data>
+	<data name="Action_EditModel" xml:space="preserve"><value>Edit</value></data>
+	<data name="Action_DeleteModel" xml:space="preserve"><value>Delete</value></data>
+	<data name="Action_SetDefault" xml:space="preserve"><value>Set as Default</value></data>
+	<data name="Models_Count" xml:space="preserve"><value>{0} model(s)</value></data>
+	<data name="Models_Default" xml:space="preserve"><value>Default</value></data>
+	<data name="Build_TargetPlatform" xml:space="preserve"><value>Target Platforms</value></data>
+	<data name="Build_CompileOptions" xml:space="preserve"><value>Compile Options</value></data>
+	<data name="Build_PublishAot" xml:space="preserve"><value>AOT Publish</value></data>
+	<data name="Build_Encryption" xml:space="preserve"><value>Encryption</value></data>
+	<data name="Build_EnableEncryption" xml:space="preserve"><value>Enable Encryption</value></data>
+	<data name="Build_EncryptResources" xml:space="preserve"><value>Encrypt Resource Files</value></data>
+	<data name="Build_PickTypes" xml:space="preserve"><value>Select file types to encrypt:</value></data>
+	<data name="Build_SelectAll" xml:space="preserve"><value>Select All</value></data>
+	<data name="Build_SelectNone" xml:space="preserve"><value>Select None</value></data>
+	<data name="Build_KeyShards" xml:space="preserve"><value>Key shards:</value></data>
+	<data name="Action_LaunchGame" xml:space="preserve"><value>Launch Game</value></data>
+	<data name="Action_StopGame" xml:space="preserve"><value>Stop Game</value></data>
+	<data name="Build_EngineDep" xml:space="preserve"><value>Engine Dependency</value></data>
+	<data name="Build_CurrentVer" xml:space="preserve"><value>Current version: {0}</value></data>
+	<data name="Action_UpdateEngine" xml:space="preserve"><value>Check &amp; Update Project Engine</value></data>
+	<data name="Build_UpdateHint" xml:space="preserve"><value>Note: update only replaces the engine dependency inside the project; rebuild &amp; republish to take effect.</value></data>
+	<data name="Build_Log" xml:space="preserve"><value>Build Log</value></data>
+	<data name="Tr_Title" xml:space="preserve"><value>Localization</value></data>
+	<data name="Tr_Sub" xml:space="preserve"><value>Source text is the key · auto-extract .story + C# text · batch AI translation</value></data>
+	<data name="Tr_Layout" xml:space="preserve"><value>Output Layout</value></data>
+	<data name="Layout_Flat" xml:space="preserve"><value>Flat (per-scene json)</value></data>
+	<data name="Layout_Mirrored" xml:space="preserve"><value>Subfolder (mirror story)</value></data>
+	<data name="Layout_Single" xml:space="preserve"><value>Single file</value></data>
+	<data name="Tr_SourceLang" xml:space="preserve"><value>Source Language</value></data>
+	<data name="Wm_AutoDetect" xml:space="preserve"><value>blank = auto-detect</value></data>
+	<data name="Tr_TargetLang" xml:space="preserve"><value>Target Language</value></data>
+	<data name="Tr_Mode" xml:space="preserve"><value>Translation Mode</value></data>
+	<data name="Mode_Manual" xml:space="preserve"><value>Manual</value></data>
+	<data name="Mode_Ai" xml:space="preserve"><value>AI Translation</value></data>
+	<data name="Mode_Api" xml:space="preserve"><value>Translation API</value></data>
+	<data name="Mode_Agent" xml:space="preserve"><value>AI Agent</value></data>
+	<data name="Action_Sync" xml:space="preserve"><value>Sync Translate</value></data>
+	<data name="Action_ScanText" xml:space="preserve"><value>Scan Text</value></data>
+	<data name="Action_Generate" xml:space="preserve"><value>Generate Mode Files</value></data>
+	<data name="Force_Retranslate" xml:space="preserve"><value>Force Retranslate</value></data>
+	<data name="Tr_AiSection" xml:space="preserve"><value>AI translation models (OpenAI-compatible / Anthropic; add from "Model Management")</value></data>
+	<data name="Tr_ApiSection" xml:space="preserve"><value>Translation API · DeepL-style (tag_handling preserves rich-text markers)</value></data>
+	<data name="Form_Model" xml:space="preserve"><value>Model</value></data>
+	<data name="Form_Endpoint" xml:space="preserve"><value>Endpoint</value></data>
+	<data name="Form_ApiTarget" xml:space="preserve"><value>Target Language Code</value></data>
+	<data name="Action_ManageModels" xml:space="preserve"><value>Manage Models</value></data>
+	<data name="Action_Discard" xml:space="preserve"><value>Discard</value></data>
+	<data name="Action_Apply" xml:space="preserve"><value>Apply Changes</value></data>
+	<data name="Tr_PreviewTitle" xml:space="preserve"><value>Change Preview — Pending Approval</value></data>
+	<data name="Tr_Stat" xml:space="preserve"><value>{0} items · {1} translated · {2} pending</value></data>
+	<data name="Word_Translated" xml:space="preserve"><value>Translated</value></data>
+	<data name="Word_Untranslated" xml:space="preserve"><value>Untranslated</value></data>
+	<data name="Dlg_Title" xml:space="preserve"><value>Custom Model</value></data>
+	<data name="Form_ApiFormat" xml:space="preserve"><value>API Format *</value></data>
+	<data name="Form_ModelId" xml:space="preserve"><value>Model ID (optional)</value></data>
+	<data name="Form_DisplayName" xml:space="preserve"><value>Display Name</value></data>
+	<data name="Form_ApiKey" xml:space="preserve"><value>API Key *</value></data>
+	<data name="Adv_Header" xml:space="preserve"><value>Advanced</value></data>
+	<data name="Form_Temperature" xml:space="preserve"><value>Temperature (0-1, recommended 0.2-0.3)</value></data>
+	<data name="Form_BatchTip" xml:space="preserve"><value>Fewer is more stable (less echo/skipping, default 4); more is faster &amp; cheaper but may be skipped by the model.</value></data>
+	<data name="Form_Timeout" xml:space="preserve"><value>Timeout (sec)</value></data>
+	<data name="Action_ConnectTest" xml:space="preserve"><value>Connectivity Test</value></data>
+	<data name="Action_FetchModels" xml:space="preserve"><value>Fetch Model List</value></data>
+	<data name="Action_AddSelected" xml:space="preserve"><value>Add Selected ({0})</value></data>
+	<data name="Dlg_FetchedHint" xml:space="preserve"><value>Fetched models (check the ones to add)</value></data>
+	<data name="Action_Reset" xml:space="preserve"><value>Reset</value></data>
+	<data name="St_NeedBaseUrl" xml:space="preserve"><value>Please fill in Base URL first</value></data>
+	<data name="St_Fetching" xml:space="preserve"><value>Fetching model list...</value></data>
+	<data name="St_FetchFail" xml:space="preserve"><value>❌ Could not fetch list: {0}</value></data>
+	<data name="St_FetchEmpty" xml:space="preserve"><value>✅ Connected, but this endpoint returned no model list (empty data[]). Add manually via "Model ID" instead.</value></data>
+	<data name="St_Fetched" xml:space="preserve"><value>Fetched {0} models. Check the ones to add, then click "Add Selected".</value></data>
+	<data name="St_FetchError" xml:space="preserve"><value>❌ Fetch error: {0}</value></data>
+	<data name="St_NeedSelect" xml:space="preserve"><value>Select at least one model</value></data>
+	<data name="St_Adding" xml:space="preserve"><value>Adding selected models...</value></data>
+	<data name="St_Added" xml:space="preserve"><value>✅ Added {0} models · skipped {1} existing</value></data>
+	<data name="St_AddError" xml:space="preserve"><value>❌ Add error: {0}</value></data>
+	<data name="St_Testing" xml:space="preserve"><value>Testing...</value></data>
+	<data name="St_TestError" xml:space="preserve"><value>❌ Test error: {0}</value></data>
+	<data name="Hint_BaseUrlExample" xml:space="preserve"><value>e.g. https://api.openai.com/v1</value></data>
+	<data name="Ph_ModelId" xml:space="preserve"><value>Optional · leave empty to use "Fetch model list" batch add</value></data>
+	<data name="Ph_DisplayName" xml:space="preserve"><value>Optional, leave empty to show model ID in list</value></data>
+	<data name="Action_SelectAll" xml:space="preserve"><value>Select all</value></data>
+	<data name="Action_DeselectAll" xml:space="preserve"><value>Select none</value></data>
+	<data name="Action_AddSelPlain" xml:space="preserve"><value>Add selected</value></data>
+	<data name="Dlg_InfoNote" xml:space="preserve"><value>ℹ Both the connectivity test and "Fetch model list" call GET /v1/models, free and no Token consumed; after fetching, check the ones to add (all by default). Adding dedupes by "provider + endpoint + model".</value></data>
+	<data name="Tip_GenerateFrame" xml:space="preserve"><value>Generates a multilingual translation file skeleton (source as key, translation left blank), without calling any AI.\n· Ideal for handing the generated JSON to any AI tool (Claude / web GPT, etc.) to translate in batch and reply, free and highly automatable;\n· also suitable for manual editing.\nThen click "Sync Translation": it only fills gaps and keeps the translations you already entered.</value></data>
+	<data name="Tip_ForceRetranslate" xml:space="preserve"><value>When checked, ignores existing translations and re-translates every entry; unchecked, skips already-translated entries</value></data>
+	<data name="Ph_SelectModel" xml:space="preserve"><value>Select a model</value></data>
+	<data name="Hint_AiMode" xml:space="preserve"><value>AI mode batch-translates using the selected model (placeholders auto-validated); model config is stored in local models.json.</value></data>
+	<data name="Tr_PreviewSub" xml:space="preserve"><value>Full-round diff (atomic write + auto backup, rollback-safe)</value></data>
+	<data name="Ph_LangCode" xml:space="preserve"><value>en-US / ja-JP</value></data>
+	<data name="Tip_LangCode" xml:space="preserve"><value>Language root directory name (engine standard: en-US/ja-JP/ko-KR…), determines the Lang/{lang}/ folder, language switching and the available-language list</value></data>
+<data name="St_Ready" xml:space="preserve"><value>Ready</value></data>
+	<data name="St_NeedProject" xml:space="preserve"><value>Please open a project first</value></data>
+	<data name="St_Scanning" xml:space="preserve"><value>Scanning assets...</value></data>
+	<data name="St_FoundN" xml:space="preserve"><value>Found {0} assets</value></data>
+	<data name="St_ScanFail" xml:space="preserve"><value>Scan failed: {0}</value></data>
+	<data name="St_PreviewFail" xml:space="preserve"><value>Preview failed: {0}</value></data>
+	<data name="St_ImportFail" xml:space="preserve"><value>Import failed {0}: {1}</value></data>
+	<data name="St_ImportedN" xml:space="preserve"><value>Imported {0} assets</value></data>
+	<data name="Bld_EmptyProject" xml:space="preserve"><value>(No project open)</value></data>
+	<data name="Bld_Start" xml:space="preserve"><value>=== Starting build ===</value></data>
+	<data name="Bld_NoPlatform" xml:space="preserve"><value>Error: no target platform selected</value></data>
+	<data name="Bld_Building" xml:space="preserve"><value>Building {0} (RID: {1})...</value></data>
+	<data name="Bld_Ok" xml:space="preserve"><value>[OK] {0} built successfully: {1}</value></data>
+	<data name="Bld_Fail" xml:space="preserve"><value>[FAIL] {0} build failed: {1}</value></data>
+	<data name="Bld_Done" xml:space="preserve"><value>=== Build complete ===</value></data>
+	<data name="Bld_Exc" xml:space="preserve"><value>Build exception: {0}</value></data>
+	<data name="Bld_UpdCheck" xml:space="preserve"><value>Checking project engine dependency updates...</value></data>
+	<data name="Bld_UpdLatest" xml:space="preserve"><value>Already up to date ({0})</value></data>
+	<data name="Bld_UpdApplied" xml:space="preserve"><value>Updated to {0} (replaced {1} DLL(s); rebuild to take effect)</value></data>
+	<data name="Bld_UpdFail" xml:space="preserve"><value>Update failed: {0}</value></data>
+	<data name="Bld_UpdExc" xml:space="preserve"><value>Update exception: {0}</value></data>
+	<data name="Bld_LocatingExe" xml:space="preserve"><value>Locating the game executable...</value></data>
+	<data name="Bld_LaunchExc" xml:space="preserve"><value>Launch exception: {0}</value></data>
+	<data name="Bld_Stopping" xml:space="preserve"><value>Stopping the game process...</value></data>
+	<data name="Bld_Stopped" xml:space="preserve"><value>Stop requested for the game process (if running).</value></data>
+	<data name="Bld_StopExc" xml:space="preserve"><value>Stop exception: {0}</value></data>
+	<data name="Set_LangSwitched" xml:space="preserve"><value>Switched to {0}; the UI updates immediately.</value></data>
+	<data name="Set_DotNetMissing" xml:space="preserve"><value>Not installed</value></data>
+	<data name="Set_Saved" xml:space="preserve"><value>Settings saved</value></data>
+	<data name="Set_SaveFail" xml:space="preserve"><value>Save failed: {0}</value></data>
+	<data name="Set_DotNetOk" xml:space="preserve"><value>dotnet installed: {0}</value></data>
+	<data name="Set_DotNetNo" xml:space="preserve"><value>dotnet is not installed or not on PATH</value></data>
+	<data name="Set_EngChecking" xml:space="preserve"><value>Checking for engine updates...</value></data>
+	<data name="Set_EngUpToDate" xml:space="preserve"><value>Already up to date ({0})</value></data>
+	<data name="Set_EngApplied" xml:space="preserve"><value>Updated to {0} (hot-replaced {1} DLL(s))</value></data>
+	<data name="Set_EngPending" xml:space="preserve"><value>Updated to {0} (hot-replaced {1}; {2} need an SDK restart to take effect)</value></data>
+	<data name="Set_EngFail" xml:space="preserve"><value>Update failed: {0}</value></data>
+	<data name="Set_EngExc" xml:space="preserve"><value>Check failed: {0}</value></data>
+	<data name="Set_TplChecking" xml:space="preserve"><value>Checking for template updates...</value></data>
+	<data name="Set_TplLatest" xml:space="preserve"><value>Template is up to date ({0})</value></data>
+	<data name="Set_TplApplied" xml:space="preserve"><value>Template updated to {0}</value></data>
+	<data name="Set_TplFail" xml:space="preserve"><value>Template update failed: {0}</value></data>
+	<data name="Set_TplExc" xml:space="preserve"><value>Template check failed: {0}</value></data>
+	<data name="St_NeedProjectX" xml:space="preserve"><value>Please open a project before translating</value></data>
+	<data name="Tr_Scanning" xml:space="preserve"><value>Scanning translatable text...</value></data>
+	<data name="Tr_Scanned" xml:space="preserve"><value>Scan complete: {0} items total, {1} translated, {2} pending</value></data>
+	<data name="Tr_ScanFail" xml:space="preserve"><value>Scan failed: {0}</value></data>
+	<data name="Tr_ApiNeedCfg" xml:space="preserve"><value>Translation API requires an endpoint and Key</value></data>
+	<data name="Tr_NoMode" xml:space="preserve"><value>Please select a translation mode</value></data>
+	<data name="Tr_PrepManual" xml:space="preserve"><value>Preparing translation files (generating placeholders)...</value></data>
+	<data name="Tr_PrepAi" xml:space="preserve"><value>Batch AI translating (auto placeholder validation)...</value></data>
+	<data name="Tr_PrepApi" xml:space="preserve"><value>Calling the translation API...</value></data>
+	<data name="Tr_PrepSync" xml:space="preserve"><value>Syncing...</value></data>
+	<data name="Tr_Translating" xml:space="preserve"><value>Translating {0}/{1}...</value></data>
+	<data name="Tr_ForceNote" xml:space="preserve"><value> (forced retranslate)</value></data>
+	<data name="Tr_GenManual" xml:space="preserve"><value>Generated {0} {1}-mode file(s) (placeholders, structure only, no translations){2}: {3} added, {4} kept. Review, then click "Apply Changes".</value></data>
+	<data name="Tr_GenOther" xml:space="preserve"><value>Generated {0} file change(s) (placeholders){1}: {2} added, {3} kept · layout {4}. Review the preview, then click "Apply Changes".</value></data>
+	<data name="Tr_GenAi" xml:space="preserve"><value>Prepared {0} file change(s){1}: {2} translated, {3} fallback, {4} added, {5} kept · layout {6}. Review, then click "Apply Changes".</value></data>
+	<data name="Tr_NoChange" xml:space="preserve"><value>No file changes produced: 0 added · {0} kept · already up to date ({1}).</value></data>
+	<data name="Tr_Cancelled" xml:space="preserve"><value>Cancelled</value></data>
+	<data name="Tr_GenAction" xml:space="preserve"><value>Generate</value></data>
+	<data name="Tr_GenBusy" xml:space="preserve"><value>Generating {0} layout translation files (placeholders)...</value></data>
+	<data name="Models_Unnamed" xml:space="preserve"><value>Custom endpoint</value></data>
+	<data name="Tr_SyncAction" xml:space="preserve"><value>Sync</value></data>
+	<data name="Tr_OpFail" xml:space="preserve"><value>{0} failed: {1}</value></data>
+	<data name="Tr_AgentPlanning" xml:space="preserve"><value>Agent is understanding the project and planning translation (tool calling)...</value></data>
+	<data name="Tr_AgentTranslating" xml:space="preserve"><value>Agent translating {0}/{1}...</value></data>
+	<data name="Tr_AgentNoClient" xml:space="preserve"><value>Could not create a model client</value></data>
+	<data name="Tr_AgentDone" xml:space="preserve"><value>Agent finished ({0} tool calls): prepared {1} file change(s), pending approval.\nModel note: {2}</value></data>
+	<data name="Tr_AgentEmpty" xml:space="preserve"><value>Agent produced no file changes ({0} tool calls).\nModel note: {1}</value></data>
+	<data name="Tr_AgentFail" xml:space="preserve"><value>Agent run failed: {0}</value></data>
+	<data name="Tr_LayoutMirrored" xml:space="preserve"><value>Subfolder</value></data>
+	<data name="Tr_LayoutSingle" xml:space="preserve"><value>Single file</value></data>
+	<data name="Tr_LayoutFlat" xml:space="preserve"><value>Flat</value></data>
+	<data name="Tr_Usage" xml:space="preserve"><value>
+Usage: {0} input tok · {1} output tok · {2} request(s)</value></data>
+	<data name="Tr_Applied" xml:space="preserve"><value>Applied {0} file change(s) to {1}</value></data>
+	<data name="Tr_ApplyFail" xml:space="preserve"><value>Apply failed (rolled back): {0}</value></data>
+	<data name="Tr_Discarded" xml:space="preserve"><value>Discarded this round of changes (nothing written)</value></data>
+	<data name="Tr_NoModels" xml:space="preserve"><value>AI translation requires adding a model first (click "Manage Models")</value></data>
+	<data name="Tr_NoModelSelected" xml:space="preserve"><value>AI translation requires selecting a model in the dropdown</value></data>
+	<data name="Tr_ModelGone" xml:space="preserve"><value>The selected model no longer exists; please select again</value></data>
+	<data name="Tr_ModelNoId" xml:space="preserve"><value>The selected model lacks a model ID; complete it in "Model Management"</value></data>
+	<data name="Tr_ModelNoKey" xml:space="preserve"><value>The selected model "{0}" lacks an API Key (can be left blank for local endpoints such as Ollama)</value></data>
+	<data name="Tr_ModelBadCfg" xml:space="preserve"><value>The selected model configuration is incomplete; cannot create a translator</value></data>
+	<data name="Tr_ModeDescManual" xml:space="preserve"><value>Manual mode: generates translation files with blank translations to be filled by hand or an external AI</value></data>
+	<data name="Tr_ModeDescAiNoModel" xml:space="preserve"><value>AI mode: no model added yet; click "Manage Models" to add one (OpenAI-compatible / Anthropic)</value></data>
+	<data name="Tr_ModeDescAi" xml:space="preserve"><value>AI mode: batch-translates with the selected model; placeholders auto-validated and retried</value></data>
+	<data name="Tr_ModeDescApi" xml:space="preserve"><value>API mode: DeepL-style translation endpoint; tag_handling preserves rich-text markers</value></data>
+	<data name="Tr_ModeDescAgentNoModel" xml:space="preserve"><value>Agent mode: add a model first (Manage Models → add OpenAI-compatible / Anthropic)</value></data>
+	<data name="Tr_ModeDescAgent" xml:space="preserve"><value>Agent mode: the LLM understands the project via tool calls and plans translation per the selected layout; file writes require approval (deterministic Fast fallback available)</value></data>
+</root>

@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using LingFanEngine.SDK.I18n;
 using LingFanEngine.SDK.Services.Abstractions;
 using LingFanEngine.SDK.Themes;
 using LingFanEngine.SDK.ViewModels;
@@ -48,11 +49,11 @@ public class WorkspaceWindow : Window
     private record ActivityItem(string Icon, string Title, string RoutePath);
     private static readonly ActivityItem[] s_activities =
     [
-        new("\uE8B7", "资源管理", "/assets"),
-        new("\uE72E", "多语言翻译", "/translation"),
-        new("\uE8A5", "模型管理", "/models"),
-        new("\uE7B8", "构建发布", "/build"),
-        new("\uE713", "设置", "/settings"),
+        new("\uE8B7", SdkLocalizer.Loc("Nav_Assets"), "/assets"),
+        new("\uE72E", SdkLocalizer.Loc("Nav_Translation"), "/translation"),
+        new("\uE8A5", SdkLocalizer.Loc("Nav_Models"), "/models"),
+        new("\uE7B8", SdkLocalizer.Loc("Nav_Build"), "/build"),
+        new("\uE713", SdkLocalizer.Loc("Nav_Settings"), "/settings"),
     ];
 
     public WorkspaceWindow(IServiceProvider services)
@@ -61,7 +62,7 @@ public class WorkspaceWindow : Window
         _router = services.GetRequiredService<IRouter>();
         _session = services.GetRequiredService<IProjectSession>();
 
-        Title = "灵泛引擎 SDK — 工作台";
+        Title = SdkLocalizer.Loc("Ws_Title");
         // 应用默认图标（与 EXE ApplicationIcon 一致）
         Icon = new WindowIcon(Path.Combine(AppContext.BaseDirectory, "Icons", "LingFanIcon_64x64.png"));
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -111,6 +112,9 @@ public class WorkspaceWindow : Window
         // 订阅 Router 导航事件——Router 创建页面和 VM 实例后触发
         _router.Navigated += OnRouterNavigated;
 
+        // 语言切换 → 刷新状态栏/标题/活动栏提示等 code-behind 文案
+        SdkLocalizer.CultureChanged += Relocalize;
+
         // 初始导航到资源管理
         _ = _router.NavigateAsync("/assets");
 
@@ -156,15 +160,27 @@ public class WorkspaceWindow : Window
         };
 
         // 更新状态栏
-        _statusBarText.Text = routePath switch
-        {
-            "/assets" => "资源管理",
-            "/translation" => "多语言翻译",
-            "/models" => "模型管理",
-            "/build" => "构建发布",
-            "/settings" => "设置",
-            _ => ""
-        };
+        _statusBarText.Text = RouteLabel(routePath);
+    }
+
+    /// <summary>当前路由对应的本地化文案（状态栏/活动栏提示共用）。</summary>
+    private static string RouteLabel(string routePath) => routePath switch
+    {
+        "/assets" => SdkLocalizer.Loc("Nav_Assets"),
+        "/translation" => SdkLocalizer.Loc("Nav_Translation"),
+        "/models" => SdkLocalizer.Loc("Nav_Models"),
+        "/build" => SdkLocalizer.Loc("Nav_Build"),
+        "/settings" => SdkLocalizer.Loc("Nav_Settings"),
+        _ => ""
+    };
+
+    /// <summary>语言切换：刷新窗口标题、状态栏路由文案与活动栏提示（code-behind 文案）。</summary>
+    private void Relocalize()
+    {
+        UpdateProjectDisplay();
+        _statusBarText.Text = RouteLabel(_currentRoute);
+        foreach (var (path, btn) in _activityButtons)
+            ToolTip.SetTip(btn, RouteLabel(path));
     }
 
     /// <summary>更新活动栏高亮（按存储按钮引用，杜绝神奇下标）</summary>
@@ -250,7 +266,7 @@ public class WorkspaceWindow : Window
         }
 
         // 关闭项目按钮
-        var closeBtn = CreateIconButton("\uE72C", "关闭项目", false);
+        var closeBtn = CreateIconButton("\uE72C", SdkLocalizer.Loc("Action_CloseProject"), false);
         closeBtn.Click += (_, _) => CloseProject();
         closeBtn.Margin = new Thickness(0, 16, 0, 0);
         bar.Children.Add(closeBtn);
@@ -347,12 +363,12 @@ public class WorkspaceWindow : Window
         if (_session.IsProjectOpen && _session.CurrentProject != null)
         {
             _projectNameText.Text = $"  {_session.CurrentProject.Title}  —  {_session.CurrentProject.ProjectDirectory}";
-            Title = $"灵泛引擎 SDK — {_session.CurrentProject.Title}";
+            Title = SdkLocalizer.Loc("Ws_TitleProject", _session.CurrentProject.Title);
         }
         else
         {
-            _projectNameText.Text = "  未打开项目";
-            Title = "灵泛引擎 SDK — 工作台";
+            _projectNameText.Text = "  " + SdkLocalizer.Loc("Status_NoProject");
+            Title = SdkLocalizer.Loc("Ws_Title");
         }
     }
 
@@ -395,14 +411,19 @@ public class WorkspaceWindow : Window
             Padding = new Thickness(12, 8),
             Child = new TextBlock
             {
-                Text = "资源分类",
+                Text = SdkLocalizer.Loc("Asset_Category"),
                 FontSize = 12,
                 FontWeight = FontWeight.Bold,
                 Foreground = ThemePalette.TextHover,
             }
         });
 
-        var categories = new[] { "全部资源", "故事文件", "图片", "音频", "视频", "其他" };
+        var categories = new[]
+        {
+            SdkLocalizer.Loc("Asset_CatAll"), SdkLocalizer.Loc("Asset_CatStory"),
+            SdkLocalizer.Loc("Asset_CatImage"), SdkLocalizer.Loc("Asset_CatAudio"),
+            SdkLocalizer.Loc("Asset_CatVideo"), SdkLocalizer.Loc("Asset_CatOther"),
+        };
         var list = new ListBox
         {
             Background = Brushes.Transparent,
@@ -424,7 +445,7 @@ public class WorkspaceWindow : Window
 
             var scanBtn = new Button
             {
-                Content = "扫描资源",
+                Content = SdkLocalizer.Loc("Action_Scan"),
                 Margin = new Thickness(8, 8, 8, 0),
                 Background = ThemePalette.Accent,
                 Foreground = ThemePalette.TextBright,
@@ -456,7 +477,7 @@ public class WorkspaceWindow : Window
 
         panel.Children.Add(new TextBlock
         {
-            Text = "构建概览",
+            Text = SdkLocalizer.Loc("Build_Overview"),
             FontSize = 12,
             FontWeight = FontWeight.Bold,
             Foreground = ThemePalette.TextHover,
@@ -479,7 +500,8 @@ public class WorkspaceWindow : Window
                 if (vm.TargetLinux) parts.Add("Linux ✓");
                 if (vm.TargetMacOSArm64) parts.Add("macOS (arm64) ✓");
                 if (vm.TargetMacOSX64) parts.Add("macOS (x64) ✓");
-                platformSummary.Text = "平台: " + (parts.Count > 0 ? string.Join("  ", parts) : "(未选择)");
+                platformSummary.Text = SdkLocalizer.Loc("Build_Platform",
+                    parts.Count > 0 ? string.Join("  ", parts) : SdkLocalizer.Loc("Build_None"));
             }
             UpdatePlatformSummary();
             vm.PropertyChanged += (_, e) =>
@@ -499,15 +521,15 @@ public class WorkspaceWindow : Window
             void UpdateEncSummary()
             {
                 if (!vm.EnableEncryption)
-                    encSummary.Text = "加密: 未启用";
+                    encSummary.Text = SdkLocalizer.Loc("Build_EncNone");
                 else if (!vm.EncryptResources)
-                    encSummary.Text = "加密: 已启用（资源不加密）";
+                    encSummary.Text = SdkLocalizer.Loc("Build_EncNoRes");
                 else
                 {
                     var count = 0;
                     foreach (var item in vm.EncryptFileTypes)
                         if (item.IsChecked) count++;
-                    encSummary.Text = $"加密: 资源加密 ({count} 种文件类型)";
+                    encSummary.Text = SdkLocalizer.Loc("Build_EncRes", count);
                 }
             }
             UpdateEncSummary();
@@ -524,7 +546,8 @@ public class WorkspaceWindow : Window
                 FontSize = 12,
                 Foreground = ThemePalette.TextMuted,
             };
-            void UpdateAotSummary() => aotSummary.Text = $"AOT: {(vm.PublishAot ? "启用" : "禁用")}";
+            void UpdateAotSummary() => aotSummary.Text = SdkLocalizer.Loc("Build_Aot",
+                    SdkLocalizer.Loc(vm.PublishAot ? "Word_Enabled" : "Word_Disabled"));
             UpdateAotSummary();
             vm.PropertyChanged += (_, e) =>
             {
@@ -538,7 +561,7 @@ public class WorkspaceWindow : Window
             // 构建按钮
             var buildBtn = new Button
             {
-                Content = "开始构建",
+                Content = SdkLocalizer.Loc("Action_StartBuild"),
                 Command = vm.BuildCommand,
                 FontSize = 13,
                 Padding = new Thickness(16, 6),
@@ -600,6 +623,9 @@ public class WorkspaceWindow : Window
 
     private void OnWindowClosed(object? sender, EventArgs e)
     {
+        // 退订语言切换事件，避免多工作台窗口叠加订阅
+        SdkLocalizer.CultureChanged -= Relocalize;
+
         // 释放当前挂载的页面与侧面板，使 Router keepalive 缓存的页实例在窗口关闭后失去可视父级，
         // 避免下一个项目打开时新建的工作台复用"仍被旧窗口挂载"的页实例而抛
         // "The control ... already has a visual parent ContentPresenter"。

@@ -1,0 +1,352 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+	<!-- 
+		Microsoft ResX Schema
+
+		Version 1.3
+
+		The primary goals of this format is to allow a simple XML format 
+		that is mostly human readable. The generation and parsing of the 
+		various data types are done through the TypeConverter classes 
+		associated with the data types.
+
+		Example:
+
+		... ado.net/XML headers & schema ...
+		<resheader name="resmimetype">text/microsoft-resx</resheader>
+		<resheader name="version">1.3</resheader>
+		<resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+		<resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+		<data name="Name1">this is my long string</data>
+		<data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+		<data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+			[base64 mime encoded serialized .NET Framework object]
+		</data>
+		<data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+			[base64 mime encoded string representing a byte array form of the .NET Framework object]
+		</data>
+
+		There are any number of "resheader" rows that contain simple 
+		name/value pairs.
+
+		Each data row contains a name, and value. The row also contains a 
+		type or mimetype. Type corresponds to a .NET class that support 
+		text/value conversion through the TypeConverter architecture. 
+		Classes that don't support this are serialized and stored with the 
+		mimetype set.
+
+		The mimetype is used for serialized objects, and tells the 
+		ResXResourceReader how to depersist the object. This is currently not 
+		extensible. For a given mimetype the value must be set accordingly:
+
+		Note - application/x-microsoft.net.object.binary.base64 is the format 
+		that the ResXResourceWriter will generate, however the reader can 
+		read any of the formats listed below.
+
+		mimetype: application/x-microsoft.net.object.binary.base64
+		value   : The object must be serialized with 
+			: System.Serialization.Formatters.Binary.BinaryFormatter
+			: and then encoded with base64 encoding.
+
+		mimetype: application/x-microsoft.net.object.soap.base64
+		value   : The object must be serialized with 
+			: System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+			: and then encoded with base64 encoding.
+
+		mimetype: application/x-microsoft.net.object.bytearray.base64
+		value   : The object must be serialized into a byte array 
+			: using a System.ComponentModel.TypeConverter
+			: and then encoded with base64 encoding.
+	-->
+	
+	<xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+		<xsd:element name="root" msdata:IsDataSet="true">
+			<xsd:complexType>
+				<xsd:choice maxOccurs="unbounded">
+					<xsd:element name="data">
+						<xsd:complexType>
+							<xsd:sequence>
+								<xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+								<xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+							</xsd:sequence>
+							<xsd:attribute name="name" type="xsd:string" msdata:Ordinal="1" />
+							<xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+							<xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+						</xsd:complexType>
+					</xsd:element>
+					<xsd:element name="resheader">
+						<xsd:complexType>
+							<xsd:sequence>
+								<xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+							</xsd:sequence>
+							<xsd:attribute name="name" type="xsd:string" use="required" />
+						</xsd:complexType>
+					</xsd:element>
+				</xsd:choice>
+			</xsd:complexType>
+		</xsd:element>
+	</xsd:schema>
+	<resheader name="resmimetype">
+		<value>text/microsoft-resx</value>
+	</resheader>
+	<resheader name="version">
+		<value>1.3</value>
+	</resheader>
+	<resheader name="reader">
+		<value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=2.0.3500.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+	</resheader>
+	<resheader name="writer">
+		<value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=2.0.3500.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+	</resheader>
+	<data name="Window_Title" xml:space="preserve"><value>灵泛引擎 SDK — ランチャー</value></data>
+	<data name="Brand_Title" xml:space="preserve"><value>灵泛引擎 SDK</value></data>
+	<data name="Brand_Tagline" xml:space="preserve"><value>ノベル / サンドボックス小説ゲーム制作ツール</value></data>
+	<data name="Action_NewProject" xml:space="preserve"><value>新規プロジェクト</value></data>
+	<data name="Action_OpenProject" xml:space="preserve"><value>プロジェクトを開く...</value></data>
+	<data name="Action_Create" xml:space="preserve"><value>作成</value></data>
+	<data name="Action_Delete" xml:space="preserve"><value>削除</value></data>
+	<data name="Action_Cancel" xml:space="preserve"><value>キャンセル</value></data>
+	<data name="Form_ProjectName" xml:space="preserve"><value>プロジェクト名</value></data>
+	<data name="Form_GameTitle" xml:space="preserve"><value>ゲーム名</value></data>
+	<data name="Form_Author" xml:space="preserve"><value>作者</value></data>
+	<data name="Form_Version" xml:space="preserve"><value>バージョン</value></data>
+	<data name="Form_Description" xml:space="preserve"><value>説明（任意）</value></data>
+	<data name="Form_OutputDir" xml:space="preserve"><value>出力先</value></data>
+	<data name="Picker_OpenTitle" xml:space="preserve"><value>灵泛引擎 プロジェクトファイルを選択</value></data>
+	<data name="FileType_Project" xml:space="preserve"><value>灵泛引擎 プロジェクト</value></data>
+	<data name="FileType_All" xml:space="preserve"><value>すべてのファイル</value></data>
+	<data name="Picker_OutputTitle" xml:space="preserve"><value>プロジェクト出力先を選択</value></data>
+	<data name="Empty_Hint" xml:space="preserve"><value>まだプロジェクトがありません
+左の「新規プロジェクト」または「プロジェクトを開く」から始めましょう</value></data>
+	<data name="Confirm_DeleteTitle" xml:space="preserve"><value>このプロジェクトを削除しますか？</value></data>
+	<data name="Confirm_DeleteFiles" xml:space="preserve"><value>ファイルも削除</value></data>
+	<data name="Status_Idle" xml:space="preserve"><value>プロジェクトを選択または作成して開始</value></data>
+	<data name="Status_Creating" xml:space="preserve"><value>プロジェクトを作成中...</value></data>
+	<data name="Status_Created" xml:space="preserve"><value>プロジェクト {0} を作成しました！</value></data>
+	<data name="Status_CreateFailed" xml:space="preserve"><value>プロジェクトの作成に失敗</value></data>
+	<data name="Status_CreateError" xml:space="preserve"><value>作成に失敗: {0}</value></data>
+	<data name="Status_Loading" xml:space="preserve"><value>プロジェクトを読み込み中...</value></data>
+	<data name="Status_Loaded" xml:space="preserve"><value>プロジェクト {0} を読み込みました！</value></data>
+	<data name="Status_LoadFailed" xml:space="preserve"><value>プロジェクトファイルを読み込めません</value></data>
+	<data name="Status_LoadError" xml:space="preserve"><value>読み込みに失敗: {0}</value></data>
+	<data name="Status_RecordRemoved" xml:space="preserve"><value>履歴を削除しました</value></data>
+	<data name="Status_Deleting" xml:space="preserve"><value>プロジェクトを削除中...</value></data>
+	<data name="Status_Deleted" xml:space="preserve"><value>プロジェクトを削除しました</value></data>
+	<data name="Status_DeleteError" xml:space="preserve"><value>削除に失敗: {0}</value></data>
+	<data name="Error_NoWindow" xml:space="preserve"><value>ウィンドウを取得できません</value></data>
+	<data name="Ws_Title" xml:space="preserve"><value>灵泛引擎 SDK — ワークスペース</value></data>
+	<data name="Ws_TitleProject" xml:space="preserve"><value>灵泛引擎 SDK — {0}</value></data>
+	<data name="Nav_Assets" xml:space="preserve"><value>アセット</value></data>
+	<data name="Nav_Translation" xml:space="preserve"><value>多言語翻訳</value></data>
+	<data name="Nav_Models" xml:space="preserve"><value>モデル</value></data>
+	<data name="Nav_Build" xml:space="preserve"><value>ビルド / 公開</value></data>
+	<data name="Nav_Settings" xml:space="preserve"><value>設定</value></data>
+	<data name="Action_CloseProject" xml:space="preserve"><value>プロジェクトを閉じる</value></data>
+	<data name="Status_NoProject" xml:space="preserve"><value>プロジェクトが開かれていません</value></data>
+	<data name="Asset_Category" xml:space="preserve"><value>アセット分類</value></data>
+	<data name="Asset_CatAll" xml:space="preserve"><value>すべて</value></data>
+	<data name="Asset_CatStory" xml:space="preserve"><value>ストーリー</value></data>
+	<data name="Asset_CatImage" xml:space="preserve"><value>画像</value></data>
+	<data name="Asset_CatAudio" xml:space="preserve"><value>音声</value></data>
+	<data name="Asset_CatVideo" xml:space="preserve"><value>動画</value></data>
+	<data name="Asset_CatOther" xml:space="preserve"><value>その他</value></data>
+	<data name="Action_Scan" xml:space="preserve"><value>スキャン</value></data>
+	<data name="Build_Overview" xml:space="preserve"><value>ビルド概要</value></data>
+	<data name="Build_Platform" xml:space="preserve"><value>プラットフォーム: {0}</value></data>
+	<data name="Build_None" xml:space="preserve"><value>(未選択)</value></data>
+	<data name="Build_EncNone" xml:space="preserve"><value>暗号化: 無効</value></data>
+	<data name="Build_EncNoRes" xml:space="preserve"><value>暗号化: 有効（リソースは暗号化なし）</value></data>
+	<data name="Build_EncRes" xml:space="preserve"><value>暗号化: リソースを暗号化（{0} ファイル種）</value></data>
+	<data name="Build_Aot" xml:space="preserve"><value>AOT: {0}</value></data>
+	<data name="Word_Enabled" xml:space="preserve"><value>有効</value></data>
+	<data name="Word_Disabled" xml:space="preserve"><value>無効</value></data>
+	<data name="Action_StartBuild" xml:space="preserve"><value>ビルド開始</value></data>
+	<data name="Models_Title" xml:space="preserve"><value>モデル管理</value></data>
+	<data name="Models_Desc" xml:space="preserve"><value>AI 翻訳モデル（OpenAI 互換 / Anthropic）、設定はローカルの models.json に保存。</value></data>
+	<data name="Models_Hint" xml:space="preserve"><value>「モデルを追加」→ Base URL と API キーを入力 →「モデル一覧を取得」で選択して一括追加、またはモデル ID を直接入力。</value></data>
+	<data name="Models_Empty" xml:space="preserve"><value>モデルがまだありません。右上の「モデルを追加」から始めましょう。</value></data>
+	<data name="Action_AddModel" xml:space="preserve"><value>モデルを追加</value></data>
+	<data name="Action_EditModel" xml:space="preserve"><value>編集</value></data>
+	<data name="Action_DeleteModel" xml:space="preserve"><value>削除</value></data>
+	<data name="Action_SetDefault" xml:space="preserve"><value>デフォルトに設定</value></data>
+	<data name="Models_Count" xml:space="preserve"><value>全 {0} 個のモデル</value></data>
+	<data name="Models_Default" xml:space="preserve"><value>デフォルト</value></data>
+	<data name="Build_TargetPlatform" xml:space="preserve"><value>ターゲットプラットフォーム</value></data>
+	<data name="Build_CompileOptions" xml:space="preserve"><value>コンパイルオプション</value></data>
+	<data name="Build_PublishAot" xml:space="preserve"><value>AOT 発行</value></data>
+	<data name="Build_Encryption" xml:space="preserve"><value>暗号化設定</value></data>
+	<data name="Build_EnableEncryption" xml:space="preserve"><value>暗号化を有効化</value></data>
+	<data name="Build_EncryptResources" xml:space="preserve"><value>リソースファイルを暗号化</value></data>
+	<data name="Build_PickTypes" xml:space="preserve"><value>暗号化するファイル種を選択：</value></data>
+	<data name="Build_SelectAll" xml:space="preserve"><value>すべて選択</value></data>
+	<data name="Build_SelectNone" xml:space="preserve"><value>選択解除</value></data>
+	<data name="Build_KeyShards" xml:space="preserve"><value>鍵シャード数：</value></data>
+	<data name="Action_LaunchGame" xml:space="preserve"><value>ゲームを起動</value></data>
+	<data name="Action_StopGame" xml:space="preserve"><value>ゲームを停止</value></data>
+	<data name="Build_EngineDep" xml:space="preserve"><value>エンジン依存</value></data>
+	<data name="Build_CurrentVer" xml:space="preserve"><value>現在のバージョン：{0}</value></data>
+	<data name="Action_UpdateEngine" xml:space="preserve"><value>プロジェクトエンジンを確認・更新</value></data>
+	<data name="Build_UpdateHint" xml:space="preserve"><value>注意：更新はプロジェクト内のエンジン依存のみ置換します。再ビルド・再公開が必要です。</value></data>
+	<data name="Build_Log" xml:space="preserve"><value>ビルドログ</value></data>
+	<data name="Tr_Title" xml:space="preserve"><value>多言語翻訳</value></data>
+	<data name="Tr_Sub" xml:space="preserve"><value>原文をキーに・.story と C# テキストを自動抽出・AI で一括翻訳</value></data>
+	<data name="Tr_Layout" xml:space="preserve"><value>出力レイアウト</value></data>
+	<data name="Layout_Flat" xml:space="preserve"><value>フラット（シーンごと json）</value></data>
+	<data name="Layout_Mirrored" xml:space="preserve"><value>サブフォルダ（story をミラー）</value></data>
+	<data name="Layout_Single" xml:space="preserve"><value>単一ファイル</value></data>
+	<data name="Tr_SourceLang" xml:space="preserve"><value>ソース言語</value></data>
+	<data name="Wm_AutoDetect" xml:space="preserve"><value>空欄=自動検出</value></data>
+	<data name="Tr_TargetLang" xml:space="preserve"><value>ターゲット言語</value></data>
+	<data name="Tr_Mode" xml:space="preserve"><value>翻訳モード</value></data>
+	<data name="Mode_Manual" xml:space="preserve"><value>手動翻訳</value></data>
+	<data name="Mode_Ai" xml:space="preserve"><value>AI 翻訳</value></data>
+	<data name="Mode_Api" xml:space="preserve"><value>翻訳 API</value></data>
+	<data name="Mode_Agent" xml:space="preserve"><value>AI エージェント</value></data>
+	<data name="Action_Sync" xml:space="preserve"><value>同期翻訳</value></data>
+	<data name="Action_ScanText" xml:space="preserve"><value>テキストをスキャン</value></data>
+	<data name="Action_Generate" xml:space="preserve"><value>モードファイルを生成</value></data>
+	<data name="Force_Retranslate" xml:space="preserve"><value>強制再翻訳</value></data>
+	<data name="Tr_AiSection" xml:space="preserve"><value>AI 翻訳モデル（OpenAI 互換 / Anthropic；「モデル管理」から追加）</value></data>
+	<data name="Tr_ApiSection" xml:space="preserve"><value>翻訳 API 設定 · DeepL スタイル（tag_handling がリッチテキストを保持）</value></data>
+	<data name="Form_Model" xml:space="preserve"><value>モデル</value></data>
+	<data name="Form_Endpoint" xml:space="preserve"><value>エンドポイント</value></data>
+	<data name="Form_ApiTarget" xml:space="preserve"><value>ターゲット言語コード</value></data>
+	<data name="Action_ManageModels" xml:space="preserve"><value>モデルを管理</value></data>
+	<data name="Action_Discard" xml:space="preserve"><value>破棄</value></data>
+	<data name="Action_Apply" xml:space="preserve"><value>変更を適用</value></data>
+	<data name="Tr_PreviewTitle" xml:space="preserve"><value>変更プレビュー — 承認待ち</value></data>
+	<data name="Tr_Stat" xml:space="preserve"><value>全 {0} 件・訳済 {1}・未処理 {2}</value></data>
+	<data name="Word_Translated" xml:space="preserve"><value>翻訳済み</value></data>
+	<data name="Word_Untranslated" xml:space="preserve"><value>未翻訳</value></data>
+	<data name="Dlg_Title" xml:space="preserve"><value>カスタムモデル</value></data>
+	<data name="Form_ApiFormat" xml:space="preserve"><value>API 形式 *</value></data>
+	<data name="Form_ModelId" xml:space="preserve"><value>モデル ID（任意）</value></data>
+	<data name="Form_DisplayName" xml:space="preserve"><value>表示名</value></data>
+	<data name="Form_ApiKey" xml:space="preserve"><value>API キー *</value></data>
+	<data name="Adv_Header" xml:space="preserve"><value>詳細設定</value></data>
+	<data name="Form_Temperature" xml:space="preserve"><value>温度（0-1、推奨 0.2-0.3）</value></data>
+	<data name="Form_BatchTip" xml:space="preserve"><value>少ないほど安定（回示・スキップを抑制、デフォルト 4）；多いほど高速・省リクエストだがモデルに飛ばされやすい。</value></data>
+	<data name="Form_Timeout" xml:space="preserve"><value>タイムアウト（秒）</value></data>
+	<data name="Action_ConnectTest" xml:space="preserve"><value>接続テスト</value></data>
+	<data name="Action_FetchModels" xml:space="preserve"><value>モデル一覧を取得</value></data>
+	<data name="Action_AddSelected" xml:space="preserve"><value>選択を追加（{0}）</value></data>
+	<data name="Dlg_FetchedHint" xml:space="preserve"><value>モデルを取得しました（追加するものを選択）</value></data>
+	<data name="Action_Reset" xml:space="preserve"><value>リセット</value></data>
+	<data name="St_NeedBaseUrl" xml:space="preserve"><value>先に Base URL を入力してください</value></data>
+	<data name="St_Fetching" xml:space="preserve"><value>モデル一覧を取得中...</value></data>
+	<data name="St_FetchFail" xml:space="preserve"><value>❌ 一覧を取得できません：{0}</value></data>
+	<data name="St_FetchEmpty" xml:space="preserve"><value>✅ 接続できましたが、このエンドポイントはモデル一覧を返しません（data[] 空）。「モデル ID」で手動追加してください。</value></data>
+	<data name="St_Fetched" xml:space="preserve"><value>{0} 個のモデルを取得しました。追加するものを選択し「選択を追加」をクリック。</value></data>
+	<data name="St_FetchError" xml:space="preserve"><value>❌ 取得エラー：{0}</value></data>
+	<data name="St_NeedSelect" xml:space="preserve"><value>モデルを1つ以上選択してください</value></data>
+	<data name="St_Adding" xml:space="preserve"><value>選択したモデルを追加中...</value></data>
+	<data name="St_Added" xml:space="preserve"><value>✅ {0} 個追加 · 既存 {1} 個スキップ</value></data>
+	<data name="St_AddError" xml:space="preserve"><value>❌ 追加エラー：{0}</value></data>
+	<data name="St_Testing" xml:space="preserve"><value>テスト中...</value></data>
+	<data name="St_TestError" xml:space="preserve"><value>❌ テストエラー：{0}</value></data>
+	<data name="Hint_BaseUrlExample" xml:space="preserve"><value>例：https://api.openai.com/v1</value></data>
+	<data name="Ph_ModelId" xml:space="preserve"><value>任意 · 空のままなら「モデル一覧を取得」で一括追加</value></data>
+	<data name="Ph_DisplayName" xml:space="preserve"><value>任意。空のままだと一覧にモデル ID を表示</value></data>
+	<data name="Action_SelectAll" xml:space="preserve"><value>すべて選択</value></data>
+	<data name="Action_DeselectAll" xml:space="preserve"><value>すべて解除</value></data>
+	<data name="Action_AddSelPlain" xml:space="preserve"><value>選択を追加</value></data>
+	<data name="Dlg_InfoNote" xml:space="preserve"><value>ℹ 接続テストと「モデル一覧を取得」はどちらも GET /v1/models を呼び出し、無料で Token を消費しません。取得後は追加するものを選択（既定ではすべて選択）。追加時には「プロバイダー+エンドポイント+モデル」で重複排除します。</value></data>
+	<data name="Tip_GenerateFrame" xml:space="preserve"><value>多言語翻訳ファイルのフレームを生成します（原文を key、訳文は空のまま占位）。外部 AI は呼び出しません。\n· 生成した JSON を任意の AI ツール（Claude / ブラウザの GPT 等）に渡して一括翻訳・回収するのに最適。自由で高度に自動化可能；\n· 手動編集にも対応。\nあとは「同期翻訳」をクリック：空欄のみを補い、入力済みの訳文はそのまま保持します。</value></data>
+	<data name="Tip_ForceRetranslate" xml:space="preserve"><value>チェックすると既存の訳文を無視して全項目を再翻訳；外すと翻訳済み項目をスキップします</value></data>
+	<data name="Ph_SelectModel" xml:space="preserve"><value>モデルを選択</value></data>
+	<data name="Hint_AiMode" xml:space="preserve"><value>AI モードは選択したモデルで一括翻訳（プレースホルダは自動検証）；モデル設定はローカルの models.json に保存されます。</value></data>
+	<data name="Tr_PreviewSub" xml:space="preserve"><value>一括 diff（原子書き込み + 自動バックアップ、ロールバック可）</value></data>
+	<data name="Ph_LangCode" xml:space="preserve"><value>en-US / ja-JP</value></data>
+	<data name="Tip_LangCode" xml:space="preserve"><value>言語ルートディレクトリ名（エンジン標準：en-US/ja-JP/ko-KR…）。Lang/{lang}/ ディレクトリ・言語切替・利用可能言語リストを決定します</value></data>
+<data name="St_Ready" xml:space="preserve"><value>準備完了</value></data>
+	<data name="St_NeedProject" xml:space="preserve"><value>まずプロジェクトを開いてください</value></data>
+	<data name="St_Scanning" xml:space="preserve"><value>資源をスキャン中...</value></data>
+	<data name="St_FoundN" xml:space="preserve"><value>{0} 個の資源を見つけました</value></data>
+	<data name="St_ScanFail" xml:space="preserve"><value>スキャンに失敗: {0}</value></data>
+	<data name="St_PreviewFail" xml:space="preserve"><value>プレビューに失敗: {0}</value></data>
+	<data name="St_ImportFail" xml:space="preserve"><value>取込に失敗 {0}: {1}</value></data>
+	<data name="St_ImportedN" xml:space="preserve"><value>{0} 個の資源を取込みました</value></data>
+	<data name="Bld_EmptyProject" xml:space="preserve"><value>(プロジェクトが未開)</value></data>
+	<data name="Bld_Start" xml:space="preserve"><value>=== ビルド開始 ===</value></data>
+	<data name="Bld_NoPlatform" xml:space="preserve"><value>エラー: ターゲットプラットフォーム未選択</value></data>
+	<data name="Bld_Building" xml:space="preserve"><value>{0} をビルド中 (RID: {1})...</value></data>
+	<data name="Bld_Ok" xml:space="preserve"><value>[OK] {0} のビルドに成功: {1}</value></data>
+	<data name="Bld_Fail" xml:space="preserve"><value>[FAIL] {0} のビルドに失敗: {1}</value></data>
+	<data name="Bld_Done" xml:space="preserve"><value>=== ビルド完了 ===</value></data>
+	<data name="Bld_Exc" xml:space="preserve"><value>ビルド例外: {0}</value></data>
+	<data name="Bld_UpdCheck" xml:space="preserve"><value>プロジェクトエンジン依存の更新を確認中...</value></data>
+	<data name="Bld_UpdLatest" xml:space="preserve"><value>最新バージョンです（{0}）</value></data>
+	<data name="Bld_UpdApplied" xml:space="preserve"><value>{0} に更新しました（{1} 個の DLL を置換、再ビルド後に有効）</value></data>
+	<data name="Bld_UpdFail" xml:space="preserve"><value>更新に失敗：{0}</value></data>
+	<data name="Bld_UpdExc" xml:space="preserve"><value>更新例外：{0}</value></data>
+	<data name="Bld_LocatingExe" xml:space="preserve"><value>ゲーム実行ファイルを特定中...</value></data>
+	<data name="Bld_LaunchExc" xml:space="preserve"><value>起動例外：{0}</value></data>
+	<data name="Bld_Stopping" xml:space="preserve"><value>ゲームプロセスを停止中...</value></data>
+	<data name="Bld_Stopped" xml:space="preserve"><value>ゲームプロセスの停止を要求しました（実行中の場合）。</value></data>
+	<data name="Bld_StopExc" xml:space="preserve"><value>停止例外：{0}</value></data>
+	<data name="Set_LangSwitched" xml:space="preserve"><value>{0} に切り替えました。画面は即座に反映されます。</value></data>
+	<data name="Set_DotNetMissing" xml:space="preserve"><value>未インストール</value></data>
+	<data name="Set_Saved" xml:space="preserve"><value>設定を保存しました</value></data>
+	<data name="Set_SaveFail" xml:space="preserve"><value>保存に失敗: {0}</value></data>
+	<data name="Set_DotNetOk" xml:space="preserve"><value>dotnet インストール済み: {0}</value></data>
+	<data name="Set_DotNetNo" xml:space="preserve"><value>dotnet が未インストール、または PATH にありません</value></data>
+	<data name="Set_EngChecking" xml:space="preserve"><value>エンジン更新を確認中...</value></data>
+	<data name="Set_EngUpToDate" xml:space="preserve"><value>最新バージョンです（{0}）</value></data>
+	<data name="Set_EngApplied" xml:space="preserve"><value>{0} に更新しました（{1} 個の DLL をホット置換）</value></data>
+	<data name="Set_EngPending" xml:space="preserve"><value>{0} に更新しました（{1} 個をホット置換、{2} 個は SDK 再起動で有効）</value></data>
+	<data name="Set_EngFail" xml:space="preserve"><value>更新に失敗：{0}</value></data>
+	<data name="Set_EngExc" xml:space="preserve"><value>確認に失敗：{0}</value></data>
+	<data name="Set_TplChecking" xml:space="preserve"><value>テンプレート更新を確認中...</value></data>
+	<data name="Set_TplLatest" xml:space="preserve"><value>テンプレートは最新です（{0}）</value></data>
+	<data name="Set_TplApplied" xml:space="preserve"><value>テンプレートを {0} に更新しました</value></data>
+	<data name="Set_TplFail" xml:space="preserve"><value>テンプレートの更新に失敗：{0}</value></data>
+	<data name="Set_TplExc" xml:space="preserve"><value>テンプレートの確認に失敗：{0}</value></data>
+	<data name="St_NeedProjectX" xml:space="preserve"><value>翻訳する前にプロジェクトを開いてください</value></data>
+	<data name="Tr_Scanning" xml:space="preserve"><value>翻訳可能なテキストをスキャン中...</value></data>
+	<data name="Tr_Scanned" xml:space="preserve"><value>スキャン完了：全 {0} 件・訳済み {1}・未処理 {2}</value></data>
+	<data name="Tr_ScanFail" xml:space="preserve"><value>スキャンに失敗：{0}</value></data>
+	<data name="Tr_ApiNeedCfg" xml:space="preserve"><value>翻訳 API にはエンドポイントと Key の設定が必要です</value></data>
+	<data name="Tr_NoMode" xml:space="preserve"><value>翻訳モードを選択してください</value></data>
+	<data name="Tr_PrepManual" xml:space="preserve"><value>翻訳ファイルを準備中（プレースホルダ生成）...</value></data>
+	<data name="Tr_PrepAi" xml:space="preserve"><value>AI で一括翻訳中（プレースホルダ自動検証）...</value></data>
+	<data name="Tr_PrepApi" xml:space="preserve"><value>翻訳 API を呼び出し中...</value></data>
+	<data name="Tr_PrepSync" xml:space="preserve"><value>同期中...</value></data>
+	<data name="Tr_Translating" xml:space="preserve"><value>{0}/{1} を翻訳中...</value></data>
+	<data name="Tr_ForceNote" xml:space="preserve"><value>（強制再翻訳）</value></data>
+	<data name="Tr_GenManual" xml:space="preserve"><value>{0} 個の {1} モードファイルを生成しました（プレースホルダ、構造のみで翻訳なし）{2}：追加 {3}、保持 {4}。確認後「変更を適用」してください。</value></data>
+	<data name="Tr_GenOther" xml:space="preserve"><value>{0} 個のファイル変更を生成しました（プレースホルダ）{1}：追加 {2}、保持 {3} · レイアウト {4}。プレビューを確認後「変更を適用」してください。</value></data>
+	<data name="Tr_GenAi" xml:space="preserve"><value>{0} 個のファイル変更を準備しました{1}：翻訳 {2}、フォールバック {3}、追加 {4}、保持 {5} · レイアウト {6}。確認後「変更を適用」してください。</value></data>
+	<data name="Tr_NoChange" xml:space="preserve"><value>ファイル変更は発生しませんでした：追加 0 · 保持 {0} · 最新です（{1}）。</value></data>
+	<data name="Tr_Cancelled" xml:space="preserve"><value>キャンセルしました</value></data>
+	<data name="Tr_GenAction" xml:space="preserve"><value>生成</value></data>
+	<data name="Tr_GenBusy" xml:space="preserve"><value>{0} レイアウトの翻訳ファイル（プレースホルダ）を生成中...</value></data>
+	<data name="Models_Unnamed" xml:space="preserve"><value>カスタムエンドポイント</value></data>
+	<data name="Tr_SyncAction" xml:space="preserve"><value>同期</value></data>
+	<data name="Tr_OpFail" xml:space="preserve"><value>{0}に失敗：{1}</value></data>
+	<data name="Tr_AgentPlanning" xml:space="preserve"><value>Agent がプロジェクトを理解し翻訳を計画中（tool calling）...</value></data>
+	<data name="Tr_AgentTranslating" xml:space="preserve"><value>Agent が {0}/{1} を翻訳中...</value></data>
+	<data name="Tr_AgentNoClient" xml:space="preserve"><value>モデルクライアントを作成できません</value></data>
+	<data name="Tr_AgentDone" xml:space="preserve"><value>Agent 完了（{0} 回のツール呼び出し）：{1} 個のファイル変更を準備、承認待ち。\nモデル説明：{2}</value></data>
+	<data name="Tr_AgentEmpty" xml:space="preserve"><value>Agent はファイル変更を生成しませんでした（{0} 回のツール呼び出し）。\nモデル説明：{1}</value></data>
+	<data name="Tr_AgentFail" xml:space="preserve"><value>Agent の実行に失敗：{0}</value></data>
+	<data name="Tr_LayoutMirrored" xml:space="preserve"><value>サブフォルダ</value></data>
+	<data name="Tr_LayoutSingle" xml:space="preserve"><value>単一ファイル</value></data>
+	<data name="Tr_LayoutFlat" xml:space="preserve"><value>フラット</value></data>
+	<data name="Tr_Usage" xml:space="preserve"><value>
+使用量：入力 {0} tok · 出力 {1} tok · リクエスト {2}</value></data>
+	<data name="Tr_Applied" xml:space="preserve"><value>{0} 箇所のファイル変更を {1} に適用しました</value></data>
+	<data name="Tr_ApplyFail" xml:space="preserve"><value>変更の適用に失敗（ロールバック済み）：{0}</value></data>
+	<data name="Tr_Discarded" xml:space="preserve"><value>今回の変更を破棄しました（未書き込み）</value></data>
+	<data name="Tr_NoModels" xml:space="preserve"><value>AI 翻訳にはまずモデルを追加してください（「モデルを管理」）</value></data>
+	<data name="Tr_NoModelSelected" xml:space="preserve"><value>AI 翻訳にはドロップダウンでモデルを選択してください</value></data>
+	<data name="Tr_ModelGone" xml:space="preserve"><value>選択したモデルは存在しません。選択し直してください</value></data>
+	<data name="Tr_ModelNoId" xml:space="preserve"><value>選択したモデルにモデル ID がありません。「モデル管理」で補完してください</value></data>
+	<data name="Tr_ModelNoKey" xml:space="preserve"><value>選択したモデル「{0}」に API キーがありません（Ollama などのローカルエンドポイントは空でも可）</value></data>
+	<data name="Tr_ModelBadCfg" xml:space="preserve"><value>選択したモデルの設定が不完全で、翻訳器を作成できません</value></data>
+	<data name="Tr_ModeDescManual" xml:space="preserve"><value>手動モード：訳文が空の翻訳ファイルを生成し、手動または外部 AI で入力</value></data>
+	<data name="Tr_ModeDescAiNoModel" xml:space="preserve"><value>AI モード：モデルが未追加です。「モデルを管理」から追加してください（OpenAI 互換 / Anthropic）</value></data>
+	<data name="Tr_ModeDescAi" xml:space="preserve"><value>AI モード：選択したモデルで一括翻訳、プレースホルダは自動検証・再試行</value></data>
+	<data name="Tr_ModeDescApi" xml:space="preserve"><value>API モード：DeepL スタイルの翻訳エンドポイント、tag_handling でリッチテキストを保持</value></data>
+	<data name="Tr_ModeDescAgentNoModel" xml:space="preserve"><value>Agent モード：まずモデルを追加してください（モデル管理 → OpenAI 互換 / Anthropic を追加）</value></data>
+	<data name="Tr_ModeDescAgent" xml:space="preserve"><value>Agent モード：LLM がツール呼び出しでプロジェクトを理解し、選択したレイアウトで翻訳を計画、ファイル書き込みは承認が必要（決定論的な Fast フォールバック利用可）</value></data>
+</root>

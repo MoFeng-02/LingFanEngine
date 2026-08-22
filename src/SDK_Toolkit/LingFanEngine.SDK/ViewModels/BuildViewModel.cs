@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using LingFanEngine.SDK.I18n;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Services.Abstractions;
 
@@ -56,10 +57,31 @@ public partial class BuildViewModel : ViewModelBase
     private double _buildProgress;
 
     [ObservableProperty]
-    private string _projectName = "(未打开项目)";
+    private string _projectName = SdkLocalizer.Loc("Bld_EmptyProject");
 
     [ObservableProperty]
     private string _projectPath = "";
+
+    // ===== 本地化静态文案（供 BuildPage 绑定） =====
+    public string PageTitle => SdkLocalizer.Loc("Nav_Build");
+    public string TargetPlatformLabel => SdkLocalizer.Loc("Build_TargetPlatform");
+    public string CompileOptionsLabel => SdkLocalizer.Loc("Build_CompileOptions");
+    public string PublishAotLabel => SdkLocalizer.Loc("Build_PublishAot");
+    public string EncryptionLabel => SdkLocalizer.Loc("Build_Encryption");
+    public string EnableEncryptionLabel => SdkLocalizer.Loc("Build_EnableEncryption");
+    public string EncryptResourcesLabel => SdkLocalizer.Loc("Build_EncryptResources");
+    public string PickTypesLabel => SdkLocalizer.Loc("Build_PickTypes");
+    public string SelectAllLabel => SdkLocalizer.Loc("Build_SelectAll");
+    public string SelectNoneLabel => SdkLocalizer.Loc("Build_SelectNone");
+    public string KeyShardsLabel => SdkLocalizer.Loc("Build_KeyShards");
+    public string StartBuildLabel => SdkLocalizer.Loc("Action_StartBuild");
+    public string LaunchGameLabel => SdkLocalizer.Loc("Action_LaunchGame");
+    public string StopGameLabel => SdkLocalizer.Loc("Action_StopGame");
+    public string EngineDepLabel => SdkLocalizer.Loc("Build_EngineDep");
+    public string CurrentEngineVersionLabel => string.Format(SdkLocalizer.Loc("Build_CurrentVer"), EngineDependencyVersion);
+    public string UpdateEngineLabel => SdkLocalizer.Loc("Action_UpdateEngine");
+    public string UpdateHintLabel => SdkLocalizer.Loc("Build_UpdateHint");
+    public string BuildLogLabel => SdkLocalizer.Loc("Build_Log");
 
     // ===== 项目引擎依赖（版本隔离核心） =====
     // 当前项目 DLL/ 内的引擎版本（来自 engine.lock.json / LingFanEngine.dll 元数据）
@@ -234,7 +256,7 @@ public partial class BuildViewModel : ViewModelBase
 
     private void OnProjectClosed()
     {
-        ProjectName = "(未打开项目)";
+        ProjectName = SdkLocalizer.Loc("Bld_EmptyProject");
         ProjectPath = "";
         LogEntries.Clear();
         BuildLog = "";
@@ -278,7 +300,7 @@ public partial class BuildViewModel : ViewModelBase
         var project = _session.CurrentProject;
         if (project == null)
         {
-            LogEntries.Add("请先打开项目");
+            LogEntries.Add(SdkLocalizer.Loc("St_NeedProject"));
             return;
         }
 
@@ -295,7 +317,7 @@ public partial class BuildViewModel : ViewModelBase
 
         try
         {
-            Log("=== 开始构建 ===");
+            Log(SdkLocalizer.Loc("Bld_Start"));
 
             var progress = new Progress<string>(msg =>
             {
@@ -312,7 +334,7 @@ public partial class BuildViewModel : ViewModelBase
 
             if (platforms.Count == 0)
             {
-                Log("错误: 未选择目标平台");
+                Log(SdkLocalizer.Loc("Bld_NoPlatform"));
                 IsBuilding = false;
                 return;
             }
@@ -325,24 +347,24 @@ public partial class BuildViewModel : ViewModelBase
             // 逐平台构建（在线程池执行，避免同步 I/O 卡顿 UI）
             foreach (var platform in platforms)
             {
-                Log($"正在构建 {platform.Name} (RID: {platform.RuntimeIdentifier})...");
+                Log(SdkLocalizer.Loc("Bld_Building", platform.Name, platform.RuntimeIdentifier));
                 var result = await Task.Run(() => _publishService.BuildAsync(project, platform, progress));
                 if (result.Success)
                 {
-                    Log($"[OK] {platform.Name} 构建成功: {result.OutputPath}");
+                    Log(SdkLocalizer.Loc("Bld_Ok", platform.Name, result.OutputPath));
                 }
                 else
                 {
-                    Log($"[FAIL] {platform.Name} 构建失败: {result.ErrorMessage}");
+                    Log(SdkLocalizer.Loc("Bld_Fail", platform.Name, result.ErrorMessage));
                 }
             }
 
             BuildProgress = 100;
-            Log("=== 构建完成 ===");
+            Log(SdkLocalizer.Loc("Bld_Done"));
         }
         catch (Exception ex)
         {
-            Log($"构建异常: {ex.Message}");
+            Log(SdkLocalizer.Loc("Bld_Exc", ex.Message));
         }
         finally
         {
@@ -364,12 +386,12 @@ public partial class BuildViewModel : ViewModelBase
         var dir = _session.ProjectDirectory;
         if (!_session.IsProjectOpen || string.IsNullOrWhiteSpace(dir))
         {
-            ProjectEngineUpdateMessage = "请先打开项目";
+            ProjectEngineUpdateMessage = SdkLocalizer.Loc("St_NeedProject");
             return;
         }
 
         IsUpdatingProjectEngine = true;
-        ProjectEngineUpdateMessage = "正在检查项目引擎依赖更新...";
+        ProjectEngineUpdateMessage = SdkLocalizer.Loc("Bld_UpdCheck");
 
         try
         {
@@ -378,9 +400,9 @@ public partial class BuildViewModel : ViewModelBase
 
             ProjectEngineUpdateMessage = result.Status switch
             {
-                EngineUpdateStatus.UpToDate => $"已是最新版本（{EngineDependencyVersion}）",
-                EngineUpdateStatus.UpdateApplied => $"已更新到 {result.ManifestVersion}（替换 {result.UpdatedDlls.Count} 个 DLL，重新构建后生效）",
-                EngineUpdateStatus.Failed => $"更新失败：{result.ErrorMessage}",
+                EngineUpdateStatus.UpToDate => SdkLocalizer.Loc("Bld_UpdLatest", EngineDependencyVersion),
+                EngineUpdateStatus.UpdateApplied => SdkLocalizer.Loc("Bld_UpdApplied", result.ManifestVersion, result.UpdatedDlls.Count),
+                EngineUpdateStatus.Failed => SdkLocalizer.Loc("Bld_UpdFail", result.ErrorMessage),
                 _ => ProjectEngineUpdateMessage,
             };
 
@@ -393,7 +415,7 @@ public partial class BuildViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            ProjectEngineUpdateMessage = $"更新异常：{ex.Message}";
+            ProjectEngineUpdateMessage = SdkLocalizer.Loc("Bld_UpdExc", ex.Message);
         }
         finally
         {
@@ -421,12 +443,12 @@ public partial class BuildViewModel : ViewModelBase
         var project = _session.CurrentProject;
         if (project == null)
         {
-            LaunchMessage = "请先打开项目";
+            LaunchMessage = SdkLocalizer.Loc("St_NeedProject");
             return;
         }
 
         IsLaunching = true;
-        LaunchMessage = "正在定位游戏可执行文件...";
+        LaunchMessage = SdkLocalizer.Loc("Bld_LocatingExe");
         var progress = new Progress<string>(msg => AppendBuildLog(msg));
 
         try
@@ -436,7 +458,7 @@ public partial class BuildViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            LaunchMessage = $"启动异常：{ex.Message}";
+            LaunchMessage = SdkLocalizer.Loc("Bld_LaunchExc", ex.Message);
         }
         finally
         {
@@ -454,20 +476,20 @@ public partial class BuildViewModel : ViewModelBase
         var project = _session.CurrentProject;
         if (project == null)
         {
-            LaunchMessage = "请先打开项目";
+            LaunchMessage = SdkLocalizer.Loc("St_NeedProject");
             return;
         }
 
         IsStopping = true;
-        LaunchMessage = "正在停止游戏进程...";
+        LaunchMessage = SdkLocalizer.Loc("Bld_Stopping");
         try
         {
             await _runService.StopAsync(project);
-            LaunchMessage = "已请求停止游戏进程（若正在运行）。";
+            LaunchMessage = SdkLocalizer.Loc("Bld_Stopped");
         }
         catch (Exception ex)
         {
-            LaunchMessage = $"停止异常：{ex.Message}";
+            LaunchMessage = SdkLocalizer.Loc("Bld_StopExc", ex.Message);
         }
         finally
         {

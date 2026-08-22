@@ -1,0 +1,352 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+	<!-- 
+		Microsoft ResX Schema
+
+		Version 1.3
+
+		The primary goals of this format is to allow a simple XML format 
+		that is mostly human readable. The generation and parsing of the 
+		various data types are done through the TypeConverter classes 
+		associated with the data types.
+
+		Example:
+
+		... ado.net/XML headers & schema ...
+		<resheader name="resmimetype">text/microsoft-resx</resheader>
+		<resheader name="version">1.3</resheader>
+		<resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+		<resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+		<data name="Name1">this is my long string</data>
+		<data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+		<data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+			[base64 mime encoded serialized .NET Framework object]
+		</data>
+		<data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+			[base64 mime encoded string representing a byte array form of the .NET Framework object]
+		</data>
+
+		There are any number of "resheader" rows that contain simple 
+		name/value pairs.
+
+		Each data row contains a name, and value. The row also contains a 
+		type or mimetype. Type corresponds to a .NET class that support 
+		text/value conversion through the TypeConverter architecture. 
+		Classes that don't support this are serialized and stored with the 
+		mimetype set.
+
+		The mimetype is used for serialized objects, and tells the 
+		ResXResourceReader how to depersist the object. This is currently not 
+		extensible. For a given mimetype the value must be set accordingly:
+
+		Note - application/x-microsoft.net.object.binary.base64 is the format 
+		that the ResXResourceWriter will generate, however the reader can 
+		read any of the formats listed below.
+
+		mimetype: application/x-microsoft.net.object.binary.base64
+		value   : The object must be serialized with 
+			: System.Serialization.Formatters.Binary.BinaryFormatter
+			: and then encoded with base64 encoding.
+
+		mimetype: application/x-microsoft.net.object.soap.base64
+		value   : The object must be serialized with 
+			: System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+			: and then encoded with base64 encoding.
+
+		mimetype: application/x-microsoft.net.object.bytearray.base64
+		value   : The object must be serialized into a byte array 
+			: using a System.ComponentModel.TypeConverter
+			: and then encoded with base64 encoding.
+	-->
+	
+	<xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+		<xsd:element name="root" msdata:IsDataSet="true">
+			<xsd:complexType>
+				<xsd:choice maxOccurs="unbounded">
+					<xsd:element name="data">
+						<xsd:complexType>
+							<xsd:sequence>
+								<xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+								<xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+							</xsd:sequence>
+							<xsd:attribute name="name" type="xsd:string" msdata:Ordinal="1" />
+							<xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+							<xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+						</xsd:complexType>
+					</xsd:element>
+					<xsd:element name="resheader">
+						<xsd:complexType>
+							<xsd:sequence>
+								<xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+							</xsd:sequence>
+							<xsd:attribute name="name" type="xsd:string" use="required" />
+						</xsd:complexType>
+					</xsd:element>
+				</xsd:choice>
+			</xsd:complexType>
+		</xsd:element>
+	</xsd:schema>
+	<resheader name="resmimetype">
+		<value>text/microsoft-resx</value>
+	</resheader>
+	<resheader name="version">
+		<value>1.3</value>
+	</resheader>
+	<resheader name="reader">
+		<value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=2.0.3500.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+	</resheader>
+	<resheader name="writer">
+		<value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=2.0.3500.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+	</resheader>
+	<data name="Window_Title" xml:space="preserve"><value>灵泛引擎 SDK — 启动器</value></data>
+	<data name="Brand_Title" xml:space="preserve"><value>灵泛引擎 SDK</value></data>
+	<data name="Brand_Tagline" xml:space="preserve"><value>叙事 / 沙盒小说游戏创作工具</value></data>
+	<data name="Action_NewProject" xml:space="preserve"><value>新建项目</value></data>
+	<data name="Action_OpenProject" xml:space="preserve"><value>打开项目...</value></data>
+	<data name="Action_Create" xml:space="preserve"><value>创建</value></data>
+	<data name="Action_Delete" xml:space="preserve"><value>删除</value></data>
+	<data name="Action_Cancel" xml:space="preserve"><value>取消</value></data>
+	<data name="Form_ProjectName" xml:space="preserve"><value>项目名称</value></data>
+	<data name="Form_GameTitle" xml:space="preserve"><value>游戏名称</value></data>
+	<data name="Form_Author" xml:space="preserve"><value>作者</value></data>
+	<data name="Form_Version" xml:space="preserve"><value>版本号</value></data>
+	<data name="Form_Description" xml:space="preserve"><value>描述（可选）</value></data>
+	<data name="Form_OutputDir" xml:space="preserve"><value>输出目录</value></data>
+	<data name="Picker_OpenTitle" xml:space="preserve"><value>选择灵泛引擎项目文件</value></data>
+	<data name="FileType_Project" xml:space="preserve"><value>灵泛引擎项目</value></data>
+	<data name="FileType_All" xml:space="preserve"><value>所有文件</value></data>
+	<data name="Picker_OutputTitle" xml:space="preserve"><value>选择项目输出目录</value></data>
+	<data name="Empty_Hint" xml:space="preserve"><value>还没有项目
+点击左侧「新建项目」或「打开项目」开始</value></data>
+	<data name="Confirm_DeleteTitle" xml:space="preserve"><value>删除该项目？</value></data>
+	<data name="Confirm_DeleteFiles" xml:space="preserve"><value>同时删除文件</value></data>
+	<data name="Status_Idle" xml:space="preserve"><value>选择或创建一个项目开始</value></data>
+	<data name="Status_Creating" xml:space="preserve"><value>正在创建项目...</value></data>
+	<data name="Status_Created" xml:space="preserve"><value>项目 {0} 创建成功！</value></data>
+	<data name="Status_CreateFailed" xml:space="preserve"><value>项目创建失败</value></data>
+	<data name="Status_CreateError" xml:space="preserve"><value>创建失败: {0}</value></data>
+	<data name="Status_Loading" xml:space="preserve"><value>正在加载项目...</value></data>
+	<data name="Status_Loaded" xml:space="preserve"><value>项目 {0} 加载成功！</value></data>
+	<data name="Status_LoadFailed" xml:space="preserve"><value>无法加载项目文件</value></data>
+	<data name="Status_LoadError" xml:space="preserve"><value>加载失败: {0}</value></data>
+	<data name="Status_RecordRemoved" xml:space="preserve"><value>已移除记录</value></data>
+	<data name="Status_Deleting" xml:space="preserve"><value>正在删除项目...</value></data>
+	<data name="Status_Deleted" xml:space="preserve"><value>项目已删除</value></data>
+	<data name="Status_DeleteError" xml:space="preserve"><value>删除失败: {0}</value></data>
+	<data name="Error_NoWindow" xml:space="preserve"><value>无法获取窗口</value></data>
+	<data name="Ws_Title" xml:space="preserve"><value>灵泛引擎 SDK — 工作台</value></data>
+	<data name="Ws_TitleProject" xml:space="preserve"><value>灵泛引擎 SDK — {0}</value></data>
+	<data name="Nav_Assets" xml:space="preserve"><value>资源管理</value></data>
+	<data name="Nav_Translation" xml:space="preserve"><value>多语言翻译</value></data>
+	<data name="Nav_Models" xml:space="preserve"><value>模型管理</value></data>
+	<data name="Nav_Build" xml:space="preserve"><value>构建发布</value></data>
+	<data name="Nav_Settings" xml:space="preserve"><value>设置</value></data>
+	<data name="Action_CloseProject" xml:space="preserve"><value>关闭项目</value></data>
+	<data name="Status_NoProject" xml:space="preserve"><value>未打开项目</value></data>
+	<data name="Asset_Category" xml:space="preserve"><value>资源分类</value></data>
+	<data name="Asset_CatAll" xml:space="preserve"><value>全部资源</value></data>
+	<data name="Asset_CatStory" xml:space="preserve"><value>故事文件</value></data>
+	<data name="Asset_CatImage" xml:space="preserve"><value>图片</value></data>
+	<data name="Asset_CatAudio" xml:space="preserve"><value>音频</value></data>
+	<data name="Asset_CatVideo" xml:space="preserve"><value>视频</value></data>
+	<data name="Asset_CatOther" xml:space="preserve"><value>其他</value></data>
+	<data name="Action_Scan" xml:space="preserve"><value>扫描资源</value></data>
+	<data name="Build_Overview" xml:space="preserve"><value>构建概览</value></data>
+	<data name="Build_Platform" xml:space="preserve"><value>平台: {0}</value></data>
+	<data name="Build_None" xml:space="preserve"><value>(未选择)</value></data>
+	<data name="Build_EncNone" xml:space="preserve"><value>加密: 未启用</value></data>
+	<data name="Build_EncNoRes" xml:space="preserve"><value>加密: 已启用（资源不加密）</value></data>
+	<data name="Build_EncRes" xml:space="preserve"><value>加密: 资源加密（{0} 种文件类型）</value></data>
+	<data name="Build_Aot" xml:space="preserve"><value>AOT: {0}</value></data>
+	<data name="Word_Enabled" xml:space="preserve"><value>启用</value></data>
+	<data name="Word_Disabled" xml:space="preserve"><value>禁用</value></data>
+	<data name="Action_StartBuild" xml:space="preserve"><value>开始构建</value></data>
+	<data name="Models_Title" xml:space="preserve"><value>模型管理</value></data>
+	<data name="Models_Desc" xml:space="preserve"><value>AI 翻译模型（OpenAI 兼容 / Anthropic），配置保存在本地 models.json。</value></data>
+	<data name="Models_Hint" xml:space="preserve"><value>点击「添加模型」→ 填 Base URL 与密钥 →「获取模型列表」勾选批量添加，或直接填模型 ID。</value></data>
+	<data name="Models_Empty" xml:space="preserve"><value>尚未添加任何模型。点击右上角「添加模型」开始。</value></data>
+	<data name="Action_AddModel" xml:space="preserve"><value>添加模型</value></data>
+	<data name="Action_EditModel" xml:space="preserve"><value>编辑</value></data>
+	<data name="Action_DeleteModel" xml:space="preserve"><value>删除</value></data>
+	<data name="Action_SetDefault" xml:space="preserve"><value>设为默认</value></data>
+	<data name="Models_Count" xml:space="preserve"><value>共 {0} 个模型</value></data>
+	<data name="Models_Default" xml:space="preserve"><value>默认</value></data>
+	<data name="Build_TargetPlatform" xml:space="preserve"><value>目标平台</value></data>
+	<data name="Build_CompileOptions" xml:space="preserve"><value>编译选项</value></data>
+	<data name="Build_PublishAot" xml:space="preserve"><value>AOT 发布</value></data>
+	<data name="Build_Encryption" xml:space="preserve"><value>加密配置</value></data>
+	<data name="Build_EnableEncryption" xml:space="preserve"><value>启用加密</value></data>
+	<data name="Build_EncryptResources" xml:space="preserve"><value>加密资源文件</value></data>
+	<data name="Build_PickTypes" xml:space="preserve"><value>选择要加密的文件类型：</value></data>
+	<data name="Build_SelectAll" xml:space="preserve"><value>全选</value></data>
+	<data name="Build_SelectNone" xml:space="preserve"><value>全不选</value></data>
+	<data name="Build_KeyShards" xml:space="preserve"><value>密钥分片数：</value></data>
+	<data name="Action_LaunchGame" xml:space="preserve"><value>启动游戏</value></data>
+	<data name="Action_StopGame" xml:space="preserve"><value>停止游戏</value></data>
+	<data name="Build_EngineDep" xml:space="preserve"><value>引擎依赖</value></data>
+	<data name="Build_CurrentVer" xml:space="preserve"><value>当前版本：{0}</value></data>
+	<data name="Action_UpdateEngine" xml:space="preserve"><value>检查并更新项目引擎</value></data>
+	<data name="Build_UpdateHint" xml:space="preserve"><value>提示：更新仅替换项目 DLL/ 内引擎依赖，需重新构建发布后生效。</value></data>
+	<data name="Build_Log" xml:space="preserve"><value>构建日志</value></data>
+	<data name="Tr_Title" xml:space="preserve"><value>多语言翻译</value></data>
+	<data name="Tr_Sub" xml:space="preserve"><value>原文即 key · 自动提取 .story + C# 文本 · 批量 AI 翻译</value></data>
+	<data name="Tr_Layout" xml:space="preserve"><value>输出布局</value></data>
+	<data name="Layout_Flat" xml:space="preserve"><value>扁平（按场景 json）</value></data>
+	<data name="Layout_Mirrored" xml:space="preserve"><value>子文件夹分类（镜像 story）</value></data>
+	<data name="Layout_Single" xml:space="preserve"><value>单文件</value></data>
+	<data name="Tr_SourceLang" xml:space="preserve"><value>源语言</value></data>
+	<data name="Wm_AutoDetect" xml:space="preserve"><value>留空=自动检测</value></data>
+	<data name="Tr_TargetLang" xml:space="preserve"><value>目标语言</value></data>
+	<data name="Tr_Mode" xml:space="preserve"><value>翻译模式</value></data>
+	<data name="Mode_Manual" xml:space="preserve"><value>人工翻译</value></data>
+	<data name="Mode_Ai" xml:space="preserve"><value>AI 智能翻译</value></data>
+	<data name="Mode_Api" xml:space="preserve"><value>翻译 API</value></data>
+	<data name="Mode_Agent" xml:space="preserve"><value>AI Agent 智能代理</value></data>
+	<data name="Action_Sync" xml:space="preserve"><value>同步翻译</value></data>
+	<data name="Action_ScanText" xml:space="preserve"><value>扫描文本</value></data>
+	<data name="Action_Generate" xml:space="preserve"><value>生成模式文件</value></data>
+	<data name="Force_Retranslate" xml:space="preserve"><value>强制重翻译</value></data>
+	<data name="Tr_AiSection" xml:space="preserve"><value>AI 翻译模型（OpenAI 兼容 / Anthropic；从「模型管理」添加）</value></data>
+	<data name="Tr_ApiSection" xml:space="preserve"><value>翻译 API 配置 · DeepL 风格（tag_handling 自动保留富文本标记）</value></data>
+	<data name="Form_Model" xml:space="preserve"><value>模型</value></data>
+	<data name="Form_Endpoint" xml:space="preserve"><value>端点</value></data>
+	<data name="Form_ApiTarget" xml:space="preserve"><value>目标语言码</value></data>
+	<data name="Action_ManageModels" xml:space="preserve"><value>管理模型</value></data>
+	<data name="Action_Discard" xml:space="preserve"><value>放弃</value></data>
+	<data name="Action_Apply" xml:space="preserve"><value>应用变更</value></data>
+	<data name="Tr_PreviewTitle" xml:space="preserve"><value>变更预览 — 待审批</value></data>
+	<data name="Tr_Stat" xml:space="preserve"><value>共 {0} 条 · 已翻译 {1} · 待翻译 {2}</value></data>
+	<data name="Word_Translated" xml:space="preserve"><value>已翻译</value></data>
+	<data name="Word_Untranslated" xml:space="preserve"><value>未翻译</value></data>
+	<data name="Dlg_Title" xml:space="preserve"><value>自定义模型</value></data>
+	<data name="Form_ApiFormat" xml:space="preserve"><value>API 格式 *</value></data>
+	<data name="Form_ModelId" xml:space="preserve"><value>模型 ID（选填）</value></data>
+	<data name="Form_DisplayName" xml:space="preserve"><value>模型展示名称</value></data>
+	<data name="Form_ApiKey" xml:space="preserve"><value>API 密钥 *</value></data>
+	<data name="Adv_Header" xml:space="preserve"><value>高级配置</value></data>
+	<data name="Form_Temperature" xml:space="preserve"><value>温度（0-1，建议 0.2-0.3）</value></data>
+	<data name="Form_BatchTip" xml:space="preserve"><value>越少越稳（更不易回显/偷懒，推荐默认 4）；越多越快、越省请求，但易被模型跳过未翻。</value></data>
+	<data name="Form_Timeout" xml:space="preserve"><value>超时（秒）</value></data>
+	<data name="Action_ConnectTest" xml:space="preserve"><value>连通性测试</value></data>
+	<data name="Action_FetchModels" xml:space="preserve"><value>获取模型列表</value></data>
+	<data name="Action_AddSelected" xml:space="preserve"><value>添加所选（{0}）</value></data>
+	<data name="Dlg_FetchedHint" xml:space="preserve"><value>已获取模型（勾选要添加的）</value></data>
+	<data name="Action_Reset" xml:space="preserve"><value>重置</value></data>
+	<data name="St_NeedBaseUrl" xml:space="preserve"><value>请先填写 Base URL</value></data>
+	<data name="St_Fetching" xml:space="preserve"><value>正在获取模型列表...</value></data>
+	<data name="St_FetchFail" xml:space="preserve"><value>❌ 无法获取列表：{0}</value></data>
+	<data name="St_FetchEmpty" xml:space="preserve"><value>✅ 已连通，但该端点未返回模型列表（data[] 为空）。请改用「模型 ID」手动添加。</value></data>
+	<data name="St_Fetched" xml:space="preserve"><value>已获取 {0} 个模型，勾选要添加的，然后点击「添加所选」。</value></data>
+	<data name="St_FetchError" xml:space="preserve"><value>❌ 获取异常：{0}</value></data>
+	<data name="St_NeedSelect" xml:space="preserve"><value>请至少勾选一个模型</value></data>
+	<data name="St_Adding" xml:space="preserve"><value>正在添加所选模型...</value></data>
+	<data name="St_Added" xml:space="preserve"><value>✅ 已添加 {0} 个模型 · 跳过已存在 {1}</value></data>
+	<data name="St_AddError" xml:space="preserve"><value>❌ 添加异常：{0}</value></data>
+	<data name="St_Testing" xml:space="preserve"><value>测试中...</value></data>
+	<data name="St_TestError" xml:space="preserve"><value>❌ 测试异常：{0}</value></data>
+	<data name="Hint_BaseUrlExample" xml:space="preserve"><value>例如 https://api.openai.com/v1</value></data>
+	<data name="Ph_ModelId" xml:space="preserve"><value>可选 · 留空则改用「获取模型列表」批量添加</value></data>
+	<data name="Ph_DisplayName" xml:space="preserve"><value>选填，留空则列表显示模型 ID</value></data>
+	<data name="Action_SelectAll" xml:space="preserve"><value>全选</value></data>
+	<data name="Action_DeselectAll" xml:space="preserve"><value>全不选</value></data>
+	<data name="Action_AddSelPlain" xml:space="preserve"><value>添加所选</value></data>
+	<data name="Dlg_InfoNote" xml:space="preserve"><value>ℹ 连通性测试与「获取模型列表」均调用 GET /v1/models，零成本、不消耗 Token；拉取后勾选要添加的（默认全选），添加时按「供应商+端点+模型」去重。</value></data>
+	<data name="Tip_GenerateFrame" xml:space="preserve"><value>生成多语言翻译文件框架（原文作 key、译文留空占位），不调用外部 AI。\n· 适合把生成的 JSON 交给任意 AI 工具（Claude / 网页 GPT 等）批量翻译后回填，自由且可高度自动化；\n· 也适合手工编辑。\n之后点「同步翻译」：只补空缺、保留你已填的译文。</value></data>
+	<data name="Tip_ForceRetranslate" xml:space="preserve"><value>勾选后忽略已有译文，全部条目重新翻译；不勾则跳过已翻译条目</value></data>
+	<data name="Ph_SelectModel" xml:space="preserve"><value>请选择模型</value></data>
+	<data name="Hint_AiMode" xml:space="preserve"><value>AI 模式按所选模型批量翻译（占位符自动校验）；模型配置保存在本地 models.json。</value></data>
+	<data name="Tr_PreviewSub" xml:space="preserve"><value>整轮 diff（原子写 + 自动备份，可回滚）</value></data>
+	<data name="Ph_LangCode" xml:space="preserve"><value>en-US / ja-JP</value></data>
+	<data name="Tip_LangCode" xml:space="preserve"><value>语言根目录名（引擎标准：en-US/ja-JP/ko-KR…），决定 Lang/{lang}/ 目录、语言切换与可用语言列表</value></data>
+<data name="St_Ready" xml:space="preserve"><value>就绪</value></data>
+	<data name="St_NeedProject" xml:space="preserve"><value>请先打开项目</value></data>
+	<data name="St_Scanning" xml:space="preserve"><value>正在扫描资源...</value></data>
+	<data name="St_FoundN" xml:space="preserve"><value>找到 {0} 个资源</value></data>
+	<data name="St_ScanFail" xml:space="preserve"><value>扫描失败: {0}</value></data>
+	<data name="St_PreviewFail" xml:space="preserve"><value>预览失败: {0}</value></data>
+	<data name="St_ImportFail" xml:space="preserve"><value>导入失败 {0}: {1}</value></data>
+	<data name="St_ImportedN" xml:space="preserve"><value>已导入 {0} 个资源</value></data>
+	<data name="Bld_EmptyProject" xml:space="preserve"><value>(未打开项目)</value></data>
+	<data name="Bld_Start" xml:space="preserve"><value>=== 开始构建 ===</value></data>
+	<data name="Bld_NoPlatform" xml:space="preserve"><value>错误: 未选择目标平台</value></data>
+	<data name="Bld_Building" xml:space="preserve"><value>正在构建 {0} (RID: {1})...</value></data>
+	<data name="Bld_Ok" xml:space="preserve"><value>[OK] {0} 构建成功: {1}</value></data>
+	<data name="Bld_Fail" xml:space="preserve"><value>[FAIL] {0} 构建失败: {1}</value></data>
+	<data name="Bld_Done" xml:space="preserve"><value>=== 构建完成 ===</value></data>
+	<data name="Bld_Exc" xml:space="preserve"><value>构建异常: {0}</value></data>
+	<data name="Bld_UpdCheck" xml:space="preserve"><value>正在检查项目引擎依赖更新...</value></data>
+	<data name="Bld_UpdLatest" xml:space="preserve"><value>已是最新版本（{0}）</value></data>
+	<data name="Bld_UpdApplied" xml:space="preserve"><value>已更新到 {0}（替换 {1} 个 DLL，重新构建后生效）</value></data>
+	<data name="Bld_UpdFail" xml:space="preserve"><value>更新失败：{0}</value></data>
+	<data name="Bld_UpdExc" xml:space="preserve"><value>更新异常：{0}</value></data>
+	<data name="Bld_LocatingExe" xml:space="preserve"><value>正在定位游戏可执行文件...</value></data>
+	<data name="Bld_LaunchExc" xml:space="preserve"><value>启动异常：{0}</value></data>
+	<data name="Bld_Stopping" xml:space="preserve"><value>正在停止游戏进程...</value></data>
+	<data name="Bld_Stopped" xml:space="preserve"><value>已请求停止游戏进程（若正在运行）。</value></data>
+	<data name="Bld_StopExc" xml:space="preserve"><value>停止异常：{0}</value></data>
+	<data name="Set_LangSwitched" xml:space="preserve"><value>已切换为 {0}，界面即时生效。</value></data>
+	<data name="Set_DotNetMissing" xml:space="preserve"><value>未安装</value></data>
+	<data name="Set_Saved" xml:space="preserve"><value>设置已保存</value></data>
+	<data name="Set_SaveFail" xml:space="preserve"><value>保存失败: {0}</value></data>
+	<data name="Set_DotNetOk" xml:space="preserve"><value>dotnet 已安装: {0}</value></data>
+	<data name="Set_DotNetNo" xml:space="preserve"><value>dotnet 未安装或不在 PATH 中</value></data>
+	<data name="Set_EngChecking" xml:space="preserve"><value>正在检查引擎更新...</value></data>
+	<data name="Set_EngUpToDate" xml:space="preserve"><value>已是最新版本（{0}）</value></data>
+	<data name="Set_EngApplied" xml:space="preserve"><value>已更新到 {0}（热替换 {1} 个 DLL）</value></data>
+	<data name="Set_EngPending" xml:space="preserve"><value>已更新到 {0}（热替换 {1}，{2} 个需重启 SDK 生效）</value></data>
+	<data name="Set_EngFail" xml:space="preserve"><value>更新失败：{0}</value></data>
+	<data name="Set_EngExc" xml:space="preserve"><value>检查失败：{0}</value></data>
+	<data name="Set_TplChecking" xml:space="preserve"><value>正在检查模板更新...</value></data>
+	<data name="Set_TplLatest" xml:space="preserve"><value>模板已是最新（{0}）</value></data>
+	<data name="Set_TplApplied" xml:space="preserve"><value>模板已更新到 {0}</value></data>
+	<data name="Set_TplFail" xml:space="preserve"><value>模板更新失败：{0}</value></data>
+	<data name="Set_TplExc" xml:space="preserve"><value>检查模板失败：{0}</value></data>
+	<data name="St_NeedProjectX" xml:space="preserve"><value>请先打开项目再翻译</value></data>
+	<data name="Tr_Scanning" xml:space="preserve"><value>正在扫描可翻译文本...</value></data>
+	<data name="Tr_Scanned" xml:space="preserve"><value>扫描完成：共 {0} 条，已翻译 {1}，待翻译 {2}</value></data>
+	<data name="Tr_ScanFail" xml:space="preserve"><value>扫描失败：{0}</value></data>
+	<data name="Tr_ApiNeedCfg" xml:space="preserve"><value>翻译 API 需要配置端点与 Key</value></data>
+	<data name="Tr_NoMode" xml:space="preserve"><value>请选择翻译模式</value></data>
+	<data name="Tr_PrepManual" xml:space="preserve"><value>正在准备翻译文件（生成占位）...</value></data>
+	<data name="Tr_PrepAi" xml:space="preserve"><value>正在 AI 批量翻译（占位符自动校验）...</value></data>
+	<data name="Tr_PrepApi" xml:space="preserve"><value>正在调用翻译 API...</value></data>
+	<data name="Tr_PrepSync" xml:space="preserve"><value>正在同步...</value></data>
+	<data name="Tr_Translating" xml:space="preserve"><value>正在翻译 {0}/{1}...</value></data>
+	<data name="Tr_ForceNote" xml:space="preserve"><value>（强制重翻）</value></data>
+	<data name="Tr_GenManual" xml:space="preserve"><value>已生成 {0} 个 {1} 模式文件（占位，仅结构不含翻译）{2}：新增 {3}，保留 {4}。请审阅后「应用变更」。</value></data>
+	<data name="Tr_GenOther" xml:space="preserve"><value>已生成 {0} 个文件变更（占位）{1}：新增 {2}，保留 {3} · 布局 {4}。请审阅预览后「应用变更」。</value></data>
+	<data name="Tr_GenAi" xml:space="preserve"><value>已准备 {0} 个文件变更{1}：翻译 {2}，回退 {3}，新增 {4}，保留 {5} · 布局 {6}。请审阅后「应用变更」。</value></data>
+	<data name="Tr_NoChange" xml:space="preserve"><value>未产生文件变更：新增 0 · 保留 {0} · 已是最新（{1}）。</value></data>
+	<data name="Tr_Cancelled" xml:space="preserve"><value>已取消</value></data>
+	<data name="Tr_GenAction" xml:space="preserve"><value>生成</value></data>
+	<data name="Tr_GenBusy" xml:space="preserve"><value>正在生成 {0} 模式翻译文件（占位）...</value></data>
+	<data name="Models_Unnamed" xml:space="preserve"><value>自定义接口</value></data>
+	<data name="Tr_SyncAction" xml:space="preserve"><value>同步</value></data>
+	<data name="Tr_OpFail" xml:space="preserve"><value>{0}失败：{1}</value></data>
+	<data name="Tr_AgentPlanning" xml:space="preserve"><value>Agent 正在理解项目并规划翻译（tool calling）...</value></data>
+	<data name="Tr_AgentTranslating" xml:space="preserve"><value>Agent 正在翻译 {0}/{1}...</value></data>
+	<data name="Tr_AgentNoClient" xml:space="preserve"><value>无法创建模型客户端</value></data>
+	<data name="Tr_AgentDone" xml:space="preserve"><value>Agent 完成（{0} 次工具调用）：已准备 {1} 个文件变更，待审批。\n模型说明：{2}</value></data>
+	<data name="Tr_AgentEmpty" xml:space="preserve"><value>Agent 未产生文件变更（{0} 次工具调用）。\n模型说明：{1}</value></data>
+	<data name="Tr_AgentFail" xml:space="preserve"><value>Agent 运行失败：{0}</value></data>
+	<data name="Tr_LayoutMirrored" xml:space="preserve"><value>子文件夹分类</value></data>
+	<data name="Tr_LayoutSingle" xml:space="preserve"><value>单文件</value></data>
+	<data name="Tr_LayoutFlat" xml:space="preserve"><value>扁平</value></data>
+	<data name="Tr_Usage" xml:space="preserve"><value>
+用量：输入 {0} tok · 输出 {1} tok · 请求 {2}</value></data>
+	<data name="Tr_Applied" xml:space="preserve"><value>已应用 {0} 处文件变更到 {1}</value></data>
+	<data name="Tr_ApplyFail" xml:space="preserve"><value>应用变更失败（已回滚）：{0}</value></data>
+	<data name="Tr_Discarded" xml:space="preserve"><value>已放弃本轮变更（未写盘）</value></data>
+	<data name="Tr_NoModels" xml:space="preserve"><value>AI 翻译需要先添加模型（点击「管理模型」）</value></data>
+	<data name="Tr_NoModelSelected" xml:space="preserve"><value>AI 翻译需要先在下拉框选择一个模型</value></data>
+	<data name="Tr_ModelGone" xml:space="preserve"><value>所选模型已不存在，请重新选择</value></data>
+	<data name="Tr_ModelNoId" xml:space="preserve"><value>所选模型缺少模型 ID，请在「模型管理」中补全</value></data>
+	<data name="Tr_ModelNoKey" xml:space="preserve"><value>所选模型「{0}」缺少 API Key（本地端点如 Ollama 可留空）</value></data>
+	<data name="Tr_ModelBadCfg" xml:space="preserve"><value>所选模型配置不完整，无法创建翻译器</value></data>
+	<data name="Tr_ModeDescManual" xml:space="preserve"><value>人工模式：生成译文留空的翻译文件，由人工/外部 AI 填充</value></data>
+	<data name="Tr_ModeDescAiNoModel" xml:space="preserve"><value>AI 模式：尚未添加模型，请点击「管理模型」添加（OpenAI 兼容 / Anthropic）</value></data>
+	<data name="Tr_ModeDescAi" xml:space="preserve"><value>AI 模式：按所选模型批量翻译，占位符自动校验重试</value></data>
+	<data name="Tr_ModeDescApi" xml:space="preserve"><value>API 模式：DeepL 风格翻译端点，tag_handling 保留富文本标记</value></data>
+	<data name="Tr_ModeDescAgentNoModel" xml:space="preserve"><value>Agent 模式：请先添加模型（管理模型 → 添加 OpenAI 兼容 / Anthropic）</value></data>
+	<data name="Tr_ModeDescAgent" xml:space="preserve"><value>Agent 模式：LLM 经工具调用理解项目并按所选布局规划翻译，文件写入需审批（Fast 快译确定性回退可用）</value></data>
+</root>

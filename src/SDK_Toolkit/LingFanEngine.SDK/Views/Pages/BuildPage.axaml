@@ -7,43 +7,43 @@
     <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
         <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Margin="16">
 
-            <TextBlock Text="构建发布" Classes="page-title" />
+            <TextBlock Text="{Binding PageTitle}" Classes="page-title" />
 
             <!-- 第一行：平台 + 编译选项 + 操作按钮 -->
             <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="24" Margin="0,8,0,16">
                 <StackPanel Spacing="4">
-                    <TextBlock Text="目标平台" FontWeight="Bold" Foreground="{DynamicResource Brush.TextHover}" />
+                    <TextBlock Text="{Binding TargetPlatformLabel}" FontWeight="Bold" Foreground="{DynamicResource Brush.TextHover}" />
                     <CheckBox IsChecked="{Binding TargetWindows}" Content="Windows" />
                     <CheckBox IsChecked="{Binding TargetLinux}" Content="Linux" />
                     <CheckBox IsChecked="{Binding TargetMacOSArm64}" Content="macOS (osx-arm64)" />
                     <CheckBox IsChecked="{Binding TargetMacOSX64}" Content="macOS (osx-x64)" />
                 </StackPanel>
                 <StackPanel Spacing="4">
-                    <TextBlock Text="编译选项" FontWeight="Bold" Foreground="{DynamicResource Brush.TextHover}" />
-                    <CheckBox IsChecked="{Binding PublishAot}" Content="AOT 发布" />
+                    <TextBlock Text="{Binding CompileOptionsLabel}" FontWeight="Bold" Foreground="{DynamicResource Brush.TextHover}" />
+                    <CheckBox IsChecked="{Binding PublishAot}" Content="{Binding PublishAotLabel}" />
                 </StackPanel>
                 <StackPanel Spacing="8" VerticalAlignment="Bottom" Orientation="Horizontal">
-                    <Button Content="开始构建" Command="{Binding BuildCommand}" FontSize="14" Padding="24,8"
+                    <Button Content="{Binding StartBuildLabel}" Command="{Binding BuildCommand}" FontSize="14" Padding="24,8"
                             Background="{DynamicResource Brush.Accent}" Foreground="{DynamicResource Brush.TextBright}" BorderThickness="0" />
-                    <Button Content="启动游戏" Command="{Binding LaunchGameCommand}" FontSize="14" Padding="24,8"
+                    <Button Content="{Binding LaunchGameLabel}" Command="{Binding LaunchGameCommand}" FontSize="14" Padding="24,8"
                             Background="{DynamicResource Brush.RunGreen}" Foreground="{DynamicResource Brush.TextBright}" BorderThickness="0" />
-                    <Button Content="停止游戏" Command="{Binding StopGameCommand}" FontSize="14" Padding="24,8"
+                    <Button Content="{Binding StopGameLabel}" Command="{Binding StopGameCommand}" FontSize="14" Padding="24,8"
                             Background="{DynamicResource Brush.StopRed}" Foreground="{DynamicResource Brush.TextBright}" BorderThickness="0" />
                 </StackPanel>
             </StackPanel>
 
             <!-- 第二行：加密配置（分层展开） -->
             <StackPanel Grid.Row="2" Spacing="6" Margin="0,0,0,16">
-                <TextBlock Text="加密配置" FontWeight="Bold" Foreground="{DynamicResource Brush.TextHover}" />
-                <CheckBox IsChecked="{Binding EnableEncryption}" Content="启用加密" />
+                <TextBlock Text="{Binding EncryptionLabel}" FontWeight="Bold" Foreground="{DynamicResource Brush.TextHover}" />
+                <CheckBox IsChecked="{Binding EnableEncryption}" Content="{Binding EnableEncryptionLabel}" />
 
                 <!-- 第二层：加密资源文件（仅启用加密时可见） -->
                 <StackPanel IsVisible="{Binding EnableEncryption}" Spacing="6" Margin="24,0,0,0">
-                    <CheckBox IsChecked="{Binding EncryptResources}" Content="加密资源文件" />
+                    <CheckBox IsChecked="{Binding EncryptResources}" Content="{Binding EncryptResourcesLabel}" />
 
                     <!-- 第三层：文件类型 + 密钥分片（仅加密资源时可见） -->
                     <StackPanel IsVisible="{Binding EncryptResources}" Spacing="4" Margin="24,4,0,0">
-                        <TextBlock Text="选择要加密的文件类型：" FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" />
+                        <TextBlock Text="{Binding PickTypesLabel}" FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" />
                         <ItemsControl ItemsSource="{Binding EncryptFileTypes}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -63,12 +63,12 @@
                         </ItemsControl>
 
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                            <Button x:Name="SelectAllBtn" Content="全选" Padding="12,2" FontSize="11" Classes="transparent" />
-                            <Button x:Name="SelectNoneBtn" Content="全不选" Padding="12,2" FontSize="11" Classes="transparent" />
+                            <Button x:Name="SelectAllBtn" Content="{Binding SelectAllLabel}" Padding="12,2" FontSize="11" Classes="transparent" />
+                            <Button x:Name="SelectNoneBtn" Content="{Binding SelectNoneLabel}" Padding="12,2" FontSize="11" Classes="transparent" />
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-                            <TextBlock Text="密钥分片数：" FontSize="12" Foreground="{DynamicResource Brush.TextHover}"
+                            <TextBlock Text="{Binding KeyShardsLabel}" FontSize="12" Foreground="{DynamicResource Brush.TextHover}"
                                        VerticalAlignment="Center" />
                             <Button x:Name="MinusBtn" Content="−" Width="28" Height="28" FontSize="14" Padding="0"
                                     Classes="transparent" />
@@ -83,16 +83,16 @@
 
             <!-- 引擎依赖 -->
             <StackPanel Grid.Row="3" Spacing="6" Margin="0,0,0,16">
-                <TextBlock Text="引擎依赖" FontWeight="Bold" Foreground="{DynamicResource Brush.TextHover}" />
+                <TextBlock Text="{Binding EngineDepLabel}" FontWeight="Bold" Foreground="{DynamicResource Brush.TextHover}" />
                 <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,4,0,0">
-                    <TextBlock Text="{Binding EngineDependencyVersion, StringFormat='当前版本：{0}'}" FontSize="13"
+                    <TextBlock Text="{Binding CurrentEngineVersionLabel}" FontSize="13"
                                VerticalAlignment="Center" Foreground="{DynamicResource Brush.TextHover}" />
-                    <Button Content="检查并更新项目引擎" Command="{Binding UpdateProjectEngineCommand}" FontSize="13" Padding="16,6"
+                    <Button Content="{Binding UpdateEngineLabel}" Command="{Binding UpdateProjectEngineCommand}" FontSize="13" Padding="16,6"
                             Background="{DynamicResource Brush.Accent}" Foreground="{DynamicResource Brush.TextBright}" BorderThickness="0" />
                 </StackPanel>
                 <TextBlock Text="{Binding ProjectEngineUpdateMessage}" FontSize="12" Foreground="{DynamicResource Brush.Info}"
                            TextWrapping="Wrap" />
-                <TextBlock Text="提示：更新仅替换项目 DLL/ 内引擎依赖，需重新构建发布后生效。" FontSize="11"
+                <TextBlock Text="{Binding UpdateHintLabel}" FontSize="11"
                            Foreground="{DynamicResource Brush.TextMuted}" />
                 <TextBlock Text="{Binding LaunchMessage}" FontSize="12" Foreground="{DynamicResource Brush.Info}"
                            TextWrapping="Wrap" Margin="0,4,0,0" />
@@ -100,7 +100,7 @@
 
             <!-- 构建日志 -->
             <StackPanel Grid.Row="4">
-                <TextBlock Text="构建日志" FontWeight="Bold" Margin="0,0,0,4" Foreground="{DynamicResource Brush.TextHover}" />
+                <TextBlock Text="{Binding BuildLogLabel}" FontWeight="Bold" Margin="0,0,0,4" Foreground="{DynamicResource Brush.TextHover}" />
                 <TextBox Text="{Binding BuildLog}" IsReadOnly="True" AcceptsReturn="True"
                          FontFamily="Consolas,Menlo,Monospace" FontSize="12"
                          Background="{DynamicResource Brush.EditorBg}" BorderBrush="{DynamicResource Brush.ActivityBarBg}" />

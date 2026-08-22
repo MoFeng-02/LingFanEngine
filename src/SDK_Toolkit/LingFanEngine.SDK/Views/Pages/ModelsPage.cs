@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
+using LingFanEngine.SDK.I18n;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Services.Abstractions;
 using LingFanEngine.SDK.Services.Implementations;
@@ -29,6 +30,15 @@ public partial class ModelsPage : UserControl, INavigationAware
     {
         InitializeComponent();
         WireButtons();
+        // 语言切换 → 重建分组条目（重新解析条目/徽章内的 SdkLocalizer.Loc）
+        SdkLocalizer.CultureChanged += OnCultureChanged;
+    }
+
+    /// <summary>语言切换时刷新条目与按钮态（.axaml 外壳绑定由 ViewModel 全量通知刷新）。</summary>
+    private void OnCultureChanged()
+    {
+        _vm?.Refresh();
+        UpdateButtons();
     }
 
     // ===== INavigationAware =====
@@ -114,7 +124,7 @@ public partial class ModelsPage : UserControl, INavigationAware
         };
         var count = new TextBlock
         {
-            Text = $"共 {h.Count} 个模型",
+            Text = string.Format(_vm?.ModelCountFormat ?? "{0}", h.Count),
             FontSize = 11,
             Foreground = ThemePalette.TextMuted,
             VerticalAlignment = VerticalAlignment.Center,
@@ -275,7 +285,7 @@ public partial class ModelsPage : UserControl, INavigationAware
             VerticalAlignment = VerticalAlignment.Center,
             Child = new TextBlock
             {
-                Text = "\uE735  默认",  // Segoe MDL2 = ★ 收藏星标
+                Text = "\uE735  " + SdkLocalizer.Loc("Models_Default"),  // ★ 默认 —— Segoe MDL2 收藏星标
                 FontFamily = FontFamily.Parse("Segoe MDL2 Assets"),
                 FontSize = 11,
                 FontWeight = FontWeight.SemiBold,

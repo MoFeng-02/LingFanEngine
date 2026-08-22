@@ -19,8 +19,8 @@ public sealed class ModelAdvancedConfig
     /// <summary>温度（0-1，批量翻译建议 0.2-0.3 保持一致性）</summary>
     public double Temperature { get; set; } = 0.3;
 
-    /// <summary>单次请求最大翻译条数（批量合并，默认 50）</summary>
-    public int BatchSize { get; set; } = 50;
+    /// <summary>每批翻译的条目数（越小越稳定、越少回显/截断；越大越省请求但易被模型偷懒）。可在模型高级配置中显式调整。</summary>
+    public int BatchSize { get; set; } = 4;
 
     /// <summary>HTTP 超时（秒）</summary>
     public int TimeoutSeconds { get; set; } = 120;

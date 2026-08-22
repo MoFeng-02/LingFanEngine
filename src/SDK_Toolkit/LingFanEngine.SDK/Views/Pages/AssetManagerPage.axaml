@@ -8,8 +8,8 @@
 
         <!-- 标题 + 扫描 -->
         <StackPanel Orientation="Horizontal" Spacing="8">
-            <TextBlock Text="资源管理" Classes="page-title" />
-            <Button Content="扫描资源" Command="{Binding ScanAssetsCommand}" />
+            <TextBlock Text="{Binding PageTitle}" Classes="page-title" />
+            <Button Content="{Binding ScanLabel}" Command="{Binding ScanAssetsCommand}" />
         </StackPanel>
 
         <!-- 资源列表（拖拽导入在 code-behind 挂接） -->

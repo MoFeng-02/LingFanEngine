@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -32,7 +34,18 @@ namespace LingFanEngine.SDK.Utils;
     WriteIndented = true,
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
-public partial class SdkJsonContext : JsonSerializerContext;
+public partial class SdkJsonContext : JsonSerializerContext
+{
+    /// <summary>宽松编码的字符串类型信息：保留中文/emoji 可读（省 token、模型更准），JSON 必转字符照常转义。供喂给模型的文本统一复用。</summary>
+    /// <remarks>用 Lazy 惰性求值：避免在 <c>SdkJsonContext</c> 的静态构造器内访问自身 <see cref="Default"/>（会触发递归/未就绪而 NRE），首次调用时 <see cref="Default"/> 已就绪。</remarks>
+    public static JsonTypeInfo<string> LenientString => LenientStringLazy.Value;
+
+    private static readonly Lazy<JsonTypeInfo<string>> LenientStringLazy = new(
+        () => (JsonTypeInfo<string>)new JsonSerializerOptions(Default!.Options)
+        {
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        }.GetTypeInfo(typeof(string)));
+}
 
 /// <summary>
 /// AOT 友好的 JSON 序列化辅助类。

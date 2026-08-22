@@ -4,7 +4,9 @@ using System.Globalization;
 using System.IO;
 using System.Net.Http;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using LingFanEngine.SDK.Models;
@@ -18,6 +20,9 @@ namespace LingFanEngine.SDK.AI;
 /// </summary>
 public abstract class ModelClientBase : IModelClient
 {
+    /// <summary>请求体消息文本用宽松 JSON 编码（单例见 <see cref="SdkJsonContext.LenientString"/>）：保留中文/emoji 可读，JSON 仍合法。</summary>
+    protected static JsonTypeInfo<string> PromptText => SdkJsonContext.LenientString;
+
     private static readonly RetryPolicy s_retry = new();
 
     /// <summary>模型配置</summary>
@@ -49,16 +54,38 @@ public abstract class ModelClientBase : IModelClient
     }
 
     /// <summary>
-    /// 带重试的发送——对 429/5xx 指数退避重试；每次尝试重建请求（HttpRequestMessage 不可复用）。
-    /// 成功后返回最终响应（调用方负责 Dispose）。
+    /// 带重试的发送——对 429/5xx 及网络异常/超时（断网、DNS/连接失败、请求超时）做指数退避重试；
+    /// 每次尝试重建请求（HttpRequestMessage 不可复用）。成功后返回最终响应（调用方负责 Dispose）。
     /// </summary>
     protected static async Task<HttpResponseMessage> SendWithRetryAsync(
         HttpClient client, Func<HttpRequestMessage> createRequest, CancellationToken ct)
     {
         for (var attempt = 0; ; attempt++)
         {
-            using var req = createRequest();
-            var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            HttpResponseMessage resp;
+            try
+            {
+                using var req = createRequest();
+                resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            }
+            catch (HttpRequestException)
+            {
+                // 断网 / DNS / 连接被拒 / TLS 等——视为可重试的服务不可达
+                if (attempt >= s_retry.MaxAttempts) throw;
+                ct.ThrowIfCancellationRequested();
+                await s_retry.DelayAsync(attempt, ct).ConfigureAwait(false);
+                continue;
+            }
+            catch (OperationCanceledException)
+            {
+                // 分两种：宿主要求取消 → 直接抛出（不做无谓重试）；自身超时 → 按可重试失败处理
+                if (ct.IsCancellationRequested) throw;
+                if (attempt >= s_retry.MaxAttempts) throw;
+                ct.ThrowIfCancellationRequested();
+                await s_retry.DelayAsync(attempt, ct).ConfigureAwait(false);
+                continue;
+            }
+
             if (!s_retry.ShouldRetry((int)resp.StatusCode, attempt))
                 return resp;
             resp.Dispose();
@@ -89,14 +116,14 @@ public abstract class ModelClientBase : IModelClient
             var t = tools[i];
             if (anthropic)
             {
-                sb.Append("{\"name\":").Append(JsonSerializer.Serialize(t.Name, SdkJsonContext.Default.String))
-                  .Append(",\"description\":").Append(JsonSerializer.Serialize(t.Description, SdkJsonContext.Default.String))
+                sb.Append("{\"name\":").Append(JsonSerializer.Serialize(t.Name, PromptText))
+                  .Append(",\"description\":").Append(JsonSerializer.Serialize(t.Description, PromptText))
                   .Append(",\"input_schema\":").Append(t.ParametersJson).Append('}');
             }
             else
             {
-                sb.Append("{\"type\":\"function\",\"function\":{\"name\":").Append(JsonSerializer.Serialize(t.Name, SdkJsonContext.Default.String))
-                  .Append(",\"description\":").Append(JsonSerializer.Serialize(t.Description, SdkJsonContext.Default.String))
+                sb.Append("{\"type\":\"function\",\"function\":{\"name\":").Append(JsonSerializer.Serialize(t.Name, PromptText))
+                  .Append(",\"description\":").Append(JsonSerializer.Serialize(t.Description, PromptText))
                   .Append(",\"parameters\":").Append(t.ParametersJson).Append("}}");
             }
         }
@@ -220,7 +247,7 @@ public sealed class OpenAiCompatibleClient : ModelClientBase
     private string BuildBody(IReadOnlyList<ModelMessage> messages, ModelRequestOptions options, bool stream)
     {
         var sb = new StringBuilder("{\"model\":");
-        sb.Append(JsonSerializer.Serialize(Config.ModelId, SdkJsonContext.Default.String));
+        sb.Append(JsonSerializer.Serialize(Config.ModelId, PromptText));
         if (options.Temperature.HasValue)
             sb.Append(",\"temperature\":").Append(options.Temperature.Value.ToString("0.0#", CultureInfo.InvariantCulture));
         if (options.MaxTokens.HasValue)
@@ -244,18 +271,18 @@ public sealed class OpenAiCompatibleClient : ModelClientBase
 
     private static void AppendMessage(StringBuilder sb, ModelMessage m)
     {
-        sb.Append("{\"role\":").Append(JsonSerializer.Serialize(m.Role, SdkJsonContext.Default.String));
+        sb.Append("{\"role\":").Append(JsonSerializer.Serialize(m.Role, PromptText));
 
         // 工具结果消息：role=tool + tool_call_id
         if (m.ToolResultId != null)
         {
-            sb.Append(",\"tool_call_id\":").Append(JsonSerializer.Serialize(m.ToolResultId, SdkJsonContext.Default.String))
-              .Append(",\"content\":").Append(JsonSerializer.Serialize(m.Content, SdkJsonContext.Default.String))
+            sb.Append(",\"tool_call_id\":").Append(JsonSerializer.Serialize(m.ToolResultId, PromptText))
+              .Append(",\"content\":").Append(JsonSerializer.Serialize(m.Content, PromptText))
               .Append('}');
             return;
         }
 
-        sb.Append(",\"content\":").Append(JsonSerializer.Serialize(m.Content, SdkJsonContext.Default.String));
+        sb.Append(",\"content\":").Append(JsonSerializer.Serialize(m.Content, PromptText));
 
         // 助手携带工具调用
         if (m.ToolCalls is { Count: > 0 })
@@ -265,9 +292,9 @@ public sealed class OpenAiCompatibleClient : ModelClientBase
             {
                 var tc = m.ToolCalls[i];
                 if (i > 0) sb.Append(',');
-                sb.Append("{\"id\":").Append(JsonSerializer.Serialize(tc.Id, SdkJsonContext.Default.String))
-                  .Append(",\"type\":\"function\",\"function\":{\"name\":").Append(JsonSerializer.Serialize(tc.Name, SdkJsonContext.Default.String))
-                  .Append(",\"arguments\":").Append(JsonSerializer.Serialize(tc.ArgumentsJson, SdkJsonContext.Default.String))
+                sb.Append("{\"id\":").Append(JsonSerializer.Serialize(tc.Id, PromptText))
+                  .Append(",\"type\":\"function\",\"function\":{\"name\":").Append(JsonSerializer.Serialize(tc.Name, PromptText))
+                  .Append(",\"arguments\":").Append(JsonSerializer.Serialize(tc.ArgumentsJson, PromptText))
                   .Append("}}");
             }
             sb.Append(']');
@@ -409,9 +436,9 @@ public sealed class AnthropicClient : ModelClientBase
             hasMsg = true;
         }
 
-        var sb = new StringBuilder("{\"model\":").Append(JsonSerializer.Serialize(Config.ModelId, SdkJsonContext.Default.String));
+        var sb = new StringBuilder("{\"model\":").Append(JsonSerializer.Serialize(Config.ModelId, PromptText));
         if (systemParts.Count > 0)
-            sb.Append(",\"system\":").Append(JsonSerializer.Serialize(string.Join("\n\n", systemParts), SdkJsonContext.Default.String));
+            sb.Append(",\"system\":").Append(JsonSerializer.Serialize(string.Join("\n\n", systemParts), PromptText));
         sb.Append(",\"max_tokens\":").Append(options.MaxTokens ?? 2048);
         if (options.Temperature.HasValue)
             sb.Append(",\"temperature\":").Append(options.Temperature.Value.ToString("0.0#", CultureInfo.InvariantCulture));
@@ -430,8 +457,8 @@ public sealed class AnthropicClient : ModelClientBase
         if (m.ToolResultId != null)
         {
             sb.Append("{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":")
-              .Append(JsonSerializer.Serialize(m.ToolResultId, SdkJsonContext.Default.String))
-              .Append(",\"content\":").Append(JsonSerializer.Serialize(m.Content, SdkJsonContext.Default.String))
+              .Append(JsonSerializer.Serialize(m.ToolResultId, PromptText))
+              .Append(",\"content\":").Append(JsonSerializer.Serialize(m.Content, PromptText))
               .Append("}]}");
             return;
         }
@@ -445,25 +472,25 @@ public sealed class AnthropicClient : ModelClientBase
             var hasBlock = false;
             if (!string.IsNullOrEmpty(m.Content))
             {
-                blocks.Append("{\"type\":\"text\",\"text\":").Append(JsonSerializer.Serialize(m.Content, SdkJsonContext.Default.String)).Append('}');
+                blocks.Append("{\"type\":\"text\",\"text\":").Append(JsonSerializer.Serialize(m.Content, PromptText)).Append('}');
                 hasBlock = true;
             }
             foreach (var tc in m.ToolCalls)
             {
                 if (hasBlock) blocks.Append(',');
-                blocks.Append("{\"type\":\"tool_use\",\"id\":").Append(JsonSerializer.Serialize(tc.Id, SdkJsonContext.Default.String))
-                       .Append(",\"name\":").Append(JsonSerializer.Serialize(tc.Name, SdkJsonContext.Default.String))
+                blocks.Append("{\"type\":\"tool_use\",\"id\":").Append(JsonSerializer.Serialize(tc.Id, PromptText))
+                       .Append(",\"name\":").Append(JsonSerializer.Serialize(tc.Name, PromptText))
                        .Append(",\"input\":").Append(tc.ArgumentsJson).Append('}');
                 hasBlock = true;
             }
             blocks.Append(']');
-            sb.Append("{\"role\":").Append(JsonSerializer.Serialize(role, SdkJsonContext.Default.String))
+            sb.Append("{\"role\":").Append(JsonSerializer.Serialize(role, PromptText))
               .Append(",\"content\":").Append(blocks).Append('}');
             return;
         }
 
-        sb.Append("{\"role\":").Append(JsonSerializer.Serialize(role, SdkJsonContext.Default.String))
-          .Append(",\"content\":").Append(JsonSerializer.Serialize(m.Content, SdkJsonContext.Default.String))
+        sb.Append("{\"role\":").Append(JsonSerializer.Serialize(role, PromptText))
+          .Append(",\"content\":").Append(JsonSerializer.Serialize(m.Content, PromptText))
           .Append('}');
     }
 

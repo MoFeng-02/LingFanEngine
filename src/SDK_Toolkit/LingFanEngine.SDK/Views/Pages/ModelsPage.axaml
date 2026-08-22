@@ -9,15 +9,15 @@
             <!-- 标题 + 描述 + 添加 -->
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Spacing="2" VerticalAlignment="Center">
-                    <TextBlock Text="模型管理" Classes="page-title" />
-                    <TextBlock Text="AI 翻译模型（OpenAI 兼容 / Anthropic），配置保存在本地 models.json。"
+                    <TextBlock Text="{Binding PageTitle}" Classes="page-title" />
+                    <TextBlock Text="{Binding PageDescription}"
                                FontSize="12"
                                Foreground="{DynamicResource Brush.TextMuted}"
                                TextWrapping="Wrap" />
                 </StackPanel>
                 <Button x:Name="AddBtn"
                         Grid.Column="1"
-                        Content="+ 添加模型"
+                        Content="{Binding AddModelLabel}"
                         Padding="16,6"
                         Background="{DynamicResource Brush.Accent}"
                         Foreground="{DynamicResource Brush.TextBright}"
@@ -30,7 +30,7 @@
                     BorderThickness="1"
                     CornerRadius="4"
                     Padding="12,8">
-                <TextBlock Text="提示：点击「添加模型」→ 填写 Base URL 与 API 密钥 → 点「获取模型列表」即可拉取该端点的全部模型（勾选、默认全选）一键批量添加，也可手动填写「模型 ID」添加单条。"
+                <TextBlock Text="{Binding AddHint}"
                            FontSize="12"
                            Foreground="{DynamicResource Brush.TextMuted}"
                            TextWrapping="Wrap" />
@@ -56,7 +56,7 @@
             </ListBox>
 
             <TextBlock x:Name="EmptyHint"
-                       Text="尚未添加任何模型。点击右上角「添加模型」开始。"
+                       Text="{Binding EmptyHintText}"
                        FontSize="12"
                        Foreground="{DynamicResource Brush.TextMuted}"
                        Margin="0,4"
@@ -64,9 +64,9 @@
 
             <!-- 操作按钮 -->
             <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button x:Name="EditBtn" Content="编辑" Classes="transparent" Padding="14,6" />
-                <Button x:Name="DelBtn"  Content="删除" Classes="transparent" Padding="14,6" />
-                <Button x:Name="DefBtn"  Content="设为默认" Classes="transparent" Padding="14,6" />
+                <Button x:Name="EditBtn" Content="{Binding EditModelLabel}" Classes="transparent" Padding="14,6" />
+                <Button x:Name="DelBtn"  Content="{Binding DeleteModelLabel}" Classes="transparent" Padding="14,6" />
+                <Button x:Name="DefBtn"  Content="{Binding SetDefaultLabel}" Classes="transparent" Padding="14,6" />
             </StackPanel>
 
         </StackPanel>

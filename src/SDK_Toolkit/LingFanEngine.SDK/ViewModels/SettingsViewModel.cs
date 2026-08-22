@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using LingFanEngine.SDK.I18n;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Constants;
 using LingFanEngine.SDK.Services.Abstractions;
@@ -9,6 +11,9 @@ using LingFanEngine.SDK.Utils;
 using System.Text.Json.Serialization.Metadata;
 
 namespace LingFanEngine.SDK.ViewModels;
+
+/// <summary>语言选项（原生名显示）</summary>
+public sealed record LanguageOption(string Code, string Label);
 
 /// <summary>设置 ViewModel（P2-4 增强）</summary>
 public partial class SettingsViewModel : ViewModelBase
@@ -42,6 +47,27 @@ public partial class SettingsViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _defaultPublishAot = true;
+
+    // 界面语言
+    /// <summary>可选界面语言（原生名）</summary>
+    public IReadOnlyList<LanguageOption> Languages { get; } =
+    [
+        new("zh-Hans", "中文"),
+        new("en-US", "English"),
+        new("ja-JP", "日本語"),
+    ];
+
+    [ObservableProperty]
+    private LanguageOption? _selectedLanguage;
+
+    /// <summary>语言切换即生效：设置资源文化 + 立即保存（当前已渲染界面需重启或重建窗口才整体刷新）。</summary>
+    partial void OnSelectedLanguageChanged(LanguageOption? value)
+    {
+        if (value == null) return;
+        SdkLocalizer.SetCulture(value.Code);
+        SaveSettings();
+        StatusMessage = SdkLocalizer.Loc("Set_LangSwitched", value.Label);
+    }
 
     // P2-4: 引擎版本（只读）——优先从 LingFanEngine.dll 元数据读取真实版本
     [ObservableProperty]
@@ -85,7 +111,7 @@ public partial class SettingsViewModel : ViewModelBase
         _templateUpdateService = templateUpdateService;
 
         // 初始化信息
-        DotNetVersion = ProcessHelper.GetDotNetVersion() ?? "未安装";
+        DotNetVersion = ProcessHelper.GetDotNetVersion() ?? SdkLocalizer.Loc("Set_DotNetMissing");
         AppDataDirectory = PathHelper.GetAppDataDirectory();
         DefaultProjectDirectory = _platformService.GetDefaultProjectDirectory();
 
@@ -136,6 +162,7 @@ public partial class SettingsViewModel : ViewModelBase
                 DefaultSelfContained = settings.DefaultSelfContained;
                 DefaultPublishAot = settings.DefaultPublishAot;
                 EngineVersion = settings.EngineVersion;
+                SelectedLanguage = MatchLanguage(settings.UILanguage);
             }
         }
         catch (Exception ex)
@@ -152,6 +179,7 @@ public partial class SettingsViewModel : ViewModelBase
         {
             var settings = new SdkSettings
             {
+                UILanguage = SelectedLanguage?.Code ?? "zh-Hans",
                 DefaultBuildConfig = DefaultBuildConfig,
                 DefaultSelfContained = DefaultSelfContained,
                 DefaultPublishAot = DefaultPublishAot,
@@ -166,12 +194,27 @@ public partial class SettingsViewModel : ViewModelBase
 
             var json = JsonHelper.Serialize(settings, SdkJsonContext.Default.SdkSettings);
             File.WriteAllText(SettingsFilePath, json);
-            StatusMessage = "设置已保存";
+            StatusMessage = SdkLocalizer.Loc("Set_Saved");
         }
         catch (Exception ex)
         {
-            StatusMessage = $"保存失败: {ex.Message}";
+            StatusMessage = SdkLocalizer.Loc("Set_SaveFail", ex.Message);
         }
+    }
+
+    /// <summary>按语言码匹配选项（未知码回退到中文默认项）。</summary>
+    private static LanguageOption? MatchLanguage(string code)
+    {
+        var options = new List<LanguageOption>
+        {
+            new("zh-Hans", "中文"),
+            new("en-US", "English"),
+            new("ja-JP", "日本語"),
+        };
+        for (var i = 0; i < options.Count; i++)
+            if (string.Equals(code, options[i].Code, StringComparison.OrdinalIgnoreCase))
+                return options[i];
+        return options[0];
     }
 
     /// <summary>在资源管理器中打开应用数据目录</summary>
@@ -187,11 +230,11 @@ public partial class SettingsViewModel : ViewModelBase
     {
         if (ProcessHelper.CheckDotNetInstalled())
         {
-            StatusMessage = $"dotnet 已安装: {DotNetVersion}";
+            StatusMessage = SdkLocalizer.Loc("Set_DotNetOk", DotNetVersion);
         }
         else
         {
-            StatusMessage = "dotnet 未安装或不在 PATH 中";
+            StatusMessage = SdkLocalizer.Loc("Set_DotNetNo");
         }
     }
 
@@ -204,7 +247,7 @@ public partial class SettingsViewModel : ViewModelBase
     private async Task CheckEngineUpdateAsync()
     {
         IsCheckingEngineUpdate = true;
-        EngineUpdateMessage = "正在检查引擎更新...";
+        EngineUpdateMessage = SdkLocalizer.Loc("Set_EngChecking");
         StatusMessage = EngineUpdateMessage;
 
         try
@@ -219,10 +262,10 @@ public partial class SettingsViewModel : ViewModelBase
 
             EngineUpdateMessage = result.Status switch
             {
-                EngineUpdateStatus.UpToDate => $"已是最新版本（{EngineVersion}）",
-                EngineUpdateStatus.UpdateApplied => $"已更新到 {result.ManifestVersion}（热替换 {result.UpdatedDlls.Count} 个 DLL）",
-                EngineUpdateStatus.PendingRestart => $"已更新到 {result.ManifestVersion}（热替换 {result.UpdatedDlls.Count}，{result.PendingDlls.Count} 个需重启 SDK 生效）",
-                EngineUpdateStatus.Failed => $"更新失败：{result.ErrorMessage}",
+                EngineUpdateStatus.UpToDate => SdkLocalizer.Loc("Set_EngUpToDate", EngineVersion),
+                EngineUpdateStatus.UpdateApplied => SdkLocalizer.Loc("Set_EngApplied", result.ManifestVersion, result.UpdatedDlls.Count),
+                EngineUpdateStatus.PendingRestart => SdkLocalizer.Loc("Set_EngPending", result.ManifestVersion, result.UpdatedDlls.Count, result.PendingDlls.Count),
+                EngineUpdateStatus.Failed => SdkLocalizer.Loc("Set_EngFail", result.ErrorMessage),
                 _ => EngineUpdateMessage,
             };
             StatusMessage = EngineUpdateMessage;
@@ -236,7 +279,7 @@ public partial class SettingsViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            EngineUpdateMessage = $"检查失败：{ex.Message}";
+            EngineUpdateMessage = SdkLocalizer.Loc("Set_EngExc", ex.Message);
             StatusMessage = EngineUpdateMessage;
         }
         finally
@@ -256,7 +299,7 @@ public partial class SettingsViewModel : ViewModelBase
     private async Task CheckTemplateUpdateAsync()
     {
         IsCheckingTemplateUpdate = true;
-        TemplateUpdateMessage = "正在检查模板更新...";
+        TemplateUpdateMessage = SdkLocalizer.Loc("Set_TplChecking");
         StatusMessage = TemplateUpdateMessage;
 
         try
@@ -271,9 +314,9 @@ public partial class SettingsViewModel : ViewModelBase
 
             TemplateUpdateMessage = result.Status switch
             {
-                TemplateUpdateStatus.UpToDate => $"模板已是最新（{TemplateVersion}）",
-                TemplateUpdateStatus.UpdateApplied => $"模板已更新到 {result.ManifestVersion}",
-                TemplateUpdateStatus.Failed => $"模板更新失败：{result.ErrorMessage}",
+                TemplateUpdateStatus.UpToDate => SdkLocalizer.Loc("Set_TplLatest", TemplateVersion),
+                TemplateUpdateStatus.UpdateApplied => SdkLocalizer.Loc("Set_TplApplied", result.ManifestVersion),
+                TemplateUpdateStatus.Failed => SdkLocalizer.Loc("Set_TplFail", result.ErrorMessage),
                 _ => TemplateUpdateMessage,
             };
             StatusMessage = TemplateUpdateMessage;
@@ -285,7 +328,7 @@ public partial class SettingsViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            TemplateUpdateMessage = $"检查模板失败：{ex.Message}";
+            TemplateUpdateMessage = SdkLocalizer.Loc("Set_TplExc", ex.Message);
             StatusMessage = TemplateUpdateMessage;
         }
         finally
