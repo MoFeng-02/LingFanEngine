@@ -247,4 +247,189 @@ public class DslFormatterTests
         var src = $"{keyword} x:\n  body_cmd\n";
         DslFormatter.Format(src).Should().Be(src);
     }
+
+    // ── 花括号块语法 ──
+
+    [Fact]
+    public void Format_BracedIfBlock_PopsOnCloseBrace()
+    {
+        const string src =
+            "if {x} {\n" +
+            "  say \"in if\"\n" +
+            "}\n" +
+            "say \"after\"\n";
+        var expected =
+            "if {x} {\n" +
+            "  say \"in if\"\n" +
+            "}\n" +
+            "say \"after\"\n";
+        DslFormatter.Format(src).Should().Be(expected);
+    }
+
+    [Fact]
+    public void Format_BracedIfElseIf_PopsAndContinues()
+    {
+        const string src =
+            "if {a} {\n" +
+            "  say \"a\"\n" +
+            "} else if {b} {\n" +
+            "  say \"b\"\n" +
+            "}\n" +
+            "say \"done\"\n";
+        var expected =
+            "if {a} {\n" +
+            "  say \"a\"\n" +
+            "} else if {b} {\n" +
+            "  say \"b\"\n" +
+            "}\n" +
+            "say \"done\"\n";
+        DslFormatter.Format(src).Should().Be(expected);
+    }
+
+    [Fact]
+    public void Format_BracedIfElse_PopsAndContinues()
+    {
+        const string src =
+            "if {a} {\n" +
+            "  say \"a\"\n" +
+            "} else {\n" +
+            "  say \"b\"\n" +
+            "}\n" +
+            "say \"done\"\n";
+        var expected =
+            "if {a} {\n" +
+            "  say \"a\"\n" +
+            "} else {\n" +
+            "  say \"b\"\n" +
+            "}\n" +
+            "say \"done\"\n";
+        DslFormatter.Format(src).Should().Be(expected);
+    }
+
+    [Fact]
+    public void Format_BracedBlock_NestedInLabel()
+    {
+        const string src =
+            "label t:\n" +
+            "  if {x} {\n" +
+            "    say \"hi\"\n" +
+            "  }\n" +
+            "  say \"after\"\n";
+        DslFormatter.Format(src).Should().Be(src);
+    }
+
+    [Fact]
+    public void Format_BracedBlock_MixedWithIndented()
+    {
+        // 缩进式 if + 花括号式 if 混用
+        const string src =
+            "label t:\n" +
+            "  if {a}\n" +
+            "    say \"indent style\"\n" +
+            "  if {b} {\n" +
+            "    say \"brace style\"\n" +
+            "  }\n" +
+            "  say \"done\"\n";
+        DslFormatter.Format(src).Should().Be(src);
+    }
+
+    // ── scene 导航歧义 ──
+
+    [Fact]
+    public void Format_SceneInsideLabel_IsNavigation_NotBlockStarter()
+    {
+        const string src =
+            "label sc_tour:\n" +
+            "  say \"hi\"\n" +
+            "  scene \"title_main\"\n" +
+            "  say \"after scene\"\n";
+        DslFormatter.Format(src).Should().Be(src);
+    }
+
+    [Fact]
+    public void Format_SceneAtTopLevel_IsBlockStarter()
+    {
+        const string src =
+            "scene \"showcase\"\n" +
+            "  say \"in scene\"\n" +
+            "  text \"hello\"\n";
+        DslFormatter.Format(src).Should().Be(src);
+    }
+
+    [Fact]
+    public void Format_SceneInsideIf_IsNavigation()
+    {
+        const string src =
+            "if {x}\n" +
+            "  scene \"inner\"\n" +
+            "  say \"after\"\n";
+        DslFormatter.Format(src).Should().Be(src);
+    }
+
+    // ── end 关键字弹栈 ──
+
+    [Fact]
+    public void Format_EndKeyword_PopsStack()
+    {
+        const string src =
+            "if {x}\n" +
+            "  say \"in if\"\n" +
+            "end\n" +
+            "say \"after\"\n";
+        var expected =
+            "if {x}\n" +
+            "  say \"in if\"\n" +
+            "end\n" +
+            "say \"after\"\n";
+        DslFormatter.Format(src).Should().Be(expected);
+    }
+
+    [Fact]
+    public void Format_EndKeyword_NestedBlocks()
+    {
+        const string src =
+            "label t:\n" +
+            "  if {a}\n" +
+            "    say \"inner\"\n" +
+            "  end\n" +
+            "  say \"still in label\"\n" +
+            "end\n" +
+            "say \"top level\"\n";
+        DslFormatter.Format(src).Should().Be(src);
+    }
+
+    // ── 多层嵌套混合场景 ──
+
+    [Fact]
+    public void Format_ComplexNesting_SceneIfMenu()
+    {
+        const string src =
+            "scene \"demo\"\n" +
+            "  say \"welcome\"\n" +
+            "  if {ready}\n" +
+            "    say \"ready!\"\n" +
+            "  menu \"choose\"\n" +
+            "    option \"A\" -> path_a\n" +
+            "    option \"B\" -> path_b\n" +
+            "  say \"done\"\n";
+        DslFormatter.Format(src).Should().Be(src);
+    }
+
+    [Fact]
+    public void Format_MessyComplexNesting_NormalizesCorrectly()
+    {
+        const string messy =
+            "scene \"demo\"\n" +
+            "say \"welcome\"\n" +
+            "  if {ready}\n" +
+            "say \"ready!\"\n" +
+            "  say \"done\"\n";
+        var expected =
+            "scene \"demo\"\n" +
+            "  say \"welcome\"\n" +
+            "  if {ready}\n" +
+            "    say \"ready!\"\n" +
+            "  say \"done\"\n";
+        DslFormatter.Format(messy).Should().Be(expected);
+    }
 }

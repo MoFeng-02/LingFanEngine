@@ -11,6 +11,7 @@
 		<InvariantGlobalization>true</InvariantGlobalization>
 		<RootNamespace>LingFanEngine.Dsl.LanguageServer</RootNamespace>
 		<AssemblyName>LingFan.Dsl.LanguageServer</AssemblyName>
+		<PublishAot>true</PublishAot>
 	</PropertyGroup>
 
 	<ItemGroup>

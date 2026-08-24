@@ -44,4 +44,10 @@ public static class DslBlockStructure
     /// <para>DSL 的 <c>else if</c> 是带空格的整词，调用方取首词得到 "else" 即可命中。</para>
     /// </summary>
     public static bool IsIndentationContinuation(string keyword) => keyword is "else";
+
+    /// <summary>
+    /// 块结束关键字：弹出当前缩进栈顶。
+    /// <para>目前仅 <c>end</c>（DSL 显式块结束）；<c>}</c>（花括号块结束）由格式化器直接处理。</para>
+    /// </summary>
+    public static bool IsIndentationBlockEnder(string keyword) => keyword is "end";
 }

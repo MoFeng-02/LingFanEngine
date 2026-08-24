@@ -49,6 +49,18 @@ public interface IDslLanguageService
     /// <summary>查找所有引用（Shift+F12）。</summary>
     ReferenceResult FindReferences(string filePath, int offset);
 
+    /// <summary>文档大纲（textDocument/documentSymbol）：返回当前文件的场景/角色/标签/函数/样式/全局变量定义树（scene 含其内 label 子节点）。</summary>
+    System.Collections.Generic.IReadOnlyList<DocumentOutlineSymbol> GetDocumentSymbols(string filePath);
+
+    /// <summary>工作区符号搜索（workspace/symbol）：跨文件匹配定义名（query 为空返回全部），供 Ctrl+T 全局跳转。</summary>
+    System.Collections.Generic.IReadOnlyList<WorkspaceSymbolInfo> GetWorkspaceSymbols(string query);
+
+    /// <summary>文档高亮（textDocument/documentHighlight）：返回光标符号的全部定义/引用区间，复用查找引用结果。</summary>
+    System.Collections.Generic.IReadOnlyList<HighlightSpan> GetDocumentHighlights(string filePath, int offset);
+
+    /// <summary>重命名（textDocument/rename）：基于光标符号的「定义 + 全部引用」生成跨文件编辑；无符号可重命名时返回 null。</summary>
+    RenameResult? Rename(string filePath, int offset, string newName);
+
     /// <summary>诊断（后台 + 取消令牌，非 UI 线程同步）。</summary>
     Task<DslAnalysisResult> GetDiagnosticsAsync(string filePath, CancellationToken ct = default);
 

@@ -39,6 +39,30 @@ public enum SemanticCategory
     /// <summary>媒体关键字（bgm/se/video/cutscene 等）。</summary>
     Media,
 
+    /// <summary>显示/动画/Live2D 关键字（transition/show/hide/animate/sprite/live2d_* 等）。</summary>
+    Display,
+
+    /// <summary>存档系统关键字（save/load/auto_save/save_delete）。</summary>
+    SaveLoad,
+
+    /// <summary>章节/成就/图鉴关键字（chapter/achievement/gallery/gallery_unlock）。</summary>
+    Chapter,
+
+    /// <summary>回溯控制关键字（block_rollback/fix_rollback）。</summary>
+    Rollback,
+
+    /// <summary>播放控制增强关键字（auto_speed/no_skip/force_skip/video_skipable/video_auto_nav）。</summary>
+    Playback,
+
+    /// <summary>时间事件系统关键字（time_event/time_pause/time_resume/skip_time 等）。</summary>
+    TimeEvent,
+
+    /// <summary>通知/调试关键字（notify/debug）。</summary>
+    Notify,
+
+    /// <summary>UI 增强关键字（popup/zindex/window）。</summary>
+    UiEnhance,
+
     /// <summary>参数 / 修饰符关键字（speaker=/duration=/color= 等 key=value 键）。</summary>
     Parameter,
 

@@ -215,23 +215,59 @@ public static class DslGrammar
         };
 
         // UI 元素类型（scene 块内）：用 ElementAttributes 作属性键；class/style → Style。
+        // 通用属性（所有 UI 元素共享）
         var elemAttrs = new Dictionary<string, DslCompletionRef>(StringComparer.Ordinal);
         foreach (var a in DslKeywords.ElementAttributes)
             elemAttrs[a] = a switch
             {
                 "class" or "style" => DslCompletionRef.Style,
-                "source" => DslCompletionRef.Resource,
+                "source" or "src" or "path" => DslCompletionRef.Resource,
                 "nav" => DslCompletionRef.Scene,
                 "cmd" => DslCompletionRef.Command,
-                "align" or "halign" or "valign" => DslCompletionRef.Align,
+                "align" or "halign" or "valign" or "xalign" or "yalign" => DslCompletionRef.Align,
                 _ => DslCompletionRef.None,
             };
+        // 元素特定属性（按元素类型补充）
+        var elementSpecificAttrs = new Dictionary<string, Dictionary<string, DslCompletionRef>>(StringComparer.OrdinalIgnoreCase)
+        {
+            // Grid 容器属性
+            ["grid"] = new(StringComparer.Ordinal)
+            {
+                ["columns"] = DslCompletionRef.None,
+                ["rows"] = DslCompletionRef.None,
+            },
+            // 容器属性（panel/vbox/hbox）
+            ["panel"] = new(StringComparer.Ordinal) { ["direction"] = DslCompletionRef.None, ["spacing"] = DslCompletionRef.None },
+            ["vbox"] = new(StringComparer.Ordinal) { ["direction"] = DslCompletionRef.None, ["spacing"] = DslCompletionRef.None },
+            ["hbox"] = new(StringComparer.Ordinal) { ["direction"] = DslCompletionRef.None, ["spacing"] = DslCompletionRef.None },
+            // 图片属性
+            ["image"] = new(StringComparer.Ordinal) { ["stretch"] = DslCompletionRef.None },
+            ["portrait"] = new(StringComparer.Ordinal) { ["stretch"] = DslCompletionRef.None },
+            ["sprite"] = new(StringComparer.Ordinal) { ["stretch"] = DslCompletionRef.None },
+            // 进度条/滑块属性
+            ["slider"] = new(StringComparer.Ordinal) { ["min"] = DslCompletionRef.None, ["max"] = DslCompletionRef.None, ["orientation"] = DslCompletionRef.None },
+            ["progressbar"] = new(StringComparer.Ordinal) { ["min"] = DslCompletionRef.None, ["max"] = DslCompletionRef.None },
+            ["bar"] = new(StringComparer.Ordinal) { ["min"] = DslCompletionRef.None, ["max"] = DslCompletionRef.None },
+            ["vbar"] = new(StringComparer.Ordinal) { ["min"] = DslCompletionRef.None, ["max"] = DslCompletionRef.None },
+            // 复选框属性
+            ["checkbox"] = new(StringComparer.Ordinal) { ["checked"] = DslCompletionRef.Boolean },
+            // ScrollViewer 属性
+            ["scrollviewer"] = new(StringComparer.Ordinal) { ["scroll_h"] = DslCompletionRef.Boolean, ["scroll_v"] = DslCompletionRef.Boolean },
+            ["viewport"] = new(StringComparer.Ordinal) { ["scroll_h"] = DslCompletionRef.Boolean, ["scroll_v"] = DslCompletionRef.Boolean },
+        };
         foreach (var t in DslKeywords.UiElementTypes)
         {
             // image 的位置参即图片资源路径（image "Images/lingfan.png"），须标记为 Resource 槽位，
             // 否则该字符串会被当作普通 String、既无高亮也无跳转（用户实测痛点）。其余 UI 元素位置参维持 None。
             var positional = t == "image" ? DslCompletionRef.Resource : DslCompletionRef.None;
-            list.Add(Stmt(t, positionalRef: positional, isUiElement: true, named: elemAttrs));
+            // 合并通用属性和元素特定属性
+            var named = new Dictionary<string, DslCompletionRef>(elemAttrs, StringComparer.Ordinal);
+            if (elementSpecificAttrs.TryGetValue(t, out var specific))
+            {
+                foreach (var kv in specific)
+                    named[kv.Key] = kv.Value;
+            }
+            list.Add(Stmt(t, positionalRef: positional, isUiElement: true, named: named));
         }
 
         // 合并而非覆盖：同一关键字既作为语句又作为 UI 元素出现时（如 sprite：语句专属 src→Resource，

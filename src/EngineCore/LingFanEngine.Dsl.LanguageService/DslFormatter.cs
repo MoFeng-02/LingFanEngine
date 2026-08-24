@@ -70,18 +70,49 @@ internal static class DslFormatter
         var indent = CountIndent(raw);
         var firstWord = GetFirstWord(trimmed);
 
+        // ── 花括号块关闭：} 弹栈 ──
+        if (firstWord == "}")
+        {
+            if (stack.Count > 0) stack.Pop();
+            // } 后可能跟续行关键字，如 "} else {" 或 "} else if {cond} {"
+            var afterBrace = trimmed[1..].TrimStart();
+            if (afterBrace.Length > 0)
+            {
+                var continuation = GetFirstWord(afterBrace);
+                if (IsContinuation(continuation))
+                    return Indent((stack.Count > 0 ? stack.Count - 1 : 0) * unit, insertSpaces) + afterBrace;
+                // } 后跟普通语句（如 "} say hi"），按当前栈深
+                return Indent(stack.Count * unit, insertSpaces) + afterBrace;
+            }
+            return Indent(stack.Count * unit, insertSpaces) + trimmed;
+        }
+
         int depth;
         if (IsContinuation(firstWord))
         {
             // else / elif：对齐到控制块同级，不弹不压。
             depth = stack.Count > 0 ? stack.Count - 1 : 0;
         }
+        else if (DslBlockStructure.IsIndentationBlockEnder(firstWord))
+        {
+            // end：显式关闭块，弹栈。
+            if (stack.Count > 0) stack.Pop();
+            depth = stack.Count;
+        }
         else if (DslBlockStructure.IsIndentationBlockStarter(firstWord))
         {
-            // 开块关键字：按自身缩进弹出同级或外层开块，然后压入自身。
-            PopBlocksForStarter(stack, indent, firstWord);
-            depth = stack.Count;
-            stack.Push(new StackEntry(indent, firstWord));
+            // scene 在已有块内是导航命令（非块起始），不压栈。
+            if (firstWord == "scene" && stack.Count > 0)
+            {
+                depth = stack.Count;
+            }
+            else
+            {
+                // 开块关键字：按自身缩进弹出同级或外层开块，然后压入自身。
+                PopBlocksForStarter(stack, indent, firstWord);
+                depth = stack.Count;
+                stack.Push(new StackEntry(indent, firstWord));
+            }
         }
         else
         {

@@ -91,6 +91,9 @@ public readonly struct SymbolOccurrence
     /// <c>set</c> 是赋值、<c>let</c>/<c>local</c> 是块级声明，二者均不计入「重复定义」告警；
     /// 只有本字段为 true 的符号才参与重复定义检测。</summary>
     public bool IsDeclaration { get; }
+    /// <summary>是否为「可选引用」——解析不到目标定义时<b>不</b>报未定义错误（如 <c>say</c> 说话人：能解析到 <c>character</c> 定义就跳转/重命名，解析不到只是普通说话人标记）。
+    /// 仅影响诊断与悬停措辞；跳转定义 / 查找引用仍照常工作。</summary>
+    public bool IsOptional { get; }
     public string Name { get; }
     public string FilePath { get; }
     /// <summary>符号名在源中的起始偏移（字符索引）。</summary>
@@ -116,16 +119,17 @@ public readonly struct SymbolOccurrence
         : this(kind, role, name, filePath, offset, length, scope, false, "") { }
 
     /// <summary>显式指定生命周期级别与是否声明式定义，文件级作用域。</summary>
-    public SymbolOccurrence(SymbolKind kind, SymbolRole role, string name, string filePath, int offset, int length, SymbolScope scope, bool isDeclaration)
-        : this(kind, role, name, filePath, offset, length, scope, isDeclaration, "") { }
+    public SymbolOccurrence(SymbolKind kind, SymbolRole role, string name, string filePath, int offset, int length, SymbolScope scope, bool isDeclaration, bool isOptional = false)
+        : this(kind, role, name, filePath, offset, length, scope, isDeclaration, "", isOptional) { }
 
-    /// <summary>完整构造：含作用域路径（场景/标签级局部变量隔离用）。</summary>
-    public SymbolOccurrence(SymbolKind kind, SymbolRole role, string name, string filePath, int offset, int length, SymbolScope scope, bool isDeclaration, string scopePath)
+    /// <summary>完整构造：含作用域路径（场景/标签级局部变量隔离用）与可选引用标记。</summary>
+    public SymbolOccurrence(SymbolKind kind, SymbolRole role, string name, string filePath, int offset, int length, SymbolScope scope, bool isDeclaration, string scopePath, bool isOptional = false)
     {
         Kind = kind;
         Role = role;
         Scope = scope;
         IsDeclaration = isDeclaration;
+        IsOptional = isOptional;
         Name = name;
         FilePath = filePath;
         Offset = offset;

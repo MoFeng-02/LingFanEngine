@@ -199,21 +199,34 @@ public sealed class DslLanguageService : IDslLanguageService
             case CompletionContext.StatementStart:
                 if (enclosing == "scene")
                 {
-                    // scene 块内：首词大概率是 UI 元素类型（text/button/image/...）——优先列出，再补场景块内常见语句。
-                    AddKeywords(items, DslKeywords.UiElementTypes, "element");
-                    foreach (var kw in s_sceneBlockStatements) items.Add(Kw(kw, "statement"));
+                    // scene 块内：首词大概是 UI 元素类型（text/button/image/...）——优先列出，再补场景块内常见语句。
+                    foreach (var kw in DslKeywords.UiElementTypes)
+                        items.Add(KwWithCategory(kw, "element", "UI 元素"));
+                    foreach (var kw in s_sceneBlockStatements)
+                    {
+                        var cat = GetStatementCategory(kw);
+                        items.Add(KwWithCategory(kw, "statement", cat));
+                    }
                 }
                 else
                 {
-                    AddKeywords(items, DslKeywords.Statements, "statement");
-                    AddKeywords(items, DslKeywords.UiElementTypes, "statement");
+                    foreach (var kw in DslKeywords.Statements)
+                    {
+                        var cat = GetStatementCategory(kw);
+                        items.Add(KwWithCategory(kw, "statement", cat));
+                    }
+                    foreach (var kw in DslKeywords.UiElementTypes)
+                        items.Add(KwWithCategory(kw, "element", "UI 元素"));
                 }
                 break;
 
             case CompletionContext.ParameterName:
                 if (spec != null)
                     foreach (var kv in spec.NamedParams)
-                        items.Add(Kw(kv.Key, "parameter"));
+                    {
+                        var cat = GetParameterCategory(kv.Key);
+                        items.Add(KwWithCategory(kv.Key, "parameter", cat));
+                    }
                 break;
 
             case CompletionContext.VariableReference:
@@ -350,9 +363,59 @@ public sealed class DslLanguageService : IDslLanguageService
             ? new CompletionItem(kw, kw, kind, d.Summary)
             : new CompletionItem(kw, kw, kind);
 
+    /// <summary>带分类前缀的补全项——区分 UI 元素/功能关键字/参数/变量等。</summary>
+    private static CompletionItem KwWithCategory(string kw, string kind, string category, string? extraDetail = null)
+    {
+        var detail = extraDetail != null ? $"{category} · {extraDetail}" : category;
+        if (DslKeywordDocs.TryGet(kw, out var d))
+            detail += $"\n{d.Summary}";
+        return new CompletionItem(kw, kw, kind, detail);
+    }
+
     private static void AddKeywords(List<CompletionItem> items, IReadOnlySet<string> keywords, string kind)
     {
         foreach (var kw in keywords) items.Add(Kw(kw, kind));
+    }
+
+    /// <summary>获取语句关键字的分类标签（用于补全项 detail 前缀）。</summary>
+    private static string GetStatementCategory(string kw)
+    {
+        if (DslKeywords.ControlFlow.Contains(kw)) return "控制流";
+        if (DslKeywords.Navigation.Contains(kw)) return "导航";
+        if (DslKeywords.DataOp.Contains(kw)) return "数据操作";
+        if (DslKeywords.Media.Contains(kw)) return "媒体";
+        if (DslKeywords.Display.Contains(kw)) return "显示/动画";
+        if (DslKeywords.SaveLoad.Contains(kw)) return "存档系统";
+        if (DslKeywords.Chapter.Contains(kw)) return "章节/成就";
+        if (DslKeywords.Rollback.Contains(kw)) return "回溯控制";
+        if (DslKeywords.Playback.Contains(kw)) return "播放控制";
+        if (DslKeywords.TimeEvent.Contains(kw)) return "时间事件";
+        if (DslKeywords.Notify.Contains(kw)) return "通知/调试";
+        if (DslKeywords.UiEnhance.Contains(kw)) return "UI 增强";
+        return "语句";
+    }
+
+    /// <summary>获取参数名的分类标签（用于补全项 detail 前缀）。</summary>
+    private static readonly HashSet<string> _gridAttrs = new(StringComparer.Ordinal) { "col", "row", "colspan", "rowspan" };
+    private static readonly HashSet<string> _layoutAttrs = new(StringComparer.Ordinal) { "x", "y", "xoffset", "yoffset", "xanchor", "yanchor", "margin", "padding", "right", "bottom", "minWidth", "minHeight", "maxWidth", "maxHeight" };
+    private static readonly HashSet<string> _visualAttrs = new(StringComparer.Ordinal) { "opacity", "visible", "enabled", "zindex", "clipToBounds", "cursor" };
+    private static readonly HashSet<string> _transformAttrs = new(StringComparer.Ordinal) { "rotation", "scale", "scaleX", "scaleY" };
+    private static readonly HashSet<string> _borderAttrs = new(StringComparer.Ordinal) { "cornerRadius", "borderBrush", "borderColor", "borderThickness" };
+    private static readonly HashSet<string> _containerAttrs = new(StringComparer.Ordinal) { "spacing", "direction", "columns", "rows" };
+
+    private static string GetParameterCategory(string param)
+    {
+        if (DslKeywords.ElementAttributes.Contains(param))
+        {
+            if (_gridAttrs.Contains(param)) return "Grid 附着属性";
+            if (_layoutAttrs.Contains(param)) return "布局参数";
+            if (_visualAttrs.Contains(param)) return "外观属性";
+            if (_transformAttrs.Contains(param)) return "变换属性";
+            if (_borderAttrs.Contains(param)) return "边框属性";
+            if (_containerAttrs.Contains(param)) return "容器属性";
+            return "元素属性";
+        }
+        return "参数";
     }
 
     /// <summary>变量作用域徽标（B32 升级：含场景/标签级局部）。
@@ -570,6 +633,9 @@ public sealed class DslLanguageService : IDslLanguageService
                     : $"{KindLabel(o.Kind)} 引用\n定义于 {defRef.Value.FilePath}:{line}";
                 return new HoverInfo(o.Name, detail, new Location(defRef.Value.FilePath, defRef.Value.Offset, defRef.Value.Length));
             }
+            if (o.IsOptional)
+                return new HoverInfo(o.Name, $"说话人：{o.Name}",
+                    new Location(o.FilePath, o.Offset, o.Length));
             if (DslSymbolIndex.IsInternalVariableName(o.Name))
                 return new HoverInfo(o.Name, "变量（内部临时变量）",
                     new Location(o.FilePath, o.Offset, o.Length));
@@ -661,6 +727,117 @@ public sealed class DslLanguageService : IDslLanguageService
         if (gdef != null) refsAll.Add(new Location(gdef.Value.FilePath, gdef.Value.Offset, gdef.Value.Length));
         return new ReferenceResult(refsAll, o.Kind, o.Name);
     }
+
+    // ---- LSP 增强特性（rename / documentSymbol / workspaceSymbol / documentHighlight）----
+
+    /// <inheritdoc/>
+    public IReadOnlyList<DocumentOutlineSymbol> GetDocumentSymbols(string filePath)
+    {
+        var defs = _symbolIndex.GetDefinitionsInFile(filePath);
+        var nodes = new List<DocumentOutlineSymbol>();
+        // scene 名 → 大纲节点，供把 ScopePath="scene/<名>" 的子定义挂为子节点。
+        var sceneByName = new Dictionary<string, DocumentOutlineSymbol>(StringComparer.Ordinal);
+        foreach (var d in defs)
+        {
+            var node = new DocumentOutlineSymbol
+            {
+                Name = d.Name,
+                Kind = MapSymbolKindToLsp(d.Kind),
+                StartOffset = d.Offset,
+                EndOffset = d.Offset + d.Length,
+            };
+            if (d.ScopePath.StartsWith("scene/", StringComparison.Ordinal))
+            {
+                // 子定义（如 label）挂到所属 scene；scene 尚未出现（异常顺序）则退化为顶层。
+                var sceneName = d.ScopePath.Substring("scene/".Length);
+                if (sceneByName.TryGetValue(sceneName, out var parent)) parent.Children.Add(node);
+                else nodes.Add(node);
+            }
+            else
+            {
+                nodes.Add(node);
+                if (d.Kind == SymbolKind.Scene) sceneByName[d.Name] = node;
+            }
+        }
+        // 跨文件场景：VN 引擎的场景本就跨文件分布。把其它文件中声明的场景也并入当前文件大纲，
+        // 使大纲成为「项目级场景导航图」。这些节点带自身 FilePath，server 层据此定位到正确文件（详见 CollectOutline）。
+        foreach (var d in _symbolIndex.GetAllDefinitions())
+        {
+            if (d.Kind != SymbolKind.Scene) continue;
+            if (string.Equals(d.FilePath, filePath, StringComparison.OrdinalIgnoreCase)) continue; // 当前文件场景已在上方收入
+            nodes.Add(new DocumentOutlineSymbol
+            {
+                Name = d.Name,
+                Kind = MapSymbolKindToLsp(d.Kind),
+                StartOffset = d.Offset,
+                EndOffset = d.Offset + d.Length,
+                FilePath = d.FilePath,
+            });
+        }
+        return nodes;
+    }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<WorkspaceSymbolInfo> GetWorkspaceSymbols(string query)
+    {
+        var q = query?.Trim() ?? string.Empty;
+        var defs = _symbolIndex.GetAllDefinitions();
+        var result = new List<WorkspaceSymbolInfo>();
+        foreach (var d in defs)
+        {
+            if (q.Length > 0 && d.Name.IndexOf(q, StringComparison.OrdinalIgnoreCase) < 0) continue;
+            result.Add(new WorkspaceSymbolInfo
+            {
+                Name = d.Name,
+                Kind = MapSymbolKindToLsp(d.Kind),
+                FilePath = d.FilePath,
+                Offset = d.Offset,
+                Length = d.Length,
+            });
+        }
+        return result;
+    }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<HighlightSpan> GetDocumentHighlights(string filePath, int offset)
+    {
+        var refs = FindReferences(filePath, offset);
+        var list = new List<HighlightSpan>(refs.Locations.Count);
+        foreach (var L in refs.Locations)
+            list.Add(new HighlightSpan { Offset = L.Offset, Length = L.Length, Kind = 2 });
+        return list;
+    }
+
+    /// <inheritdoc/>
+    public RenameResult? Rename(string filePath, int offset, string newName)
+    {
+        if (string.IsNullOrEmpty(newName)) return null;
+        var refs = FindReferences(filePath, offset);
+        if (refs.Locations.Count == 0) return null;
+        var changes = new Dictionary<string, List<RenameEdit>>(StringComparer.Ordinal);
+        foreach (var L in refs.Locations)
+        {
+            if (!changes.TryGetValue(L.FilePath, out var list))
+            {
+                list = new List<RenameEdit>();
+                changes[L.FilePath] = list;
+            }
+            list.Add(new RenameEdit { Offset = L.Offset, Length = L.Length, NewText = newName });
+        }
+        return new RenameResult { Changes = changes };
+    }
+
+    /// <summary>SymbolKind → LSP SymbolKind 数值（仅用于大纲/符号搜索的图标分类）。</summary>
+    private static int MapSymbolKindToLsp(SymbolKind kind) => kind switch
+    {
+        SymbolKind.Scene => 5,      // Class
+        SymbolKind.Label => 6,      // Method
+        SymbolKind.Func => 12,      // Function
+        SymbolKind.Character => 8,  // Field
+        SymbolKind.Style => 5,      // Class
+        SymbolKind.Variable => 13,  // Variable
+        _ => 13,
+    };
 
     /// <summary>取某文件的规范源码文本（供跳转/悬停等把行/列坐标换算成偏移）。
     /// 优先取 didOpen 内存文本，回退到工作区扫描建立的索引文档——确保「仅被扫描、尚未 didOpen 的文件」也能正确解析坐标。</summary>

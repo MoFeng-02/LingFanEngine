@@ -139,6 +139,10 @@ internal sealed class DslLanguageServer
         "textDocument/hover" => HandleHover,
         "textDocument/definition" => HandleDefinition,
         "textDocument/references" => HandleReferences,
+        "textDocument/rename" => HandleRename,
+        "textDocument/documentSymbol" => HandleDocumentSymbol,
+        "workspace/symbol" => HandleWorkspaceSymbol,
+        "textDocument/documentHighlight" => HandleDocumentHighlight,
         "textDocument/completion" => HandleCompletion,
         "textDocument/foldingRange" => HandleFolding,
         "textDocument/formatting" => HandleFormatting,
@@ -330,6 +334,99 @@ internal sealed class DslLanguageServer
         return Task.CompletedTask;
     }
 
+    private Task HandleRename(Request req)
+    {
+        var p = Deserialize<RenameParams>(req, LspJsonContext.Default.RenameParams);
+        if (p == null || !req.Id.HasValue) return Task.CompletedTask;
+        var path = UriToPath(p.TextDocument.Uri);
+        var offset = PositionToOffset(SourceOf(path), p.Position);
+        var result = _service.Rename(path, offset, p.NewName);
+        if (result == null) { _conn.SendResult(req.Id.Value, null, null); return Task.CompletedTask; }
+        var changes = new Dictionary<string, TextEdit[]>(result.Changes.Count);
+        foreach (var kv in result.Changes)
+        {
+            var edits = new TextEdit[kv.Value.Count];
+            for (var i = 0; i < edits.Length; i++)
+            {
+                var e = kv.Value[i];
+                edits[i] = new TextEdit { Range = MakeRange(SourceOf(kv.Key), e.Offset, e.Length), NewText = e.NewText };
+            }
+            changes[PathToUri(kv.Key)] = edits;
+        }
+        _conn.SendResult(req.Id.Value, new WorkspaceEdit { Changes = changes }, LspJsonContext.Default.WorkspaceEdit);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleDocumentSymbol(Request req)
+    {
+        var p = Deserialize<DocumentSymbolParams>(req, LspJsonContext.Default.DocumentSymbolParams);
+        if (p == null || !req.Id.HasValue) return Task.CompletedTask;
+        var path = UriToPath(p.TextDocument.Uri);
+        var syms = _service.GetDocumentSymbols(path);
+        // 客户端 vscode-languageclient 的 textDocument/documentSymbol 走 legacy 路径 asSymbolInformations，
+        // 仅正确支持扁平 SymbolInformation[]（与 workspace/symbol 同一格式）；层级 DocumentSymbol[] 会被误当作
+        // SymbolInformation 解析而读 .range 崩溃。故此处拍平返回，每个符号带自身 location。
+        var flat = new List<SymbolInformation>(syms.Count);
+        CollectOutline(syms, path, flat);
+        _conn.SendResult(req.Id.Value, flat.ToArray(), LspJsonContext.Default.SymbolInformationArray);
+        return Task.CompletedTask;
+    }
+
+    private void CollectOutline(IReadOnlyList<Ls.DocumentOutlineSymbol> syms, string path, List<SymbolInformation> outList)
+    {
+        foreach (var s in syms)
+        {
+            // 跨文件符号（如并入大纲的其它文件场景）用自身 FilePath 定位；单文件符号沿用当前文档 path。
+            var locPath = string.IsNullOrEmpty(s.FilePath) ? path : s.FilePath;
+            outList.Add(new SymbolInformation
+            {
+                Name = s.Name,
+                Kind = s.Kind,
+                Location = MakeLocation(locPath, s.StartOffset, s.EndOffset - s.StartOffset),
+            });
+            if (s.Children.Count > 0) CollectOutline(s.Children, locPath, outList);
+        }
+    }
+
+    private Task HandleWorkspaceSymbol(Request req)
+    {
+        var p = Deserialize<WorkspaceSymbolParams>(req, LspJsonContext.Default.WorkspaceSymbolParams);
+        if (p == null || !req.Id.HasValue) return Task.CompletedTask;
+        var syms = _service.GetWorkspaceSymbols(p.Query ?? string.Empty);
+        var arr = new SymbolInformation[syms.Count];
+        for (var i = 0; i < arr.Length; i++)
+        {
+            var s = syms[i];
+            arr[i] = new SymbolInformation
+            {
+                Name = s.Name,
+                Kind = s.Kind,
+                Location = MakeLocation(s.FilePath, s.Offset, s.Length),
+            };
+        }
+        _conn.SendResult(req.Id.Value, arr, LspJsonContext.Default.SymbolInformationArray);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleDocumentHighlight(Request req)
+    {
+        var p = Deserialize<DocumentHighlightParams>(req, LspJsonContext.Default.DocumentHighlightParams);
+        if (p == null || !req.Id.HasValue) return Task.CompletedTask;
+        var path = UriToPath(p.TextDocument.Uri);
+        var src = SourceOf(path);
+        var offset = PositionToOffset(src, p.Position);
+        var highs = _service.GetDocumentHighlights(path, offset);
+        if (highs.Count == 0) { _conn.SendResult(req.Id.Value, null, null); return Task.CompletedTask; }
+        var arr = new DocumentHighlight[highs.Count];
+        for (var i = 0; i < arr.Length; i++)
+        {
+            var h = highs[i];
+            arr[i] = new DocumentHighlight { Range = MakeRange(src, h.Offset, h.Length), Kind = h.Kind };
+        }
+        _conn.SendResult(req.Id.Value, arr, LspJsonContext.Default.DocumentHighlightArray);
+        return Task.CompletedTask;
+    }
+
     /// <summary>补全触发字符（标点类）：空格（行首语句后）、{（插值变量）、=（参数值枚举/布尔）、"（字符串开启即弹引用列表）、(（参数起点）、.（属性/路径联动）、:（say: 等联动）。
     /// 字母类「边打字边弹」由客户端 editor.quickSuggestions(other:on) 承载，无须在此列 a–z（否则会与 quickSuggestions 重复触发）。</summary>
     private static string[] CompletionTriggerCharacters()
@@ -518,6 +615,10 @@ internal sealed class DslLanguageServer
             HoverProvider = true,
             DefinitionProvider = true,
             ReferencesProvider = true,
+            RenameProvider = true,
+            DocumentSymbolProvider = true,
+            WorkspaceSymbolProvider = true,
+            DocumentHighlightProvider = true,
             FoldingRangeProvider = true,
             DocumentFormattingProvider = true,
             DocumentRangeFormattingProvider = true,
@@ -775,7 +876,9 @@ internal sealed class DslLanguageServer
 
     private static int MapCompletionKind(string kind) => kind switch
     {
+        // 语句/关键字类
         "statement" => 14, // Keyword
+        "element" => 7,    // Class（UI 元素类型）
         "scene" => 7,      // Class
         "label" => 18,     // Reference
         "func" => 3,       // Function
@@ -785,7 +888,8 @@ internal sealed class DslLanguageServer
         "resource" => 17,  // File
         "command" => 3,    // Function
         "tag" => 14,       // Keyword
-        _ => 1,            // Text
+        "enum" => 13,      // Enum
+        _ => 14,           // 默认 Keyword（避免退化为 Text）
     };
 
     private static int MapSeverity(Ls.DiagnosticSeverity severity) => severity switch

@@ -70,7 +70,7 @@ public sealed class DslSymbolIndex
             // 必须原样保留 IsDeclaration：7 参构造默认 isDeclaration=false，会让声明式定义（label/scene/character/func/style/define）
             // 在尾部平移后从 _definitions 消失，导致前向 jump/navigate 误报未定义、且补全候选（GetDefinedNames）变空。
             // 这是 B40：编辑「声明上方」任意行都会触发尾部平移，故声明一旦被编辑上方改动就丢失。
-            list[i] = new SymbolOccurrence(o.Kind, o.Role, o.Name, o.FilePath, o.Offset + delta, o.Length, o.Scope, o.IsDeclaration, o.ScopePath);
+            list[i] = new SymbolOccurrence(o.Kind, o.Role, o.Name, o.FilePath, o.Offset + delta, o.Length, o.Scope, o.IsDeclaration, o.ScopePath, o.IsOptional);
             AddOccurrence(list[i]);
         }
 
@@ -173,6 +173,26 @@ public sealed class DslSymbolIndex
         return set;
     }
 
+    /// <summary>返回某文件内的全部「声明式」定义（scene/character/label/func/style/define，不含块级 let/local），供大纲（documentSymbol）。
+    /// 按 token 序（文件序）返回，调用方据 ScopePath 构建场景→标签层级。</summary>
+    public IReadOnlyList<SymbolOccurrence> GetDefinitionsInFile(string filePath)
+    {
+        if (!_byFile.TryGetValue(filePath, out var occ)) return System.Array.Empty<SymbolOccurrence>();
+        var defs = new List<SymbolOccurrence>();
+        foreach (var o in occ)
+            if (o.Role == SymbolRole.Definition && o.IsDeclaration && o.Scope != SymbolScope.Local)
+                defs.Add(o);
+        return defs;
+    }
+
+    /// <summary>返回跨文件全部「声明式」定义（供 workspace/symbol 全局符号搜索）。</summary>
+    public IReadOnlyList<SymbolOccurrence> GetAllDefinitions()
+    {
+        var list = new List<SymbolOccurrence>(_definitions.Count);
+        foreach (var kvp in _definitions) list.Add(kvp.Value);
+        return list;
+    }
+
     /// <summary>快照某文件当前「作为定义」的全部符号键（用于跨文件诊断定向刷新）。
     /// 仅扫描全局 _definitions 中 FilePath 命中该文件的条目，O(定义总数)，无反射。</summary>
     public HashSet<SymbolKey> SnapshotDefinitions(string filePath)
@@ -261,6 +281,8 @@ public sealed class DslSymbolIndex
         foreach (var o in occ)
         {
             if (o.Role != SymbolRole.Reference) continue;
+            // 可选引用（如 say 说话人）：解析不到目标定义不算错误——只是普通说话人标记，不报未定义诊断。
+            if (o.IsOptional) continue;
             // 内部/临时变量（_ 前缀，含 __ 引擎保留变量与 _local_ 用户临时变量）由 set 自动创建，
             // 无需 define 声明，豁免「未定义」检查，避免把 _local_wolf_hp 这类合法临时变量误报成未定义。
             if (IsInternalVariableName(o.Name)) continue;
@@ -375,6 +397,7 @@ public sealed class DslSymbolIndex
         // 每行的出现归入当前作用域——scene/label 声明行自身也归入其新作用域（使 scene 内的 let 与 scene 同名）。
         var curScopeKind = "";
         var curScopeName = "";
+        var seenSceneNames = new HashSet<string>(StringComparer.Ordinal);
         var i2 = 0;
         while (i2 < tokens.Length)
         {
@@ -392,7 +415,7 @@ public sealed class DslSymbolIndex
             var lineText = source.Slice(lineStart, lineEnd - lineStart).ToString();
             UpdateScope(ref curScopeKind, ref curScopeName, lineTokens, source);
             var scopePath = curScopeKind.Length == 0 ? "" : curScopeKind + "/" + curScopeName;
-            ProcessLine(filePath, lineTokens, source, lineText, lineStart, occurrences, scopePath);
+            ProcessLine(filePath, lineTokens, source, lineText, lineStart, occurrences, scopePath, seenSceneNames);
         }
 
         // 作用域修正（B32）：set 赋值的作用域应跟随其目标变量的「声明作用域」，而非一律 Global。
@@ -412,7 +435,7 @@ public sealed class DslSymbolIndex
             if (o.Kind == SymbolKind.Variable && o.Role == SymbolRole.Definition && !o.IsDeclaration
                 && declScope.TryGetValue(o.Name, out var sc) && sc != o.Scope)
             {
-                occurrences[i] = new SymbolOccurrence(o.Kind, o.Role, o.Name, o.FilePath, o.Offset, o.Length, sc, o.IsDeclaration, o.ScopePath);
+                occurrences[i] = new SymbolOccurrence(o.Kind, o.Role, o.Name, o.FilePath, o.Offset, o.Length, sc, o.IsDeclaration, o.ScopePath, o.IsOptional);
             }
         }
 
@@ -425,6 +448,7 @@ public sealed class DslSymbolIndex
     private static List<SymbolOccurrence> CollectOccurrencesForLines(string filePath, DslToken[][] lines, ReadOnlySpan<char> source, ref string curScopeKind, ref string curScopeName)
     {
         var occurrences = new List<SymbolOccurrence>();
+        var seenSceneNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var line in lines)
         {
             if (line.Length == 0) continue;
@@ -433,7 +457,7 @@ public sealed class DslSymbolIndex
             var lineText = source.Slice(lineStart, lineEnd - lineStart).ToString();
             UpdateScope(ref curScopeKind, ref curScopeName, line, source);
             var scopePath = curScopeKind.Length == 0 ? "" : curScopeKind + "/" + curScopeName;
-            ProcessLine(filePath, line, source, lineText, lineStart, occurrences, scopePath);
+            ProcessLine(filePath, line, source, lineText, lineStart, occurrences, scopePath, seenSceneNames);
         }
         return occurrences;
     }
@@ -486,7 +510,7 @@ public sealed class DslSymbolIndex
         "random", "min", "max", "abs", "clamp", "true", "false"
     };
 
-    private static void ProcessLine(string filePath, DslToken[] lineTokens, ReadOnlySpan<char> source, string lineText, int lineStart, List<SymbolOccurrence> occurrences, string scopePath)
+    private static void ProcessLine(string filePath, DslToken[] lineTokens, ReadOnlySpan<char> source, string lineText, int lineStart, List<SymbolOccurrence> occurrences, string scopePath, HashSet<string>? seenSceneNames = null)
     {
         if (lineTokens.Length > 0 && lineTokens[0].Kind == DslTokenKind.Keyword)
         {
@@ -495,7 +519,13 @@ public sealed class DslSymbolIndex
             {
                 case "scene":
                     if (TryNextString(lineTokens, 1, source, out var sceneName))
-                    { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Scene, SymbolRole.Definition, sceneName, filePath, s.Offset, s.Length, SymbolScope.Global, true, scopePath)); }
+                    {
+                        var s = NameSpan(lineTokens[1], source);
+                        // 首次出现 = Definition（用于跳转定义/查找引用），后续出现 = Reference（导航，不算重复定义）。
+                        var isFirst = seenSceneNames == null || seenSceneNames.Add(sceneName);
+                        var role = isFirst ? SymbolRole.Definition : SymbolRole.Reference;
+                        occurrences.Add(new SymbolOccurrence(SymbolKind.Scene, role, sceneName, filePath, s.Offset, s.Length, SymbolScope.Global, isFirst, scopePath));
+                    }
                     break;
                 case "character":
                     if (TryNextString(lineTokens, 1, source, out var charName))
@@ -536,6 +566,11 @@ public sealed class DslSymbolIndex
                     if (TryNextString(lineTokens, 1, source, out var navTarget))
                     { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Scene, SymbolRole.Reference, navTarget, filePath, s.Offset, s.Length, SymbolScope.Global, false, scopePath)); }
                     break;
+                case "say":
+                    // 说话人 → Character 引用（say "Name": … / say by "Name" / say speaker="Name"）。
+                    // 进入索引 → 能解析到 character 定义就跳转/重命名；解析不到（旁白、临时名字等）不报未定义错误（标记 IsOptional，由诊断/悬停特殊处理）。
+                    ExtractSpeakerReference(lineTokens, source, filePath, occurrences, scopePath);
+                    break;
                 case "call":
                     if (TryNextIdentifier(lineTokens, 1, source, out var callTarget))
                     { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Func, SymbolRole.Reference, callTarget, filePath, s.Offset, s.Length, SymbolScope.Global, false, scopePath)); }
@@ -557,6 +592,43 @@ public sealed class DslSymbolIndex
             }
         }
 
+        // scene 块内 UI 元素属性引用（nav=→Scene、class=/style=→Style）：进入索引 → 跳转定义 + 未定义诊断。
+        // 仅当行首词是已知 UI 元素类型（DslGrammar.IsUiElement）时才扫描，避免误伤其它语句：
+        // ① navigate 的 scene= 已由上方 switch 单独处理；② say 说话人已由 case "say" 单独处理；
+        // ③ source=/cmd=/align= 不属于 SymbolKind，本 DSL 经 CollectReferenceDiagnostics 单独诊断，此处故意跳过。
+        if (lineTokens.Length > 0 && lineTokens[0].Kind == DslTokenKind.Keyword)
+        {
+            var firstName = lineTokens[0].GetText(source).ToString();
+            var spec = DslGrammar.TryGet(firstName);
+            if (spec is { IsUiElement: true })
+            {
+                for (var k = 1; k + 1 < lineTokens.Length; k++)
+                {
+                    if (lineTokens[k].Kind == DslTokenKind.Symbol && source[lineTokens[k].Offset] == '='
+                        && lineTokens[k - 1].Kind is DslTokenKind.Identifier or DslTokenKind.Keyword)
+                    {
+                        var key = lineTokens[k - 1].GetText(source).ToString();
+                        var refKind = key switch
+                        {
+                            "nav" => SymbolKind.Scene,
+                            "class" or "style" => SymbolKind.Style,
+                            _ => (SymbolKind?)null,
+                        };
+                        if (refKind is { } kind && lineTokens[k + 1].Kind == DslTokenKind.String)
+                        {
+                            var valTok = lineTokens[k + 1];
+                            var name = Unquote(valTok.GetText(source).ToString());
+                            if (name.Length > 0)
+                            {
+                                var s = NameSpan(valTok, source);
+                                occurrences.Add(new SymbolOccurrence(kind, SymbolRole.Reference, name, filePath, s.Offset, s.Length, SymbolScope.Global, false, scopePath));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 注释区间——避免把注释里的 {x} 误当插值引用索引
         var commentSpans = new List<(int, int)>(lineTokens.Length);
         foreach (var t in lineTokens)
@@ -564,6 +636,54 @@ public sealed class DslSymbolIndex
 
         // 全行扫描 {...} 插值：覆盖「字符串内的插值」与「裸花括号表达式（if/while 条件、set 值等）」两类上下文。
         ScanInterpolations(lineText, lineStart, occurrences, filePath, commentSpans, scopePath);
+    }
+
+    /// <summary>从 <c>say</c> 行提取说话人引用（Character），标记 <see cref="SymbolOccurrence.IsOptional"/>（可选引用）。
+    /// 优先级：speaker="X" &gt; by "X" &gt; 首个位置参字符串 "X":。
+    /// 说话人能解析到 <c>character</c> 定义就提供跳转/重命名；解析不到（旁白、临时名字等）不报未定义错误。</summary>
+    private static void ExtractSpeakerReference(DslToken[] lineTokens, ReadOnlySpan<char> source, string filePath, List<SymbolOccurrence> occurrences, string scopePath)
+    {
+        string? name = null;
+        int off = -1, len = 0;
+
+        // 1) speaker="X"
+        for (var k = 1; k + 1 < lineTokens.Length; k++)
+        {
+            if (lineTokens[k].Kind == DslTokenKind.Symbol && source[lineTokens[k].Offset] == '='
+                && lineTokens[k - 1].Kind is DslTokenKind.Identifier or DslTokenKind.Keyword
+                && string.Equals(lineTokens[k - 1].GetText(source).ToString(), "speaker", StringComparison.Ordinal)
+                && lineTokens[k + 1].Kind == DslTokenKind.String)
+            {
+                var s = NameSpan(lineTokens[k + 1], source);
+                name = Unquote(lineTokens[k + 1].GetText(source).ToString()); off = s.Offset; len = s.Length;
+                break;
+            }
+        }
+        // 2) by "X"
+        if (name == null)
+        {
+            for (var k = 1; k + 1 < lineTokens.Length; k++)
+            {
+                if (lineTokens[k].Kind is DslTokenKind.Identifier or DslTokenKind.Keyword
+                    && string.Equals(lineTokens[k].GetText(source).ToString(), "by", StringComparison.Ordinal)
+                    && lineTokens[k + 1].Kind == DslTokenKind.String)
+                {
+                    var s = NameSpan(lineTokens[k + 1], source);
+                    name = Unquote(lineTokens[k + 1].GetText(source).ToString()); off = s.Offset; len = s.Length;
+                    break;
+                }
+            }
+        }
+        // 3) 首个位置参字符串 "X":（say "Alice": Hello）
+        if (name == null && lineTokens.Length > 1 && lineTokens[1].Kind == DslTokenKind.String)
+        {
+            var s = NameSpan(lineTokens[1], source);
+            name = Unquote(lineTokens[1].GetText(source).ToString()); off = s.Offset; len = s.Length;
+        }
+
+        if (name != null && name.Length > 0)
+            // 说话人引用是「可选」的：能解析到 character 定义就提供跳转/重命名，解析不到（旁白、临时名字等）不报未定义错误。
+            occurrences.Add(new SymbolOccurrence(SymbolKind.Character, SymbolRole.Reference, name, filePath, off, len, SymbolScope.Global, false, scopePath, true));
     }
 
     /// <summary>全行扫描 {...} 插值，提取其中的变量引用（表达式里的多个标识符一并收集，如 {a + b.c}）。</summary>

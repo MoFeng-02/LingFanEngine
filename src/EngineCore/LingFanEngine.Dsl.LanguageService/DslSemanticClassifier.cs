@@ -34,6 +34,14 @@ public static class DslSemanticClassifier
                 if (DslKeywords.Navigation.Contains(text)) return SemanticCategory.Navigation;
                 if (DslKeywords.DataOp.Contains(text)) return SemanticCategory.DataOp;
                 if (DslKeywords.Media.Contains(text)) return SemanticCategory.Media;
+                if (DslKeywords.Display.Contains(text)) return SemanticCategory.Display;
+                if (DslKeywords.SaveLoad.Contains(text)) return SemanticCategory.SaveLoad;
+                if (DslKeywords.Chapter.Contains(text)) return SemanticCategory.Chapter;
+                if (DslKeywords.Rollback.Contains(text)) return SemanticCategory.Rollback;
+                if (DslKeywords.Playback.Contains(text)) return SemanticCategory.Playback;
+                if (DslKeywords.TimeEvent.Contains(text)) return SemanticCategory.TimeEvent;
+                if (DslKeywords.Notify.Contains(text)) return SemanticCategory.Notify;
+                if (DslKeywords.UiEnhance.Contains(text)) return SemanticCategory.UiEnhance;
 
                 var ui = DslUiElementCategories.Classify(text);
                 if (ui == DslUiElementCategory.Container) return SemanticCategory.UiContainer;

@@ -9,7 +9,7 @@ namespace LingFanEngine.Dsl.LanguageServer.Protocol;
 /// </summary>
 internal static class LspProtocol
 {
-    // 语义令牌图例：索引 == LingFanEngine.Dsl.LanguageService.SemanticCategory 枚举值（0..20）。
+    // 语义令牌图例：索引 == LingFanEngine.Dsl.LanguageService.SemanticCategory 枚举值（0..28）。
     // 与 DslLanguageService.GetSemanticTokens 产出的 tokenType 下标严格对齐。
     public static readonly string[] SemanticTokenLegend =
     {
@@ -24,16 +24,24 @@ internal static class LspProtocol
         "keyword",      // 8 Navigation
         "keyword",      // 9 DataOp
         "keyword",      // 10 Media
-        "property",     // 11 Parameter
-        "property",     // 12 ElementAttribute
-        "enumMember",   // 13 Literal
-        "type",         // 14 UiDisplay
-        "type",         // 15 UiContainer
-        "function",     // 16 UiInteractive
-        "function",      // 17 SymbolDefinition
-        "variable",     // 18 SymbolReference
-        "string",       // 19 Resource（资源路径引用：图片/音频/视频/字体，可跳转至磁盘文件）
-        "function",     // 20 Function（表达式内置函数名 random/min/max/abs/clamp）
+        "keyword",      // 11 Display（显示/动画/Live2D）
+        "keyword",      // 12 SaveLoad（存档系统）
+        "keyword",      // 13 Chapter（章节/成就/图鉴）
+        "keyword",      // 14 Rollback（回溯控制）
+        "keyword",      // 15 Playback（播放控制增强）
+        "keyword",      // 16 TimeEvent（时间事件系统）
+        "keyword",      // 17 Notify（通知/调试）
+        "keyword",      // 18 UiEnhance（UI增强）
+        "property",     // 19 Parameter
+        "property",     // 20 ElementAttribute
+        "enumMember",   // 21 Literal
+        "type",         // 22 UiDisplay
+        "type",         // 23 UiContainer
+        "function",     // 24 UiInteractive
+        "function",     // 25 SymbolDefinition
+        "variable",     // 26 SymbolReference
+        "string",       // 27 Resource（资源路径引用）
+        "function",     // 28 Function（表达式内置函数名）
     };
 }
 
@@ -53,6 +61,16 @@ internal static class LspProtocol
 [JsonSerializable(typeof(TextDocumentPositionParams))]
 [JsonSerializable(typeof(ReferenceContext))]
 [JsonSerializable(typeof(ReferenceParams))]
+[JsonSerializable(typeof(RenameParams))]
+[JsonSerializable(typeof(DocumentSymbolParams))]
+[JsonSerializable(typeof(WorkspaceSymbolParams))]
+[JsonSerializable(typeof(DocumentHighlightParams))]
+[JsonSerializable(typeof(WorkspaceEdit))]
+[JsonSerializable(typeof(SymbolInformation))]
+[JsonSerializable(typeof(SymbolInformation[]))]
+[JsonSerializable(typeof(DocumentHighlight))]
+[JsonSerializable(typeof(DocumentHighlight[]))]
+[JsonSerializable(typeof(Dictionary<string, TextEdit[]>))]
 [JsonSerializable(typeof(DidOpenTextDocumentParams))]
 [JsonSerializable(typeof(DidChangeTextDocumentParams))]
 [JsonSerializable(typeof(FoldingRangeParams))]
@@ -198,6 +216,29 @@ internal sealed class ReferenceParams
     public ReferenceContext Context { get; set; } = new();
 }
 
+internal sealed class RenameParams
+{
+    public TextDocumentIdentifier TextDocument { get; set; } = new();
+    public Position Position { get; set; } = new();
+    public string NewName { get; set; } = string.Empty;
+}
+
+internal sealed class DocumentSymbolParams
+{
+    public TextDocumentIdentifier TextDocument { get; set; } = new();
+}
+
+internal sealed class WorkspaceSymbolParams
+{
+    public string? Query { get; set; }
+}
+
+internal sealed class DocumentHighlightParams
+{
+    public TextDocumentIdentifier TextDocument { get; set; } = new();
+    public Position Position { get; set; } = new();
+}
+
 internal sealed class DidOpenTextDocumentParams
 {
     public TextDocumentItem TextDocument { get; set; } = new();
@@ -281,6 +322,14 @@ internal sealed class ServerCapabilities
     public WorkspaceCapabilities? Workspace { get; set; }
     /// <summary>window 能力（如 workDoneProgress，用于 P4 进度通知）。</summary>
     public WindowCapabilities? Window { get; set; }
+    /// <summary>重命名（textDocument/rename）。</summary>
+    public bool? RenameProvider { get; set; }
+    /// <summary>文档大纲（textDocument/documentSymbol）。</summary>
+    public bool? DocumentSymbolProvider { get; set; }
+    /// <summary>工作区符号搜索（workspace/symbol）。</summary>
+    public bool? WorkspaceSymbolProvider { get; set; }
+    /// <summary>文档高亮（textDocument/documentHighlight）。</summary>
+    public bool? DocumentHighlightProvider { get; set; }
 }
 
 internal sealed class InitializeResult
@@ -316,6 +365,26 @@ internal sealed class Hover
 {
     public MarkupContent? Contents { get; set; }
     public Range? Range { get; set; }
+}
+
+internal sealed class WorkspaceEdit
+{
+    /// <summary>uri → 文本编辑数组（LSP WorkspaceEdit.changes）。</summary>
+    public Dictionary<string, TextEdit[]>? Changes { get; set; }
+}
+
+internal sealed class SymbolInformation
+{
+    public string Name { get; set; } = string.Empty;
+    public int Kind { get; set; }
+    public Location Location { get; set; } = new();
+}
+
+internal sealed class DocumentHighlight
+{
+    public Range Range { get; set; } = new();
+    /// <summary>1=Text, 2=Read, 3=Write。本服务统一给 2。</summary>
+    public int? Kind { get; set; }
 }
 
 internal sealed class CompletionItem

@@ -111,6 +111,65 @@ public static class DslKeywords
         "video", "stop_video", "pause_video", "resume_video", "seek_video", "cutscene",
     };
 
+    // ====== 新增语义子分组（缓解"全蓝视觉疲劳"）======
+
+    private static readonly HashSet<string> _display = new()
+    {
+        // 显示与动画
+        "transition", "show", "hide", "animate", "animate_block",
+        "background", "shake",
+        // 立绘系统
+        "sprite", "sprite_state", "sprite_move", "sprite_hide",
+        "bg_switch", "text_typewriter",
+        // Live2D
+        "live2d_char", "live2d_show", "live2d_motion", "live2d_expr",
+        "live2d_param", "live2d_hide", "live2d_pause", "live2d_resume",
+    };
+
+    private static readonly HashSet<string> _saveLoad = new()
+    {
+        // 存档系统
+        "save", "load", "auto_save", "save_delete",
+    };
+
+    private static readonly HashSet<string> _chapter = new()
+    {
+        // 章节 / 成就 / 图鉴
+        "chapter", "achievement", "gallery", "gallery_unlock",
+    };
+
+    private static readonly HashSet<string> _rollback = new()
+    {
+        // 回溯控制
+        "block_rollback", "fix_rollback",
+    };
+
+    private static readonly HashSet<string> _playback = new()
+    {
+        // 播放控制增强
+        "auto_speed", "no_skip", "force_skip",
+        "video_skipable", "video_auto_nav",
+    };
+
+    private static readonly HashSet<string> _timeEvent = new()
+    {
+        // 时间事件系统
+        "time_event", "time_pause", "time_resume", "skip_time",
+        "set_time_event", "unregister_time_event", "restore_time_event",
+    };
+
+    private static readonly HashSet<string> _notify = new()
+    {
+        // 通知 / 调试
+        "notify", "debug",
+    };
+
+    private static readonly HashSet<string> _uiEnhance = new()
+    {
+        // UI 增强
+        "popup", "zindex", "window",
+    };
+
     // ====== 参数 / 修饰符关键字 ======
     // 出现在语句关键字之后的 key=value 参数名或单词修饰符
     private static readonly HashSet<string> _parameters = new()
@@ -176,10 +235,29 @@ public static class DslKeywords
     // DslParser.BuildEntity 中处理的 UI 元素 key=value 属性名
     private static readonly HashSet<string> _elementAttributes = new()
     {
+        // 通用属性
         "class", "style", "source", "text",
         "align", "halign", "valign",
         "width", "height", "fontSize", "order",
         "cmd", "nav", "value",
+        // Grid 附着属性
+        "col", "row", "colspan", "rowspan",
+        // 通用布局属性
+        "x", "y", "xoffset", "yoffset", "xanchor", "yanchor",
+        "margin", "padding", "right", "bottom",
+        "minWidth", "minHeight", "maxWidth", "maxHeight",
+        // 外观属性
+        "opacity", "visible", "enabled", "zindex", "clipToBounds", "cursor",
+        // 变换属性
+        "rotation", "scale", "scaleX", "scaleY",
+        // 边框属性
+        "cornerRadius", "borderBrush", "borderColor", "borderThickness",
+        // 容器属性
+        "spacing", "direction", "columns", "rows",
+        // 文本属性
+        "textAlign", "maxWidth",
+        // 图片属性
+        "stretch",
     };
 
     // ====== 枚举值 / 字面量 ======
@@ -215,6 +293,30 @@ public static class DslKeywords
 
     /// <summary>媒体关键字（bgm/se/video/cutscene 等）→ 用于 SDK 语义高亮（橙绿）</summary>
     public static IReadOnlySet<string> Media => _media;
+
+    /// <summary>显示/动画/Live2D 关键字 → 用于 SDK 语义高亮（粉红）</summary>
+    public static IReadOnlySet<string> Display => _display;
+
+    /// <summary>存档系统关键字 → 用于 SDK 语义高亮（深青）</summary>
+    public static IReadOnlySet<string> SaveLoad => _saveLoad;
+
+    /// <summary>章节/成就/图鉴关键字 → 用于 SDK 语义高亮（靛蓝）</summary>
+    public static IReadOnlySet<string> Chapter => _chapter;
+
+    /// <summary>回溯控制关键字 → 用于 SDK 语义高亮（深红）</summary>
+    public static IReadOnlySet<string> Rollback => _rollback;
+
+    /// <summary>播放控制增强关键字 → 用于 SDK 语义高亮（深绿）</summary>
+    public static IReadOnlySet<string> Playback => _playback;
+
+    /// <summary>时间事件系统关键字 → 用于 SDK 语义高亮（棕色）</summary>
+    public static IReadOnlySet<string> TimeEvent => _timeEvent;
+
+    /// <summary>通知/调试关键字 → 用于 SDK 语义高亮（灰色）</summary>
+    public static IReadOnlySet<string> Notify => _notify;
+
+    /// <summary>UI 增强关键字 → 用于 SDK 语义高亮（浅蓝）</summary>
+    public static IReadOnlySet<string> UiEnhance => _uiEnhance;
 
     /// <summary>所有关键字的合并只读集合（自动去重）</summary>
     public static IReadOnlySet<string> All { get; } =

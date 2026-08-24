@@ -9,6 +9,8 @@ public static class DslInlineTags
     private static readonly HashSet<string> _tags = new()
     {
         "b", "/b", "i", "/i", "u", "/u", "w", "fast", "p",
+        // 裸标签名（用户可能写 {color} 而非 {/color} 作为闭合标签）
+        "color", "font", "size",
     };
 
     private static readonly string[] _prefixed =
