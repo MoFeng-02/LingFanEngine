@@ -296,6 +296,35 @@ public static IServiceCollection AddLingFanEngine(this IServiceCollection servic
 }
 ```
 
+## IGameTimeService
+
+游戏时间服务，管理游戏内时间推进。
+
+```csharp
+public interface IGameTimeService
+{
+    long TotalMinutes { get; }       // 当前游戏总分钟数
+    int CurrentDay { get; }          // 当前天数（从 TimeStartDay 开始）
+    int CurrentHour { get; }         // 当前小时（0~23）
+    int CurrentMinute { get; }       // 当前分钟（0~59）
+    DayOfWeek DayOfWeek { get; }     // 星期几（7 天循环）
+    bool IsPaused { get; }           // 是否暂停
+    float TimeScale { get; set; }    // 时间缩放系数
+
+    void Pause();                    // 暂停时间推进
+    void Resume();                   // 恢复时间推进
+    void SkipTime(int minutes);      // 跳过指定分钟数
+    void Reset();                    // 重置到起始时间
+
+    event Action<GameTimeEventArgs>? OnTimeAdvanced;  // 每 Tick 触发
+}
+```
+
+::: tip 配置
+时间系统通过 `LingFanEngineOptions.EnableTimeSystem = true` 启用。
+`SecondsPerGameMinute` 控制 1 现实秒 = N 游戏分钟（默认 1.0）。
+:::
+
 ## StateKeys
 
 常用状态键常量。

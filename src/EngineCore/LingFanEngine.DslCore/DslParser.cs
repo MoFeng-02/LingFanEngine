@@ -24,11 +24,26 @@ public static class DslParser
 
     // ========== 值解析器 ==========
 
-    /// <summary>引号字符串："..."（内容不含引号）</summary>
+    /// <summary>转义序列：\" \\ \n \t \r；未知转义保留两字符原样（如 Windows 路径 "C:\dir"），与 ExpressionParser.Pidgin 语义一致</summary>
+    private static readonly Parser<char, string> EscapeSequence =
+        Char('\\').Then(Any).Select(c => c switch
+        {
+            '"' => "\"",
+            '\\' => "\\",
+            'n' => "\n",
+            't' => "\t",
+            'r' => "\r",
+            _ => new string(['\\', c]),
+        });
+
+    /// <summary>字符串段：普通字符段（至少一个非引号非反斜杠）或转义序列（声明顺序：先转义后组合）</summary>
+    private static readonly Parser<char, string> StringSegment =
+        AnyCharExcept('"', '\\').AtLeastOnceString()
+            .Or(EscapeSequence);
+
+    /// <summary>引号字符串："..."（支持 \" 与 \\ 转义；未知转义保留两字符原样，存量零破坏）</summary>
     private static readonly Parser<char, string> QuotedString =
-        Char('"')
-            .Then(AnyCharExcept('"').ManyString())
-            .Before(Char('"'));
+        Char('"').Then(StringSegment.Many().Select(string.Concat)).Before(Char('"'));
 
     /// <summary>标识符：字母开头，后跟字母/数字/下划线/连字符</summary>
     private static readonly Parser<char, string> Identifier =
@@ -47,10 +62,12 @@ public static class DslParser
         String("true").ThenReturn((object)true)
             .Or(String("false").ThenReturn((object)false));
 
-    /// <summary>十六进制颜色：#RRGGBB / #AARRGGBB</summary>
+    /// <summary>十六进制颜色：#RGB / #ARGB / #RRGGBB / #AARRGGBB（3/4/6/8 位）</summary>
     private static readonly Parser<char, object> ColorHex =
         Char('#')
-            .Then(Token(c => "0123456789ABCDEFabcdef".Contains(c)).AtLeastOnceString())
+            .Then(Token(c => "0123456789ABCDEFabcdef".Contains(c)).AtLeastOnceString()
+                .Where(hex => hex.Length is 3 or 4 or 6 or 8)
+                .Labelled("hex color (3/4/6/8 digits)"))
             .Select(hex => (object)("#" + hex));
 
     /// <summary>

@@ -1,4 +1,5 @@
 using FluentAssertions;
+using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
 using LingFanEngine.DslCore;
 using LingFanEngine.Services.Core;
@@ -109,6 +110,76 @@ public class ExpressionEvaluatorTests
         _state.Set("mins", 5);
         var result = DslExpressionEvaluator.ReplaceText("{mins:00}", _state);
         result.Should().Be("05");
+    }
+
+    [Fact]
+    public void TimeVariables_ReturnNumeric_EqualityAndComparisonConsistent()
+    {
+        // 时间特殊变量返回数值（非字符串）："==" 与 ">" 行为必须一致可用
+        // （修复前：hours > 12 可用而 hours == 12 永假——字符串 vs 数值走 Equals 必不等）
+        _state.Set(StateKeys.GameTime.TotalMinutes, 12 * 60 + 34); // 12 小时 34 分
+
+        DslExpressionEvaluator.Evaluate("hours", _state).Should().Be(12L);
+        DslExpressionEvaluator.Evaluate("hours == 12", _state).Should().Be(true);
+        DslExpressionEvaluator.Evaluate("hours > 11", _state).Should().Be(true);
+        DslExpressionEvaluator.Evaluate("mins", _state).Should().Be(34L);
+        DslExpressionEvaluator.Evaluate("days", _state).Should().Be(0L);
+    }
+
+    [Fact]
+    public void TimeVariables_FallbackPath_FormatStillWorks()
+    {
+        // 状态未显式设置 mins → 走特殊变量回退（返回数值），{mins:00} 的 D2 格式化仍正常
+        _state.Set(StateKeys.GameTime.TotalMinutes, 5);
+        var result = DslExpressionEvaluator.ReplaceText("{mins:00}", _state);
+        result.Should().Be("05");
+    }
+
+    [Fact]
+    public void DivideByZero_ReturnsZero_AndReportsDiagnostic()
+    {
+        // 除零保持静默返回 0（兼容既有行为），但经 OnDiagnostic 钩子可观测
+        string? diagnostic = null;
+        ExpressionEvaluator.OnDiagnostic += msg => diagnostic = msg;
+        try
+        {
+            _state.Set("gold", 100);
+            DslExpressionEvaluator.Evaluate("gold / 0", _state).Should().Be(0);
+            diagnostic.Should().NotBeNullOrEmpty().And.Contain("除数为零");
+        }
+        finally
+        {
+            ExpressionEvaluator.OnDiagnostic = null;
+        }
+    }
+
+    [Fact]
+    public void Random_Deterministic_ReplayConsistent()
+    {
+        // 回溯重放一致性：counter 随检查点快照恢复后，同一 seed+counter 重放产生同一随机数
+        // （修复前用全局 Random.Shared——回溯后重放分支条件会得到不同随机数，分支走向漂移）
+        _state.Set(StateKeys.Rng.Seed, 12345L);
+        _state.Set(StateKeys.Rng.Counter, 0L);
+        var first = DslExpressionEvaluator.Evaluate("random(1, 100)", _state);
+
+        _state.Set(StateKeys.Rng.Counter, 0L); // 模拟回溯恢复检查点
+        var replay = DslExpressionEvaluator.Evaluate("random(1, 100)", _state);
+
+        replay.Should().Be(first);
+    }
+
+    [Fact]
+    public void Random_Deterministic_DifferentCounterDifferentValue()
+    {
+        // 同 seed 不同 counter 产生不同结果（非退化序列）
+        _state.Set(StateKeys.Rng.Seed, 42L);
+        _state.Set(StateKeys.Rng.Counter, 0L);
+        var values = new List<int>();
+        for (int i = 0; i < 10; i++)
+            values.Add((int)DslExpressionEvaluator.Evaluate("random(1, 1000)", _state)!);
+
+        values.Should().OnlyContain(v => v >= 1 && v <= 1000);
+        values.Distinct().Should().HaveCountGreaterThan(5);
     }
 
     [Fact]

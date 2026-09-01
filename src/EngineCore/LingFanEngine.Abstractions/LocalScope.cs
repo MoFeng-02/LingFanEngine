@@ -52,8 +52,12 @@ public static class LocalScope
         }
         else if (f.Length > 0)
         {
-            // 文件作用域：保持历史格式 _local_<file>_<baseName>（进入 scene 不清此键）
-            sb.Append(f).Append('_').Append(baseName);
+            // 文件作用域：保持历史格式 _local_<file>_<baseName>（进入 scene 不清此键）。
+            // 文件名恰为 S/L 时加倍（S→SS）：否则文件级键 _local_S_x / _local_L_x 会被
+            // IsScopedLocal 误判为场景/标签级而在进 scene 时被 ClearLocalVariables 误清
+            // （仅影响本已损坏的特例，正常文件名键格式不变）
+            var fileSeg = f is "S" or "L" ? f + f : f;
+            sb.Append(fileSeg).Append('_').Append(baseName);
         }
         else
         {
@@ -90,7 +94,9 @@ public static class LocalScope
     {
         var f = Sanitize(file);
         if (f.Length == 0) return;
-        var prefix = Prefix + f + "_";
+        // 文件段处理与 Key() 文件级分支一致（S/L 加倍），确保清理前缀与生成键精确匹配
+        var fileSeg = f is "S" or "L" ? f + f : f;
+        var prefix = Prefix + fileSeg + "_";
         foreach (var k in state.Keys
                      .Where(k => k.StartsWith(prefix, System.StringComparison.Ordinal)
                               && !IsScopedLocal(k))

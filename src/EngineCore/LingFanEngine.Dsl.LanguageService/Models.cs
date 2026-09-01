@@ -34,13 +34,23 @@ public readonly struct DirtyRange
 public sealed class CompletionItem
 {
     /// <summary>插入文本（如关键字或符号名）。</summary>
-    public string InsertText { get; }
+    public string InsertText { get; set; }
     /// <summary>展示标签（可与 InsertText 不同）。</summary>
     public string DisplayText { get; }
     /// <summary>排序/分组用种类提示（statement/label/scene/variable/parameter...）。</summary>
     public string Kind { get; }
     /// <summary>可选说明。</summary>
     public string? Detail { get; }
+    /// <summary>富文本文档（markdown，悬浮详情/补全面板文档区）。</summary>
+    public string? Documentation { get; set; }
+    /// <summary>排序键——前缀匹配优先、已定义符号优先、关键字次之。</summary>
+    public string? SortText { get; set; }
+    /// <summary>过滤键——客户端据此做前缀/模糊匹配。</summary>
+    public string? FilterText { get; set; }
+    /// <summary>是否预选中（最佳匹配高亮）。</summary>
+    public bool Preselect { get; set; }
+    /// <summary>插入后自动提交的字符（如空格、= 等）。</summary>
+    public string? CommitCharacters { get; set; }
 
     /// <summary>补全替换起点（绝对字符偏移）。-1 表示由调用方自行按词边界探测。
     /// 用于资源路径/命令名等含分隔符（/ 或 _）的候选，避免把已输入前缀重复拼回（如 "Audio/cri" → 选 "Audio/x.mp3" 不会变 "Audio/Audio/x.mp3"）。</summary>
@@ -136,5 +146,46 @@ public sealed class DslAnalysisResult
     {
         FilePath = filePath;
         Diagnostics = diagnostics;
+    }
+}
+
+/// <summary>参数签名信息（供 signatureHelp）。</summary>
+public sealed class SignatureHelpInfo
+{
+    public IReadOnlyList<SignatureInfo> Signatures { get; }
+    public int? ActiveSignature { get; }
+    public int? ActiveParameter { get; }
+
+    public SignatureHelpInfo(IReadOnlyList<SignatureInfo> signatures, int? activeSignature = null, int? activeParameter = null)
+    {
+        Signatures = signatures;
+        ActiveSignature = activeSignature;
+        ActiveParameter = activeParameter;
+    }
+}
+
+public sealed class SignatureInfo
+{
+    public string Label { get; }
+    public string? Documentation { get; }
+    public IReadOnlyList<ParameterInfo> Parameters { get; }
+
+    public SignatureInfo(string label, string? documentation, IReadOnlyList<ParameterInfo> parameters)
+    {
+        Label = label;
+        Documentation = documentation;
+        Parameters = parameters;
+    }
+}
+
+public sealed class ParameterInfo
+{
+    public string Label { get; }
+    public string? Documentation { get; }
+
+    public ParameterInfo(string label, string? documentation = null)
+    {
+        Label = label;
+        Documentation = documentation;
     }
 }

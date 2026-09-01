@@ -20,6 +20,9 @@ public enum SymbolKind
 
     /// <summary>样式（style "name" ...；元素 class=/style= 引用）。</summary>
     Style,
+
+    /// <summary>命令（button cmd="name" ...；C# 侧 RegisterCommand 注册）。</summary>
+    Command,
 }
 
 /// <summary>符号出现角色——是定义还是引用。</summary>

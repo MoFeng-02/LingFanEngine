@@ -10,6 +10,10 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+	  <PackageReference Include="Parlot" Version="1.5.8" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<ProjectReference Include="..\LingFanEngine.Abstractions\LingFanEngine.Abstractions.csproj" />
 	</ItemGroup>
 

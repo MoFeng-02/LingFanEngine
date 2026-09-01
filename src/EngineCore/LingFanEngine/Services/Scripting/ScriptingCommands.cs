@@ -272,12 +272,12 @@ public static class DslExpressionEvaluator
         if (expr == "false") return false;
         if (expr == "null") return null;
 
-        // random(min, max) 函数——简单字符串解析
+        // random(min, max) 函数——简单字符串解析（与主引擎共用确定性 RNG，保证回溯重放一致）
         if (expr.StartsWith("random(") && expr.EndsWith(')'))
         {
             var args = expr[7..^1].Split(',');
             if (args.Length == 2 && int.TryParse(args[0].Trim(), out var min) && int.TryParse(args[1].Trim(), out var max))
-                return Random.Shared.Next(min, max + 1);
+                return ExpressionEvaluator.NextDeterministic(state, min, max);
         }
 
         // 纯变量引用：仅含字母/数字/下划线/点（局部 _local_ 优先遮蔽全局）

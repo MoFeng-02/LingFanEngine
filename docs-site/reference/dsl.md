@@ -45,7 +45,9 @@ local "key" value        # 别名
 
 ```dsl
 set "key" {expression}
-set "key" += 50          // ✅ 支持复合赋值 += -= *= /= %=，等价于 {key + 50}
+set "key" += 50          // ✅ 复合赋值：+=  -=  *=  /=  %=
+set "key" -= 10          // 等价于 {key - 10}
+set "key" *= 2           // 等价于 {key * 2}
 set "key" {key + 50}     // 花括号写法
 ```
 
@@ -76,6 +78,49 @@ scene "name" type=menu|game|ui
   // UI 元素和命令
 ```
 
+## 通用布局属性
+
+以下属性适用于**所有 UI 元素**（text/button/image/grid/panel 等）：
+
+| 属性 | 说明 | 示例 |
+|:---|:---|:---|
+| `x` / `y` | 坐标（像素或百分比） | `x=50% y=100` |
+| `width` / `height` | 尺寸 | `width=200 height=44` |
+| `minWidth` / `minHeight` | 最小尺寸 | `minWidth=100` |
+| `maxWidth` / `maxHeight` | 最大尺寸 | `maxWidth=300` |
+| `margin` | 外边距 `"left,top,right,bottom"` | `margin="10,20,10,20"` |
+| `padding` | 内边距 `"left,top,right,bottom"` | `padding="5,5,5,5"` |
+| `halign` / `align` | 水平对齐：`left` / `center` / `right` / `stretch` | `halign=center` |
+| `valign` / `yalign` | 垂直对齐：`top` / `center` / `bottom` / `stretch` | `valign=center` |
+| `opacity` | 透明度 0.0~1.0 | `opacity=0.5` |
+| `visible` | 是否可见 | `visible=false` |
+| `enabled` | 是否启用交互 | `enabled=false` |
+| `zindex` | 层级 | `zindex=10` |
+| `clipToBounds` | 裁剪子元素 | `clipToBounds=true` |
+| `cursor` | 鼠标样式 | `cursor=hand` |
+| `rotation` | 旋转角度 | `rotation=45` |
+| `scale` / `scaleX` / `scaleY` | 缩放 | `scale=1.5` |
+| `cornerRadius` | 圆角半径 | `cornerRadius=8` |
+| `borderBrush` / `borderColor` | 边框颜色 | `borderColor="#FFFFFF"` |
+| `borderThickness` | 边框粗细 | `borderThickness=2` |
+| `class` | 引用已定义的 style | `class="btn_primary"` |
+
+### 通用交互属性
+
+以下属性适用于**所有 UI 控件**（不仅限于按钮）：
+
+| 属性 | 说明 | 示例 |
+|:---|:---|:---|
+| `nav="scene"` | 点击导航到场景/label | `image "bg" nav="chapter1"` |
+| `cmd="do_xxx"` | 点击执行字符串命令 | `text "提示" cmd="do_help"` |
+| `hover_source="path"` | 鼠标悬停换图（Image 专用） | `image "a.png" hover_source="a_hover.png"` |
+| `hover_color="#xxx"` | 鼠标悬停变色 | `button "btn" hover_color="#FF0000"` |
+| `hover_opacity=0.8` | 鼠标悬停透明度 | `image "bg" hover_opacity=0.8` |
+| `selected_source="path"` | 点击切换图片 | `image "tab" selected_source="tab_on.png"` |
+| `disabled=true` | 禁用交互 | `button "btn" disabled=true` |
+
+交互优先级：`disabled` > `nav` > `cmd` > `hover_*` > `selected_source`
+
 ## UI 元素
 
 ### text
@@ -90,49 +135,86 @@ text "内容" x=50% y=20% size=48 color="#FFD700" halign=center font="..." opaci
 button "文字" x=50% y=50% width=240 height=48 color="#88CCFF" nav="target" cmd="command" value="param" halign=center
 ```
 
-**交互属性：**
-
 | 属性 | 说明 |
-|------|------|
+|:---|:---|
 | `nav="scene_name"` | 点击后导航到指定场景 |
 | `cmd="command_name"` | 点击后执行注册的命令（配合 `value` 传参） |
-| `value="参数值"` | 传递给 `cmd` 命令处理器的参数，支持 `{占位符}` 表达式（点击时求值） |
+| `value="参数值"` | 传递给 `cmd` 命令处理器的参数，支持 `{占位符}` 表达式 |
 
 `nav` 和 `cmd` 互斥，`cmd` 优先级更高。
-
-**cmd + value 示例：**
-
-```dsl
-# 静态参数
-button "English" cmd="switch_lang" value="en-US"
-
-# 动态参数（{占位符} 点击时求值）
-button "加载存档" cmd="load_save" value="{selected_slot}"
-```
-
-C# 端注册命令处理器：
-
-```csharp
-cmdService.RegisterCommand("switch_lang", async (value, ct) =>
-{
-    // value 就是 DSL 中 value="xxx" 的值
-    var lang = value?.ToString() ?? "zh-CN";
-    // ... 处理逻辑
-});
-```
 
 ### image
 
 ```dsl
-image "path" x=0 y=0 width=100% height=100% opacity=0.5 zindex=10
+image "path" x=0 y=0 width=100% height=100% opacity=0.5 zindex=10 stretch=uniformtofill
 ```
 
-### vbox / hbox
+`stretch`：`fill` / `uniform` / `uniformtofill`
+
+### grid（网格容器）
 
 ```dsl
-vbox x=50% y=40% spacing=12 halign=center
+grid x=50% y=50% width=800 height=600 columns="*,2*,*" rows="Auto,100,*"
+  text "标题" col=0 row=0 halign=center
+  button "开始" col=1 row=1 colspan=2
+  image "bg.png" col=0 row=2 colspan=3
+```
+
+| 属性 | 说明 | 示例 |
+|:---|:---|:---|
+| `columns` | 列定义（`*`=填充, `2*`=两倍, `100`=固定像素） | `columns="*,2*"` |
+| `rows` | 行定义 | `rows="Auto,100,*"` |
+| `col` | 子元素列索引（0-based） | `col=0` |
+| `row` | 子元素行索引（0-based） | `row=1` |
+| `colspan` | 列跨距 | `colspan=2` |
+| `rowspan` | 行跨距 | `rowspan=2` |
+
+### panel / vbox / hbox（容器）
+
+```dsl
+panel direction=vertical spacing=12 x=50% y=40% halign=center
   button "选项1" width=200 height=44
   button "选项2" width=200 height=44
+```
+
+| 属性 | 说明 |
+|:---|:---|
+| `direction` | `horizontal`（默认）/ `vertical` |
+| `spacing` | 子元素间距 |
+
+`vbox` = `panel direction=vertical`，`hbox` = `panel direction=horizontal` 的语法糖。
+
+### scrollview（可滚动容器）
+
+```dsl
+scrollview x=0 y=0 width=400 height=300
+  text "长文本内容..." y=0
+  text "更多内容..." y=100
+```
+
+### slider（滑块）
+
+```dsl
+slider x=50% y=50% width=200 min=0 max=100 value=50 orientation=horizontal
+```
+
+### checkbox（复选框）
+
+```dsl
+checkbox "同意条款" x=50% y=50% checked=true
+```
+
+### progressbar（进度条）
+
+```dsl
+progressbar x=50% y=50% width=200 value=75 max=100
+```
+
+### spacer / divider
+
+```dsl
+spacer x=0 y=0 width=10 height=50
+divider x=0 y=100 width=400 height=2
 ```
 
 ## 对话
@@ -140,30 +222,31 @@ vbox x=50% y=40% spacing=12 halign=center
 ### say
 
 ```dsl
-say "文本" speaker="说话者" clickable=true template="xxx"
+say "文本" speaker="说话者" clickable=true template="xxx" voice="Audio/voice.mp3"
 ```
 
 | 参数 | 默认 | 说明 |
 |:---|:---|:---|
 | `speaker` | null | 说话者（character key 或字面字符串） |
-| `clickable` | false | 单词修饰符：写 `clickable` 或 `clickable=true` 启用（解析器仅接受 `=true`，不支持 `=false`） |
-| `instant` | false | 单词修饰符：写 `instant=true` 跳过打字机（不支持 `=false`） |
-| `noskip` | false | 单词修饰符：写 `noskip=true` 让 Skip 模式仍需点击（不支持 `=false`） |
-| `typewriter` | true | 单词修饰符：写 `typewriter=true` 强制启用打字机（默认 true，省略即可） |
+| `clickable` | false | 单词修饰符：写 `clickable` 或 `clickable=true` 启用 |
+| `instant` | false | 单词修饰符：写 `instant=true` 跳过打字机 |
+| `noskip` | false | 单词修饰符：写 `noskip=true` 让 Skip 模式仍需点击 |
+| `typewriter` | true | 单词修饰符：写 `typewriter=true` 强制启用打字机 |
 | `template` | null | 对话框模板名 |
+| `voice` | null | 行内语音路径（随对话播放） |
 
-> 注意：`clickable` / `instant` / `noskip` / `typewriter` 均为**单词修饰符**，只能写 `=true`（或省略 `=true` 直接写单词），**不能写 `=false`**——写 `=false` 会导致语句解析失败（false 是默认值，靠"不写"表达）。
+> 注意：`clickable` / `instant` / `noskip` / `typewriter` 均为**单词修饰符**，只能写 `=true`（或省略 `=true`），**不能写 `=false`**。
 
 ### nvl
 
 ```dsl
 nvl           # 进入 NVL 模式
 nvl clear     # 清空文本，仍在 NVL
-nvl exit      # 退出 NVL，恢复 ADV
-nvl auto      # 进入 NVL 并开启「作用域自动推进」：Say 像看书一样逐句自动翻页，直到 nvl exit 自动停止
+nvl exit      # 退出 NVL，恢复 ADV（同时自动关闭 auto 模式）
+nvl auto      # 进入 NVL 并开启作用域自动推进
 ```
 
-> **`nvl auto` 作用域语义**：开启后引擎自动推进 NVL 内的每条 Say（间隔由 `auto_speed` 控制，默认 3 秒），遇到 `menu` / `input` 等决策点会自然停下等待玩家选择；执行 `nvl exit` 时自动关闭自动模式，不会污染后续 ADV 对话。这与全局 `auto` 命令的区别在于：`auto` 是全局开关，需手动再敲一次关闭；`nvl auto` 把自动推进的作用域精确绑定到 NVL 段。
+> **`nvl auto` 作用域语义**：开启后引擎自动推进 NVL 内的每条 Say（间隔由 `auto_speed` 控制），遇到 `menu` / `input` 等决策点自然停下；执行 `nvl exit` 时自动关闭自动模式。
 
 ### window
 
@@ -182,18 +265,13 @@ wait 2              # 等待 2 秒（创建回溯检查点）
 wait 1.5 skipable  # 等待 1.5 秒，期间玩家可点击立即跳过
 ```
 
-`wait` 会创建一个回溯检查点（无论是否带 `skipable`）。`skipable` 形式在等待期间允许玩家点击立即继续；非 `skipable` 形式必须等满时长。
-
 ### pause
 
 ```dsl
 pause          # 暂停并等待玩家点击继续（创建回溯检查点）
-pause hard     # 硬暂停：等待点击，且不可被 skip 模式绕过
+pause 2.0      # 可跳过的定时等待 2 秒（= wait 2.0 skipable）
+pause 2.0 hard # 不可跳过的定时等待 2 秒（= wait 2.0）
 ```
-
-`pause` 会创建一个回溯检查点，并一直等待玩家点击才继续。`hard` 修饰符表示强制暂停（skip 模式也不能跳过）。
-
-> 注意：`pause` 的等待以「玩家点击」为结束条件，而非计时；即便写作 `pause 3`，当前实现仍会等待点击（时长参数被忽略）。如需定时恢复，用 `wait N`。
 
 ## 流程控制
 
@@ -204,13 +282,23 @@ navigate "target"     # 跳转，创建回溯检查点
 jump "target"         # 跳转，不创建检查点
 ```
 
+### scene（导航）
+
+```dsl
+scene "scene_name"    # 在 label 内使用 = 导航（清空堆栈）
+```
+
+> `scene` 在文件顶层 = 定义场景块（UI 布局）；在 label 内 = 导航命令（等同 navigate 但清空堆栈）。
+
 ### menu
 
 ```dsl
 menu "提示文字"
-  "选项1" -> label1
-  "选项2" -> label2
+  option "选项1" -> label1
+  option "选项2" -> label2
 ```
+
+也支持简写：`"选项文本" -> label`（省略 `option` 关键字）。
 
 ### input
 
@@ -218,12 +306,10 @@ menu "提示文字"
 input "提示文字" store "变量键" [options=["选项A", "选项B"]]
 ```
 
-- 不带 `options` 时为自由文本输入；带 `options` 时从给定列表中选取。结果存入 `store` 指定的变量键。
-
 ### call / return
 
 ```dsl
-call "subroutine"
+call subroutine
 # 子过程内
 return
 ```
@@ -235,12 +321,10 @@ label start:        # 定义标签（冒号可省略）
 jump "start"        # 跳转到标签
 ```
 
-标签是 `jump` / `call` / `menu` 跳转的目标。`scene` 与 `label` 名字全局唯一。
-
 ### call_screen
 
 ```dsl
-call_screen "ui_scene" store="result" with "k=v"
+call_screen "ui_scene" store="result" with "k=v,k2=v2"
 ```
 
 ### back / forward
@@ -252,25 +336,41 @@ forward   # 前进到下一个场景
 
 ## 控制流
 
-### if / else if / else / end
+### if / else if / else
+
+DSL 支持**缩进式**和**花括号式**两种块语法：
 
 ```dsl
+# 缩进式（推荐）
 if {condition}
-  ...
-else if {condition}
-  ...
+  say "条件成立"
+else if {other}
+  say "其他条件"
 else
-  ...
-end
+  say "默认"
+end    # 可选：格式化锚点，帮助缩进器识别块边界
+
+# 花括号式
+if {condition} {
+  say "条件成立"
+} else {
+  say "默认"
+}
 ```
+
+::: tip `end` 的实际语义
+`end` 在引擎中是 **no-op（已废弃）**——编译时直接跳过，不生成任何命令。块边界完全由**缩进**决定。
+
+`end` 的唯一价值是作为**格式化锚点**：让 LSP 格式化器明确知道块在哪里结束，避免后续行被错误缩进到块内。类似 Python 的 `# endregion`。
+:::
 
 ### while / break / continue
 
 ```dsl
 while {condition}
-  ...
-  break
-  continue
+  say "循环中"
+  break        # 跳出循环
+  continue     # 跳到下一次迭代
 end
 ```
 
@@ -278,7 +378,7 @@ end
 
 ```dsl
 for "var" in {1, 2, 3}
-  ...
+  say "第 {var} 次"
 end
 ```
 
@@ -286,7 +386,7 @@ end
 
 ```dsl
 foreach "var" in "array_key"
-  ...
+  say "{var}"
 ```
 
 ### switch / case / default
@@ -294,18 +394,18 @@ foreach "var" in "array_key"
 ```dsl
 switch {expr}
   case 1
-    ...
+    say "一"
   case 2
-    ...
+    say "二"
   default
-    ...
+    say "其他"
 ```
 
 ### func / return
 
 ```dsl
 func name(param1, param2)
-  ...
+  say "参数: {param1}"
   return value
 ```
 
@@ -357,7 +457,7 @@ hide "tag" with "dissolve" duration=0.8
 transition "fade" duration=1.5
 ```
 
-效果：`fade` / `crossfade` / `fadeout` / `dissolve` / `slideleft` / `slideright` / `slideup` / `slidedown` / `fadeup` / `fadedown` / `blur` / `zoomin`(或 `zoom`) / `shrink` / `blink`（大小写不敏感，无 `none`）
+效果：`fade` / `crossfade` / `fadeout` / `dissolve` / `slideleft` / `slideright` / `slideup` / `slidedown` / `fadeup` / `fadedown` / `blur` / `zoomin`(或 `zoom`) / `shrink` / `blink`（大小写不敏感）
 
 ### animate
 
@@ -367,9 +467,7 @@ animate "tag" property value [duration=N] [easing=EaseOutQuad]
 
 属性：`x` / `y` / `opacity` / `rotate` / `scale`
 
-缓动（PascalCase 枚举成员名，大小写敏感，默认 `EaseOutQuad`）：`Linear` / `EaseInQuad` / `EaseOutQuad` / `EaseInOutQuad` / `EaseInCubic` / `EaseOutCubic` / `EaseInOutCubic` / `EaseInBack` / `EaseOutBack` / `EaseInOutBack` / `EaseInElastic` / `EaseOutElastic` / `EaseInOutElastic` / `EaseInBounce` / `EaseOutBounce` / `EaseInOutBounce`
-
-示例：`animate "tag" x 80 duration=1.0 easing=EaseOutQuad`
+缓动：`Linear` / `EaseInQuad` / `EaseOutQuad` / `EaseInOutQuad` / `EaseInCubic` / `EaseOutCubic` / `EaseInOutCubic` / `EaseInBack` / `EaseOutBack` / `EaseInOutBack` / `EaseInElastic` / `EaseOutElastic` / `EaseInOutElastic` / `EaseInBounce` / `EaseOutBounce` / `EaseInOutBounce`
 
 ### animate_block
 
@@ -377,16 +475,12 @@ animate "tag" property value [duration=N] [easing=EaseOutQuad]
 animate_block "target" x=100 y=200 opacity=0.5 duration=1.0 easing=EaseOutQuad
 ```
 
-对指定目标（tag）批量设置多个动画属性，等价于把多条 `animate` 合并到同一时间轴。`duration` / `easing` 作用于整组属性。
-
 ### style
 
 ```dsl
 style "panel" background="#202030" border=2 corner=8
 style dialog border=1 color="#FFFFFF"
 ```
-
-定义或覆盖 UI 元素的样式属性（键值对）。属性名同 `animate` 的取值域（`x` / `y` / `opacity` / `rotate` / `scale` 等），可带引号名或裸名。
 
 ### shake
 
@@ -408,14 +502,7 @@ notify "提示文字" duration=3.0
 
 ```dsl
 bgm "path" volume=0.7
-```
-
-停止 BGM 需使用 C# API：`gameController.StopBgm()` 或 `StopBgmAsync()`。
-
-BGM 交叉淡入队列（C# API）：
-
-```csharp
-await _pipeline.SendAsync(new BgmQueueCommand { Path = "Audio/BGM/song2.ogg", Volume = 0.7f, CrossFadeDuration = 2.0 });
+bgm ""                 # 停止 BGM
 ```
 
 ### se / ambient / voice
@@ -423,17 +510,18 @@ await _pipeline.SendAsync(new BgmQueueCommand { Path = "Audio/BGM/song2.ogg", Vo
 ```dsl
 se "path" volume=0.5
 ambient "path" volume=0.4
+ambient "path" loop=false volume=0.3   # 非循环环境音
 stop_ambient
 stop_ambient "tag"
 
-voice "path" volume=0.9 auto_stop=false   // 独立语音语句（单轨）
-say "文本" speaker="x" voice="path"         // 随对话行内播放
-stop_voice                                  // 停止当前语音
+voice "path" volume=0.9 auto_stop=false   # 独立语音语句（单轨）
+say "文本" speaker="x" voice="path"        # 随对话行内播放
+stop_voice                                 # 停止当前语音
 ```
 
 ::: tip 语音（Voice）
 语音走独立单轨通道：下一句 `say voice=` 或 `voice` 会原子替换当前语音。
-`say voice=` 在回溯/前进重看时同样重播（符合直觉）。`stop_voice` 用于对话结束后主动中断。
+`say voice=` 在回溯/前进重看时同样重播。`stop_voice` 用于对话结束后主动中断。
 :::
 
 ## 文本特效
@@ -463,8 +551,9 @@ text_typewriter speed=30
 ```dsl
 save "slot"
 load "slot"
-auto_save true|false
-save_delete "slot"
+auto_save true         # 开启自动存档
+auto_save false        # 关闭自动存档
+save_delete "slot"     # 删除存档
 ```
 
 ## 回溯控制
@@ -480,22 +569,14 @@ fix_rollback        # 允许查看但不允许改变
 
 ```dsl
 set_time_event "id" HOUR [minute=N] [day=N] [once=true|false] [weekdays="Mon,Tue"] [condition="{expr}"] [desc="描述"]
-  # 缩进块：触发时执行的代码
 ```
 
-### unregister_time_event
+### unregister_time_event / restore_time_event
 
 ```dsl
-unregister_time_event "id"
+unregister_time_event "id"       # 注销时间事件
+restore_time_event "id"         # 恢复已注销的时间事件
 ```
-
-### restore_time_event
-
-```dsl
-restore_time_event "id"
-```
-
-恢复此前被 `unregister_time_event` 注销的时间事件（按 id 重新启用其调度）。
 
 ### time_pause / time_resume / skip_time
 
@@ -505,7 +586,7 @@ time_resume
 skip_time N          # 跳过 N 分钟
 ```
 
-### time_event（兼容）
+### time_event（兼容旧语法）
 
 ```dsl
 time_event day=N hour=N target="label" once=true
@@ -514,16 +595,14 @@ time_event day=N hour=N target="label" once=true
 ## 播放控制
 
 ```dsl
-auto                 # 切换自动播放模式（与 skip 互斥）：开启后 Say 完成后等待 auto_speed 秒自动推进
-skip                 # 切换跳过模式（与 auto 互斥）：开启后快速略过对话等待
-auto_speed N         # 自动播放间隔（秒）
-no_skip              # 禁用跳过
-force_skip           # 强制跳过
+auto                 # 切换自动播放模式（与 skip 互斥）
+skip                 # 切换跳过模式（与 auto 互斥）
+auto_speed N         # 自动播放间隔（秒），默认 3.0
+no_skip              # 禁用跳过模式
+force_skip           # 强制进入跳过模式
 video_skipable true|false   # 视频可跳过
 video_auto_nav "scene"      # 视频结束后自动导航到场景
 ```
-
-> 自动推进对所有 `say` / `wait` / `pause` 等待生效；在 NVL 模式下与累积文本配合，可实现「看书式逐句翻页」。若只想在 NVL 段内自动、出 NVL 即停，优先使用 `nvl auto`（作用域自动），而非手动成对开关 `auto`。
 
 ## 解锁系统
 
@@ -559,7 +638,7 @@ stop_video
 pause_video
 resume_video
 seek_video N         # 跳到 N 秒
-cutscene "path" [skipable=true|false]  # 播放不可跳过视频
+cutscene "path" [skipable=true|false]  # 播放过场动画
 ```
 
 ## 调试
@@ -586,9 +665,3 @@ debug "message" level=Info|Warn|Error|Debug
 - 链式比较 `{a < b < c}` 不支持，拆成 `{a < b && b < c}`。
 - `===` / `!==` / `++` / `--` 均不支持。
 :::
-
-## 块结束
-
-```dsl
-end     # if/while/for/func/switch 块结束
-```

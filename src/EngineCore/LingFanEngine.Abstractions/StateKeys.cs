@@ -427,6 +427,23 @@ public const string AmbientPath = "__ambient_path";
         public const string CurrentDay = "__current_day";
     }
 
+    // ==================== 确定性随机 ====================
+
+    /// <summary>
+    /// 确定性随机相关状态键（random() 表达式函数的状态化 RNG）
+    /// <para>random() 不再使用全局 Random.Shared——而是 seed+counter 经 SplitMix64 派生：
+    /// counter 每次调用自增并写入状态 → 随回溯检查点快照保存/恢复 →
+    /// 回溯重放含 random() 的分支条件得到同一随机数，保证同一检查点分支走向一致。</para>
+    /// </summary>
+    public static class Rng
+    {
+        /// <summary>随机种子 (long)——会话内首次调用 random() 时生成一次</summary>
+        public const string Seed = "__rng_seed";
+
+        /// <summary>调用计数器 (long)——每次 random() 自增，随检查点快照恢复</summary>
+        public const string Counter = "__rng_counter";
+    }
+
     // ==================== 控件级动画 ====================
 
     /// <summary>

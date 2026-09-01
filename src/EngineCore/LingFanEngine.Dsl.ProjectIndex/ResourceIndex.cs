@@ -4,7 +4,9 @@ namespace LingFanEngine.Dsl.ProjectIndex;
 /// <para>性能优先：全量扫描进内存，查询不碰磁盘；didChangeWatchedFiles 经 Update/Remove 增量维护。</para></summary>
 public sealed class ResourceIndex
 {
-    private Dictionary<string, ResourceEntry> _byRelative = new(StringComparer.Ordinal);
+    // 资源相对路径键 OrdinalIgnoreCase（Windows 磁盘语义）：DSL 里 "images/bg.png" 与磁盘 Images/BG.png 须命中同一条目，
+    // 否则精确查找 miss → 触发「未找到资源」假警告（EndsWith 兜底是 O(n) 且可能命中错误同名文件）。
+    private Dictionary<string, ResourceEntry> _byRelative = new(StringComparer.OrdinalIgnoreCase);
     private string? _root;
 
     public void Scan(string rootPath)
@@ -12,7 +14,7 @@ public sealed class ResourceIndex
         _root = rootPath;
         // 后台构建：先在局部字典上完成全量扫描，末了一次性替换字段引用（引用赋值为原子操作），
         // 读请求要么看到旧表、要么看到新表，不会读到半构建状态——从而不阻塞 LSP 读请求。
-        var byRelative = new Dictionary<string, ResourceEntry>(StringComparer.Ordinal);
+        var byRelative = new Dictionary<string, ResourceEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (var f in ProjectScanner.Enumerate(rootPath, "*"))
         {
             var ext = Path.GetExtension(f);

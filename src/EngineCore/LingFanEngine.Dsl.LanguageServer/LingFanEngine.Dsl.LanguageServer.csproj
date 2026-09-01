@@ -15,6 +15,11 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<!-- 测试项目需访问 internal 类型（DslLanguageServer/JsonRpcConnection/LspTypes）做 wire-level 集成测试 -->
+		<InternalsVisibleTo Include="LingFanEngine.Tests" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<ProjectReference Include="..\LingFanEngine.Dsl.LanguageService\LingFanEngine.Dsl.LanguageService.csproj" />
 	</ItemGroup>
 

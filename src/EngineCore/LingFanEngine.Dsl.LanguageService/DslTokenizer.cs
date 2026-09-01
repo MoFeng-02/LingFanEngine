@@ -70,12 +70,17 @@ public static class DslTokenizer
                 continue;
             }
 
-            // 双引号字符串（含未闭合）
+            // 双引号字符串（含未闭合；跳过 \" 转义——与 DslCore 解析器行为一致）
             if (ch == '"')
             {
                 var s = col;
                 col++;
-                while (col < n && text[col] != '"') col++;
+                while (col < n)
+                {
+                    if (text[col] == '\\' && col + 1 < n) { col += 2; continue; }
+                    if (text[col] == '"') break;
+                    col++;
+                }
                 if (col < n && text[col] == '"') col++; // 含结尾引号
                 tokens.Add(new DslToken(baseOffset + s, col - s, DslTokenKind.String));
                 continue;

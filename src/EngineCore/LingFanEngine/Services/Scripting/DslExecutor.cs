@@ -571,7 +571,7 @@ public class DslExecutor : IDslExecutor
                     case BranchCommand br:
                         if (br.Condition != null)
                         {
-                            var conditionMet = DslExpressionEvaluator.EvaluateBool(br.Condition, _state);
+                            var conditionMet = TryEvaluateCondition(br.Condition, currentIndex);
                             _state.Set(StateKeys.Dsl.CurrentIndex,
                                 currentIndex + (conditionMet ? 1 : br.SkipCount + 1));
                         }
@@ -620,29 +620,30 @@ public class DslExecutor : IDslExecutor
                         }
                         else if (sv.Value is DslForLengthPlaceholder forLen)
                         {
-                            var source = DslExpressionEvaluator.Evaluate(forLen.SourceExpr, _state);
-                            var len = source switch
+                            var (ok, source) = TryEvaluateValue(forLen.SourceExpr, currentIndex);
+                            var len = ok ? source switch
                             {
                                 string s => s.Length,
                                 System.Collections.IList list => list.Count,
                                 System.Collections.IEnumerable en => en.Cast<object?>().Count(),
                                 _ => 0
-                            };
+                            } : 0;
                             _state.Set(key, len);
                         }
                         else if (sv.Value is DslForIndexPlaceholder forIdx)
                         {
-                            var source = DslExpressionEvaluator.Evaluate(forIdx.SourceExpr, _state);
+                            var (ok, source) = TryEvaluateValue(forIdx.SourceExpr, currentIndex);
                             var index = _state.Get<int>(forIdx.IndexVar);
                             object? element = null;
-                            if (source is System.Collections.IList list && index >= 0 && index < list.Count)
+                            if (ok && source is System.Collections.IList list && index >= 0 && index < list.Count)
                                 element = list[index]!;
                             _state.Set(key, element);
                         }
                         else if (sv.Value is DslExpressionPlaceholder placeholder)
                         {
-                            var result = DslExpressionEvaluator.Evaluate(placeholder.Expression, _state);
-                            _state.Set(key, result);
+                            var (ok, result) = TryEvaluateValue(placeholder.Expression, currentIndex);
+                            if (ok)
+                                _state.Set(key, result);
                         }
                         else
                         {
@@ -772,8 +773,52 @@ public class DslExecutor : IDslExecutor
         }
         catch (Exception ex)
         {
-            _logger.LogError("RunAsync error", ex);
+            // 未知异常（引擎自身缺陷）——终止执行流，但必须复位交互等待状态：
+            // 否则 WaitingType/Dialog.Complete 残留会让对话遮罩永久显示（用户视角的"游戏卡死"）
+            _logger.LogError($"RunAsync error @ index {_state.Get<int>(StateKeys.Dsl.CurrentIndex)}: {ex.Message}", ex);
+            _state.Set(StateKeys.Dsl.WaitingType, "");
+            _state.Set(StateKeys.Dialog.Complete, false);
             _state.Set(StateKeys.Dsl.Executing, false);
+        }
+    }
+
+    // ========== 语句级表达式安全求值（错误隔离） ==========
+
+    /// <summary>
+    /// 条件表达式安全求值（if/elif 分支条件）。
+    /// <para>求值异常（如 "a" > 1 字符串与数字比较、未定义变量参与算术）不终止整个故事执行流：
+    /// 记录含命令索引的日志并按 false 处理（走 else 分支），后续语句继续执行。
+    /// 修复：原先异常冒泡到 RunAsync 外层 catch 会静默终止全部执行流。</para>
+    /// </summary>
+    private bool TryEvaluateCondition(string? expr, int currentIndex)
+    {
+        if (string.IsNullOrWhiteSpace(expr)) return false;
+        try
+        {
+            return DslExpressionEvaluator.EvaluateBool(expr, _state);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"条件表达式求值失败 @ index {currentIndex} [\"{expr}\"]，按 false 处理并继续: {ex.Message}", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 值表达式安全求值（set 赋值 / for 长度与元素）。
+    /// <para>求值异常不终止执行流：记录日志并标记失败（调用方跳过本次赋值，变量保持原值）。
+    /// 返回 (false, null) 表示求值失败；求值结果本身为 null 时返回 (true, null)。</para>
+    /// </summary>
+    private (bool Ok, object? Value) TryEvaluateValue(string expr, int currentIndex)
+    {
+        try
+        {
+            return (true, DslExpressionEvaluator.Evaluate(expr, _state));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"表达式求值失败 @ index {currentIndex} [\"{expr}\"]，跳过本次赋值并继续: {ex.Message}", ex);
+            return (false, null);
         }
     }
 

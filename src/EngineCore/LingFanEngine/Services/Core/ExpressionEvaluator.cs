@@ -27,11 +27,12 @@ public static class ExpressionEvaluator
     static ExpressionEvaluator()
     {
         // 内置函数
-        RegisterFunction("random", (args, _) =>
+        // random：确定性 RNG（seed+counter 经 SplitMix64）——回溯重放一致（见 NextDeterministic 注释）
+        RegisterFunction("random", (args, state) =>
         {
             var min = ConvertToInt(args[0]);
             var max = ConvertToInt(args[1]);
-            return Random.Shared.Next(min, max + 1);
+            return NextDeterministic(state, min, max);
         });
 
         RegisterFunction("min", (args, _) =>
@@ -76,6 +77,78 @@ public static class ExpressionEvaluator
     /// </summary>
     public static bool UnregisterFunction(string name)
         => _functions.TryRemove(name.ToLowerInvariant(), out _);
+
+    /// <summary>
+    /// 表达式诊断回调（可选）——由宿主注入（如接 EngineLogger），报告除零等语义问题。
+    /// <para>null（默认）时零开销；DSL 求值层的静默降级（如 x/0 返回 0）通过此钩子可观测。</para>
+    /// </summary>
+    public static Action<string>? OnDiagnostic { get; set; }
+
+    /// <summary>
+    /// 确定性随机：seed + counter 经 SplitMix64 派生 [min, max] 闭区间整数。
+    /// <para>修复回溯不确定性：原先用全局 Random.Shared，回溯后重放含 random() 的分支条件
+    /// 会得到不同随机数 → 同一检查点分支走向漂移。现在 counter 写入状态容器，
+    /// 随回溯检查点快照保存/恢复 → 重放得到同一随机数序列。</para>
+    /// <para>seed 在会话内首次调用时生成一次（真随机），保证不同会话不重复。</para>
+    /// </summary>
+    public static int NextDeterministic(IStateContainer state, int min, int max)
+    {
+        if (max < min) (min, max) = (max, min);
+
+        var seed = state.Get<long>(StateKeys.Rng.Seed);
+        if (seed == 0)
+        {
+            // 首次调用：生成真随机种子（Span<byte> 零额外分配，AOT 安全）
+            Span<byte> buf = stackalloc byte[8];
+            System.Security.Cryptography.RandomNumberGenerator.Fill(buf);
+            seed = System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(buf);
+            if (seed == 0) seed = 1;
+            state.Set(StateKeys.Rng.Seed, seed);
+        }
+
+        var counter = state.Get<long>(StateKeys.Rng.Counter) + 1;
+        state.Set(StateKeys.Rng.Counter, counter);
+
+        var z = (ulong)seed ^ ((ulong)counter * 0x9E3779B97F4A7C15UL);
+        // SplitMix64
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9UL;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBUL;
+        z ^= z >> 31;
+
+        var range = (ulong)(max - min + 1L);
+        return range == 0 ? min : (int)(min + (long)(z % range));
+    }
+
+    /// <summary>
+    /// 尝试解析时间特殊变量（days/hours/mins 及单数形式）。
+    /// <para>返回数值（long）而非字符串——修复 "hours == 12" 永假（字符串 vs 数值走 Equals 必不等）
+    /// 而 "hours > 12" 却可用（ToDouble 隐式转换）的不一致行为。</para>
+    /// <para>供 ExpressionEvaluator（AST 路径）与 ExpressionParser（模板回退路径）共用，保持两路径语义一致。</para>
+    /// </summary>
+    /// <param name="name">变量名（不区分大小写）</param>
+    /// <param name="value">解析出的数值</param>
+    /// <returns>是否为时间特殊变量</returns>
+    public static bool TryGetTimeVariable(string name, IStateContainer state, out object? value)
+    {
+        value = null;
+        if (name.Length > 7) return false;
+        var lower = name.ToLowerInvariant();
+        var total = state.Get<long>(StateKeys.GameTime.TotalMinutes);
+        switch (lower)
+        {
+            case "days" or "day":
+                value = total / 1440;
+                return true;
+            case "hours" or "hour":
+                value = total % 1440 / 60;
+                return true;
+            case "mins" or "min" or "minutes":
+                value = total % 60;
+                return true;
+            default:
+                return false;
+        }
+    }
 
     // ====== 求值入口 ======
 
@@ -138,8 +211,8 @@ public static class ExpressionEvaluator
             "+" => Add(lVal, rVal),
             "-" => ToDouble(lVal) - ToDouble(rVal),
             "*" => ToDouble(lVal) * ToDouble(rVal),
-            "/" => ToDouble(rVal) != 0 ? ToDouble(lVal) / ToDouble(rVal) : 0,
-            "%" => ToDouble(rVal) != 0 ? ToDouble(lVal) % ToDouble(rVal) : 0,
+            "/" => Divide(ToDouble(lVal), ToDouble(rVal)),
+            "%" => Modulo(ToDouble(lVal), ToDouble(rVal)),
             "==" => AreEqual(lVal, rVal),
             "!=" => !AreEqual(lVal, rVal),
             ">" => ToDouble(lVal) > ToDouble(rVal),
@@ -151,6 +224,28 @@ public static class ExpressionEvaluator
     }
 
     // ====== 一元运算 ======
+
+    /// <summary>除法——除零静默返回 0（兼容既有行为），但经 OnDiagnostic 报告使其可观测</summary>
+    private static double Divide(double l, double r)
+    {
+        if (r == 0)
+        {
+            OnDiagnostic?.Invoke($"除数为零: {l} / 0 → 返回 0");
+            return 0;
+        }
+        return l / r;
+    }
+
+    /// <summary>取模——模零静默返回 0（兼容既有行为），但经 OnDiagnostic 报告使其可观测</summary>
+    private static double Modulo(double l, double r)
+    {
+        if (r == 0)
+        {
+            OnDiagnostic?.Invoke($"模数为零: {l} % 0 → 返回 0");
+            return 0;
+        }
+        return l % r;
+    }
 
     private static object? EvaluateUnary(UnaryExpr un, IStateContainer state)
     {
@@ -216,17 +311,9 @@ public static class ExpressionEvaluator
         var parts = path.Split('.');
         if (parts.Length == 1)
         {
-            // 特殊变量：days / hours / mins / minutes（仅当状态中不存在时作为回退）
-            if (path.Length <= 7)
-            {
-                var lower = path.ToLowerInvariant();
-                if (lower is "days" or "day")
-                    return (state.Get<long>(StateKeys.GameTime.TotalMinutes) / 1440).ToString();
-                if (lower is "hours" or "hour")
-                    return ((state.Get<long>(StateKeys.GameTime.TotalMinutes) % 1440) / 60).ToString();
-                if (lower is "mins" or "min" or "minutes")
-                    return (state.Get<long>(StateKeys.GameTime.TotalMinutes) % 60).ToString();
-            }
+            // 特殊时间变量：days / hours / mins（仅当状态中不存在时作为回退）
+            if (TryGetTimeVariable(path, state, out var timeValue))
+                return timeValue;
 
             return null;
         }
@@ -335,6 +422,9 @@ public static class ExpressionEvaluator
         var l = ToDouble(left);
         var r = ToDouble(right);
         var result = l + r;
-        return result == (int)result ? (object)(int)result : result;
+        // 仅当可无损表示为 int 时才收窄（整数且在范围内）：超出范围强转会得到错误的环绕值
+        return result == Math.Floor(result) && result >= int.MinValue && result <= int.MaxValue
+            ? (object)(int)result
+            : result;
     }
 }

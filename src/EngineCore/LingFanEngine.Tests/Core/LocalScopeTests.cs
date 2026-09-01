@@ -35,6 +35,30 @@ public class LocalScopeTests
     }
 
     [Fact]
+    public void FileName_SingleLetter_S_NotMisclassifiedAsScoped()
+    {
+        // 文件名恰为 "S"：文件级键不得被 IsScopedLocal 误判为场景级（进 scene 被误清）
+        var key = LocalScope.Key("S", null, null, "x");
+        key.Should().Be("_local_SS_x");
+        LocalScope.IsScopedLocal(key).Should().BeFalse();
+
+        // 读写与清理闭环：ClearFileLevel 能清到（前缀加倍后仍精确匹配）
+        var s = Scope(file: "S");
+        LocalScope.Write(s, "_local_x", 1);
+        LocalScope.Read(s, "x").Should().Be(1);
+        LocalScope.ClearFileLevel(s, "S");
+        LocalScope.Read(s, "x").Should().BeNull();
+    }
+
+    [Fact]
+    public void FileName_SingleLetter_L_NotMisclassifiedAsScoped()
+    {
+        var key = LocalScope.Key("L", null, null, "x");
+        key.Should().Be("_local_LL_x");
+        LocalScope.IsScopedLocal(key).Should().BeFalse();
+    }
+
+    [Fact]
     public void CrossFile_SameLocalName_DoNotCollide()
     {
         var a = Scope(file: "A");

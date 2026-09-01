@@ -159,7 +159,7 @@ public static class DslGrammar
             Stmt("background"),
 
             // ===== 角色 / 样式 / 场景管理 =====
-            Stmt("character", positionalRef: DslCompletionRef.Character, named: P(("name", DslCompletionRef.None), ("color", DslCompletionRef.None), ("font", DslCompletionRef.None), ("size", DslCompletionRef.None), ("textcolor", DslCompletionRef.None), ("textfont", DslCompletionRef.None), ("typewriter", DslCompletionRef.None))),
+            Stmt("character", positionalRef: DslCompletionRef.Character, named: P(("name", DslCompletionRef.None), ("color", DslCompletionRef.None), ("font", DslCompletionRef.None), ("size", DslCompletionRef.None), ("textcolor", DslCompletionRef.None), ("textfont", DslCompletionRef.None), ("typewriter", DslCompletionRef.None), ("screen", DslCompletionRef.None))),
             Stmt("window"),
             Stmt("nvl"),
 
@@ -209,7 +209,11 @@ public static class DslGrammar
             Stmt("notify", named: P(("type", DslCompletionRef.None), ("duration", DslCompletionRef.None))),
 
             // ===== 图鉴 / 调试 =====
+            // gallery 无参（打开图鉴界面）；gallery unlock "id" "img" 为复合形式由 parser 处理。
+            Stmt("gallery"),
             Stmt("gallery_unlock", named: P(("title", DslCompletionRef.None), ("scene", DslCompletionRef.Scene))),
+            // shake：画面抖动，intensity/duration 均为可选数值（GameController.Shake 默认 10.0/0.5）。
+            Stmt("shake", named: P(("intensity", DslCompletionRef.None), ("duration", DslCompletionRef.None))),
             Stmt("debug", named: P(("level", DslCompletionRef.None))),
             Stmt("skip"), Stmt("auto"),
         };
@@ -222,9 +226,14 @@ public static class DslGrammar
             {
                 "class" or "style" => DslCompletionRef.Style,
                 "source" or "src" or "path" => DslCompletionRef.Resource,
+                // 字体值是字体族名（如 "Microsoft YaHei"）或字体资源路径——族名不是文件，
+                // 映射 Resource 会把族名误报「未找到资源」假诊断，故 None（不校验、不补全）。
+                // 悬停/选中换图（InteractionBinder）是真实图片路径 → Resource。
+                "hover_source" or "selected_source" => DslCompletionRef.Resource,
                 "nav" => DslCompletionRef.Scene,
                 "cmd" => DslCompletionRef.Command,
                 "align" or "halign" or "valign" or "xalign" or "yalign" => DslCompletionRef.Align,
+                "disabled" => DslCompletionRef.Boolean,
                 _ => DslCompletionRef.None,
             };
         // 元素特定属性（按元素类型补充）
@@ -236,12 +245,22 @@ public static class DslGrammar
                 ["columns"] = DslCompletionRef.None,
                 ["rows"] = DslCompletionRef.None,
             },
-            // 容器属性（panel/vbox/hbox）
+            // 容器属性（panel/vbox/hbox + ControlFactory:228 panel 组 + :290 stack 组）
             ["panel"] = new(StringComparer.Ordinal) { ["direction"] = DslCompletionRef.None, ["spacing"] = DslCompletionRef.None },
             ["vbox"] = new(StringComparer.Ordinal) { ["direction"] = DslCompletionRef.None, ["spacing"] = DslCompletionRef.None },
             ["hbox"] = new(StringComparer.Ordinal) { ["direction"] = DslCompletionRef.None, ["spacing"] = DslCompletionRef.None },
+            ["frame"] = new(StringComparer.Ordinal) { ["direction"] = DslCompletionRef.None, ["spacing"] = DslCompletionRef.None },
+            ["window"] = new(StringComparer.Ordinal) { ["direction"] = DslCompletionRef.None, ["spacing"] = DslCompletionRef.None },
+            ["dialogbox"] = new(StringComparer.Ordinal) { ["direction"] = DslCompletionRef.None, ["spacing"] = DslCompletionRef.None },
+            ["choicebox"] = new(StringComparer.Ordinal) { ["direction"] = DslCompletionRef.None, ["spacing"] = DslCompletionRef.None },
+            ["infobox"] = new(StringComparer.Ordinal) { ["direction"] = DslCompletionRef.None, ["spacing"] = DslCompletionRef.None },
+            ["overlay"] = new(StringComparer.Ordinal) { ["direction"] = DslCompletionRef.None, ["spacing"] = DslCompletionRef.None },
+            ["popup"] = new(StringComparer.Ordinal) { ["direction"] = DslCompletionRef.None, ["spacing"] = DslCompletionRef.None },
+            ["stack"] = new(StringComparer.Ordinal) { ["direction"] = DslCompletionRef.None, ["spacing"] = DslCompletionRef.None },
+            ["stackpanel"] = new(StringComparer.Ordinal) { ["direction"] = DslCompletionRef.None, ["spacing"] = DslCompletionRef.None },
             // 图片属性
             ["image"] = new(StringComparer.Ordinal) { ["stretch"] = DslCompletionRef.None },
+            ["imagebutton"] = new(StringComparer.Ordinal) { ["stretch"] = DslCompletionRef.None, ["hover_source"] = DslCompletionRef.Resource, ["selected_source"] = DslCompletionRef.Resource },
             ["portrait"] = new(StringComparer.Ordinal) { ["stretch"] = DslCompletionRef.None },
             ["sprite"] = new(StringComparer.Ordinal) { ["stretch"] = DslCompletionRef.None },
             // 进度条/滑块属性
@@ -251,15 +270,22 @@ public static class DslGrammar
             ["vbar"] = new(StringComparer.Ordinal) { ["min"] = DslCompletionRef.None, ["max"] = DslCompletionRef.None },
             // 复选框属性
             ["checkbox"] = new(StringComparer.Ordinal) { ["checked"] = DslCompletionRef.Boolean },
-            // ScrollViewer 属性
+            // 文本类元素：size=N 由 DslParser.BuildEntity 别名为 fontSize
+            // （仅 text/dialog/narrator/speaker 生效，且未显式设 width/height/fontSize 时）
+            ["text"] = new(StringComparer.Ordinal) { ["size"] = DslCompletionRef.None },
+            ["dialog"] = new(StringComparer.Ordinal) { ["size"] = DslCompletionRef.None },
+            ["narrator"] = new(StringComparer.Ordinal) { ["size"] = DslCompletionRef.None },
+            ["speaker"] = new(StringComparer.Ordinal) { ["size"] = DslCompletionRef.None },
+            // ScrollViewer 属性（scroll/scrollviewer 同 ControlFactory case，viewport 额外读 scroll_h/scroll_v）
+            ["scroll"] = new(StringComparer.Ordinal) { ["scroll_h"] = DslCompletionRef.Boolean, ["scroll_v"] = DslCompletionRef.Boolean },
             ["scrollviewer"] = new(StringComparer.Ordinal) { ["scroll_h"] = DslCompletionRef.Boolean, ["scroll_v"] = DslCompletionRef.Boolean },
             ["viewport"] = new(StringComparer.Ordinal) { ["scroll_h"] = DslCompletionRef.Boolean, ["scroll_v"] = DslCompletionRef.Boolean },
         };
         foreach (var t in DslKeywords.UiElementTypes)
         {
-            // image 的位置参即图片资源路径（image "Images/lingfan.png"），须标记为 Resource 槽位，
+            // image/imagebutton 的位置参即图片资源路径（image "Images/lingfan.png"），须标记为 Resource 槽位，
             // 否则该字符串会被当作普通 String、既无高亮也无跳转（用户实测痛点）。其余 UI 元素位置参维持 None。
-            var positional = t == "image" ? DslCompletionRef.Resource : DslCompletionRef.None;
+            var positional = t is "image" or "imagebutton" ? DslCompletionRef.Resource : DslCompletionRef.None;
             // 合并通用属性和元素特定属性
             var named = new Dictionary<string, DslCompletionRef>(elemAttrs, StringComparer.Ordinal);
             if (elementSpecificAttrs.TryGetValue(t, out var specific))

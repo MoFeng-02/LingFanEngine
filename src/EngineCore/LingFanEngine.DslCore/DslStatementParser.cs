@@ -19,9 +19,26 @@ public static class DslStatementParser
     /// <summary>带空白的 token 包装</summary>
     private static Parser<char, T> Tok<T>(Parser<char, T> p) => p.Before(_ws);
 
-    /// <summary>双引号字符串</summary>
+    /// <summary>转义序列：\" \\ \n \t \r；未知转义保留两字符原样（如 Windows 路径 "C:\dir"），与 ExpressionParser.Pidgin 语义一致</summary>
+    private static readonly Parser<char, string> EscapeSequence =
+        Char('\\').Then(Any).Select(c => c switch
+        {
+            '"' => "\"",
+            '\\' => "\\",
+            'n' => "\n",
+            't' => "\t",
+            'r' => "\r",
+            _ => new string(['\\', c]),
+        });
+
+    /// <summary>字符串段：普通字符段（至少一个非引号非反斜杠）或转义序列（声明顺序：先转义后组合）</summary>
+    private static readonly Parser<char, string> StringSegment =
+        AnyCharExcept('"', '\\').AtLeastOnceString()
+            .Or(EscapeSequence);
+
+    /// <summary>双引号字符串（支持 \" 与 \\ 转义；未知转义保留两字符原样，存量零破坏）</summary>
     private static readonly Parser<char, string> QuotedString =
-        Char('"').Then(AnyCharExcept('"').ManyString()).Before(Char('"'))
+        Char('"').Then(StringSegment.Many().Select(string.Concat)).Before(Char('"'))
             .Labelled("quoted string");
 
     /// <summary>标识符 \w+（字母/数字/下划线）</summary>

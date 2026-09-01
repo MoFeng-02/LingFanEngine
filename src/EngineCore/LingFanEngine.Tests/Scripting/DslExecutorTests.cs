@@ -98,6 +98,70 @@ public class DslExecutorTests
     }
 
     [Fact]
+    public void SayStatement_EscapedQuote_InnerText_ParsesCorrectly()
+    {
+        // 字符串转义：\" 在对白文本中还原为引号（VN 对白天然含引号）
+        var stmt = LingFanEngine.DslCore.DslStatementParser.ParseLine("say \"他说\\\"你好\\\"\"");
+
+        stmt.Should().NotBeNull();
+        var say = stmt.Should().BeOfType<LingFanEngine.DslCore.SayStmt>().Subject;
+        say.Text.Should().Be("他说\"你好\"");
+    }
+
+    [Fact]
+    public void SayStatement_UnknownEscape_KeptVerbatim()
+    {
+        // 未知转义保留两字符原样——存量 Windows 路径 "C:\dir" 零破坏
+        var stmt = LingFanEngine.DslCore.DslStatementParser.ParseLine("say \"路径 C:\\dir\"");
+
+        stmt.Should().NotBeNull();
+        var say = stmt.Should().BeOfType<LingFanEngine.DslCore.SayStmt>().Subject;
+        say.Text.Should().Be("路径 C:\\dir");
+    }
+
+    [Fact]
+    public async Task ConditionEvaluationFailure_TreatedAsFalse_ExecutionContinues()
+    {
+        // 语句级错误隔离：条件含类型错误（字符串与数字比较 "gold > \"a\""）时
+        // 不得终止整个执行流——按 false 处理（走 else 分支），后续语句继续
+        var host = new EngineTestHost();
+        var cmds = new List<ICommand>
+        {
+            new SetVariableCommand { Key = "gold", Value = 10 },
+            // "gold > \"a\"" 求值抛 FormatException（ToDouble("a")）→ 按 false → 跳过 1 条
+            new BranchCommand { Condition = "gold > \"a\"", SkipCount = 1 },
+            new SetVariableCommand { Key = "inIfBody", Value = 1 },
+            new SetVariableCommand { Key = "reached", Value = 1 },
+        };
+
+        await host.RunDslAndDriveAsync(cmds);
+
+        host.State.ContainsKey("inIfBody").Should().BeFalse();
+        host.State.Get<int>("reached").Should().Be(1);
+        host.DslExecutor.IsRunning.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SetExpressionEvaluationFailure_SkipsAssignment_ExecutionContinues()
+    {
+        // 语句级错误隔离：set 赋值表达式求值失败时跳过本次赋值（变量保持原值），不终止执行流
+        var host = new EngineTestHost();
+        var cmds = new List<ICommand>
+        {
+            new SetVariableCommand { Key = "x", Value = 5 },
+            // "a" > 1 求值抛 FormatException → 跳过赋值，x 保持 5
+            new SetVariableCommand { Key = "x", Value = new DslExpressionPlaceholder("\"a\" > 1") },
+            new SetVariableCommand { Key = "reached", Value = 1 },
+        };
+
+        await host.RunDslAndDriveAsync(cmds);
+
+        host.State.Get<int>("x").Should().Be(5);
+        host.State.Get<int>("reached").Should().Be(1);
+        host.DslExecutor.IsRunning.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task ShowDialogCommand_WithDriver_ReachesEnd()
     {
         var fake = new FakeCommandPipeline();

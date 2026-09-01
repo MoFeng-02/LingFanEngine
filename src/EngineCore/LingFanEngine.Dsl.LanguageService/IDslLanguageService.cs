@@ -40,6 +40,10 @@ public interface IDslLanguageService
     /// <summary>基于位置的补全。</summary>
     System.Collections.Generic.IReadOnlyList<CompletionItem> GetCompletion(string filePath, int offset);
 
+    /// <summary>参数签名提示（textDocument/signatureHelp）：根据光标位置返回当前语句的参数签名。
+    /// 光标不在语句参数区时返回 null。</summary>
+    SignatureHelpInfo? GetSignatureHelp(string filePath, int offset);
+
     /// <summary>基于位置的悬浮提示。</summary>
     HoverInfo? GetHover(string filePath, int offset);
 

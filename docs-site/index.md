@@ -34,7 +34,7 @@ features:
     details: AES-256-GCM 资源加密，LFEN 格式，按文件类型勾选，SDK 一键发布。
   - icon: 🎬
     title: 多媒体支持
-    details: BGM/SE/Voice/Ambient 音频，视频过场，Live2D 立绘（待定，接口暂留），过渡动画，屏幕震动。
+    details: BGM/SE/Voice/Ambient 音频，视频过场，Live2D 立绘，过渡动画，屏幕震动。通过 LingFan.Media 跨平台 AOT 媒体基础设施库实现。
   - icon: 🌍
     title: 小说世界模式
     details: 时间驱动的动态世界——NPC 有作息，事件按时触发，场景名称即坐标，时间锚点存档。

@@ -27,7 +27,9 @@ internal sealed class DslLanguageServer
     private Task _writeChain = Task.CompletedTask;
     private readonly int _workerCount = Math.Max(1, Math.Min(Environment.ProcessorCount, 4));
     /// <summary>uri/localPath → 源文本（用于 LSP 偏移↔行列互转）。并发字典：后台索引与文档打开/变更可同时安全访问。</summary>
-    private readonly ConcurrentDictionary<string, string> _docs = new();
+    // 路径键不区分大小写：VS Code 发小写盘符 URI（e:\）而本地扫描可能是原样大小写（E:\），
+    // Ordinal 会把同一文件分裂成两个条目（didChange 更新一份、读请求命中另一份读到旧内容）。
+    private readonly ConcurrentDictionary<string, string> _docs = new(StringComparer.OrdinalIgnoreCase);
     private bool _exit;
     /// <summary>initialize 解析出的工作区根路径（file:// 经 LocalPath 还原）；用于自动跨文件索引。</summary>
     private string? _rootPath;
@@ -37,7 +39,8 @@ internal sealed class DslLanguageServer
     private static readonly HashSet<string> s_writeMethods = new()
     {
         "initialize", "initialized", "shutdown", "exit",
-        "textDocument/didOpen", "textDocument/didChange", "workspace/didChangeWatchedFiles",
+        "textDocument/didOpen", "textDocument/didChange", "textDocument/didClose",
+        "workspace/didChangeWatchedFiles",
     };
 
     public DslLanguageServer(Ls.IDslLanguageService service, Stream input, Stream output)
@@ -135,6 +138,8 @@ internal sealed class DslLanguageServer
         "exit" => HandleExit,
         "textDocument/didOpen" => HandleDidOpen,
         "textDocument/didChange" => HandleDidChange,
+        "textDocument/didClose" => HandleDidClose,
+        "textDocument/didSave" => HandleDidSave,
         "workspace/didChangeWatchedFiles" => HandleWatchedFiles,
         "textDocument/hover" => HandleHover,
         "textDocument/definition" => HandleDefinition,
@@ -144,10 +149,13 @@ internal sealed class DslLanguageServer
         "workspace/symbol" => HandleWorkspaceSymbol,
         "textDocument/documentHighlight" => HandleDocumentHighlight,
         "textDocument/completion" => HandleCompletion,
+        "textDocument/codeAction" => HandleCodeAction,
+        "textDocument/signatureHelp" => HandleSignatureHelp,
         "textDocument/foldingRange" => HandleFolding,
         "textDocument/formatting" => HandleFormatting,
         "textDocument/rangeFormatting" => HandleRangeFormatting,
         "textDocument/semanticTokens/full" => HandleSemanticTokens,
+        "textDocument/semanticTokens/range" => HandleSemanticTokensRange,
         _ => null!,
     };
 
@@ -227,6 +235,30 @@ internal sealed class DslLanguageServer
         _docs[path] = fullText;
         var before = _service.SnapshotDefinitions(path);
         _service.UpdateDocument(path, fullText); // dirty=null → 整文重建（小文件开销可忽略，且零错）
+        PublishAffected(path, before);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleDidClose(Request req)
+    {
+        var p = Deserialize<DidCloseTextDocumentParams>(req, LspJsonContext.Default.DidCloseTextDocumentParams);
+        if (p == null) return Task.CompletedTask;
+        var path = UriToPath(p.TextDocument.Uri);
+        _docs.TryRemove(path, out _);
+        // 文档关闭后清空该文件的诊断（LSP 规范：didClose 后该 uri 的诊断应为空）
+        _conn.SendNotification("textDocument/publishDiagnostics",
+            new PublishDiagnosticsParams { Uri = p.TextDocument.Uri, Diagnostics = [] },
+            LspJsonContext.Default.PublishDiagnosticsParams);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleDidSave(Request req)
+    {
+        var p = Deserialize<DidSaveTextDocumentParams>(req, LspJsonContext.Default.DidSaveTextDocumentParams);
+        if (p == null) return Task.CompletedTask;
+        var path = UriToPath(p.TextDocument.Uri);
+        // 保存后重发诊断（确认磁盘内容与内存一致）
+        var before = _service.SnapshotDefinitions(path);
         PublishAffected(path, before);
         return Task.CompletedTask;
     }
@@ -431,7 +463,7 @@ internal sealed class DslLanguageServer
     /// 字母类「边打字边弹」由客户端 editor.quickSuggestions(other:on) 承载，无须在此列 a–z（否则会与 quickSuggestions 重复触发）。</summary>
     private static string[] CompletionTriggerCharacters()
     {
-        return new[] { " ", "{", "=", "\"", "(", ".", ":" };
+        return new[] { " ", "{", "=", "\"", "(", ".", ":", "," };
     }
 
     private Task HandleCompletion(Request req)
@@ -442,28 +474,122 @@ internal sealed class DslLanguageServer
         var src = SourceOf(path);
         var offset = PositionToOffset(src, p.Position);
         var items = _service.GetCompletion(path, offset);
+        // 补全自检日志（输出面板可见）：文件@位置 → 候选数 + b/t 前缀命中明细，用于客户端不显示候选时的分叉定位
+        var bHits = string.Join(",", items.Where(i => i.DisplayText.StartsWith('b') || i.DisplayText.StartsWith('B')).Select(i => i.DisplayText).Take(10));
+        LogMessage(4, $"[completion] {Path.GetFileName(path)}@{p.Position.Line}:{p.Position.Character} → {items.Count} 项, b*=[{bHits}]");
         var arr = new CompletionItem[items.Count];
         for (var i = 0; i < arr.Length; i++)
         {
-            var it = items[i];
-            var ci = new CompletionItem
-            {
-                Label = it.DisplayText,
-                InsertText = it.InsertText,
-                Detail = it.Detail,
-                Kind = MapCompletionKind(it.Kind),
-            };
-            // 含 / 或 _ 的候选（资源路径、命令名）：用精确替换范围覆盖客户端默认词边界，
-            // 避免把已输入前缀重复拼回（"Audio/cri" 选 "Audio/x.mp3" → "Audio/Audio/x.mp3"）。
-            if (it.ReplaceStart >= 0)
-                ci.TextEdit = new TextEdit
+            var it = items[i];                var ci = new CompletionItem
                 {
-                    Range = MakeRange(src, it.ReplaceStart, offset - it.ReplaceStart),
-                    NewText = it.InsertText,
+                    Label = it.DisplayText,
+                    InsertText = it.InsertText,
+                    Detail = it.Detail,
+                    Documentation = it.Documentation,
+                    Kind = MapCompletionKind(it.Kind),
+                    SortText = it.SortText,
+                    FilterText = it.FilterText,
+                    Preselect = it.Preselect,
+                    CommitCharacters = it.CommitCharacters != null ? it.CommitCharacters.Split(',') : null,
                 };
+                // 含 / 或 _ 的候选（资源路径、命令名）：用精确替换范围覆盖客户端默认词边界，
+                // 避免把已输入前缀重复拼回（"Audio/cri" 选 "Audio/x.mp3" → "Audio/Audio/x.mp3"）。
+                if (it.ReplaceStart >= 0)
+                    ci.TextEdit = new TextEdit
+                    {
+                        Range = MakeRange(src, it.ReplaceStart, offset - it.ReplaceStart),
+                        NewText = it.InsertText,
+                    };
             arr[i] = ci;
         }
         _conn.SendResult(req.Id.Value, arr, LspJsonContext.Default.CompletionItemArray);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleSignatureHelp(Request req)
+    {
+        var p = Deserialize<SignatureHelpParams>(req, LspJsonContext.Default.SignatureHelpParams);
+        if (p == null || !req.Id.HasValue) return Task.CompletedTask;
+        var path = UriToPath(p.TextDocument.Uri);
+        var src = SourceOf(path);
+        var offset = PositionToOffset(src, p.Position);
+        var info = _service.GetSignatureHelp(path, offset);
+        if (info == null || info.Signatures.Count == 0)
+        {
+            _conn.SendResult(req.Id.Value, null, null);
+            return Task.CompletedTask;
+        }
+        var sigs = new SignatureInformation[info.Signatures.Count];
+        for (var i = 0; i < sigs.Length; i++)
+        {
+            var s = info.Signatures[i];
+            var pis = new ParameterInformation[s.Parameters.Count];
+            for (var j = 0; j < pis.Length; j++)
+                pis[j] = new ParameterInformation { Label = s.Parameters[j].Label };
+            sigs[i] = new SignatureInformation
+            {
+                Label = s.Label,
+                Parameters = pis,
+            };
+        }
+        var result = new SignatureHelp
+        {
+            Signatures = sigs,
+            ActiveSignature = info.ActiveSignature,
+            ActiveParameter = info.ActiveParameter,
+        };
+        _conn.SendResult(req.Id.Value, result, LspJsonContext.Default.SignatureHelp);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleCodeAction(Request req)
+    {
+        var p = Deserialize<CodeActionParams>(req, LspJsonContext.Default.CodeActionParams);
+        if (p == null || !req.Id.HasValue) return Task.CompletedTask;
+        var path = UriToPath(p.TextDocument.Uri);
+        var src = SourceOf(path);
+        if (src == null) { _conn.SendResult(req.Id.Value, System.Array.Empty<CodeAction>(), LspJsonContext.Default.CodeActionArray); return Task.CompletedTask; }
+
+        var actions = new List<CodeAction>();
+        var diags = p.Context?.Diagnostics;
+        if (diags == null || diags.Length == 0)
+        {
+            _conn.SendResult(req.Id.Value, System.Array.Empty<CodeAction>(), LspJsonContext.Default.CodeActionArray);
+            return Task.CompletedTask;
+        }
+
+        foreach (var d in diags)
+        {
+            // 未定义变量 → 声明 define
+            if (d.Message != null && d.Message.Contains("未定义"))
+            {
+                // 从诊断 range 提取变量名
+                var so = PositionToOffset(src, d.Range.Start);
+                var eo = PositionToOffset(src, d.Range.End);
+                if (so < eo && eo <= src.Length)
+                {
+                    var varName = src.Substring(so, eo - so);
+                    if (!string.IsNullOrEmpty(varName) && varName.IndexOfAny(" \t(){}[]".ToCharArray()) < 0)
+                    {
+                        // 在当前行前插入 define <varName> =
+                        var insertRange = new Protocol.Range { Start = new Position { Line = d.Range.Start.Line, Character = 0 }, End = new Position { Line = d.Range.Start.Line, Character = 0 } };
+                        var edit = new TextEdit { Range = insertRange, NewText = $"define {varName} = \n" };
+                        actions.Add(new CodeAction
+                        {
+                            Title = $"声明变量: define {varName}",
+                            Kind = "quickfix",
+                            IsPreferred = true,
+                            Edit = new WorkspaceEdit
+                            {
+                                Changes = new() { [p.TextDocument.Uri] = [edit] },
+                            },
+                        });
+                    }
+                }
+            }
+        }
+
+        _conn.SendResult(req.Id.Value, actions.ToArray(), LspJsonContext.Default.CodeActionArray);
         return Task.CompletedTask;
     }
 
@@ -587,6 +713,39 @@ internal sealed class DslLanguageServer
         return Task.CompletedTask;
     }
 
+    private Task HandleSemanticTokensRange(Request req)
+    {
+        var p = Deserialize<SemanticTokensRangeParams>(req, LspJsonContext.Default.SemanticTokensRangeParams);
+        if (p == null || !req.Id.HasValue) return Task.CompletedTask;
+        var path = UriToPath(p.TextDocument.Uri);
+        var src = SourceOf(path);
+        if (src == null) { _conn.SendResult(req.Id.Value, new SemanticTokens { Data = [] }, LspJsonContext.Default.SemanticTokens); return Task.CompletedTask; }
+        var tokens = _service.GetSemanticTokens(path);
+        var startOffset = PositionToOffset(src, p.Range.Start);
+        var endOffset = PositionToOffset(src, p.Range.End);
+        // 裁剪到 range 范围内（token 起点 >= startOffset 且 < endOffset）
+        var data = new List<int>();
+        var prevLine = 0;
+        var prevChar = 0;
+        foreach (var t in tokens)
+        {
+            if (t.Offset + t.Length <= startOffset) continue; // token 完全在 range 前
+            if (t.Offset >= endOffset) break;                // token 完全在 range 后
+            var start = OffsetToPosition(src, t.Offset);
+            var deltaLine = start.Line - prevLine;
+            var deltaChar = start.Line == prevLine ? start.Character - prevChar : start.Character;
+            data.Add(deltaLine);
+            data.Add(deltaChar);
+            data.Add(t.Length);
+            data.Add((int)t.Category);
+            data.Add(0);
+            prevLine = start.Line;
+            prevChar = start.Character;
+        }
+        _conn.SendResult(req.Id.Value, new SemanticTokens { Data = data.ToArray() }, LspJsonContext.Default.SemanticTokens);
+        return Task.CompletedTask;
+    }
+
     /// <summary>构建时间戳（exe 文件最后写入时间）——用于在 trace 的 initialize 响应里直接辨认当前运行的二进制版本，避免「到底加载的是不是新 exe」的歧义。
     /// 单文件 AOT 下 <c>Assembly.Location</c> 恒为空（IL3000），改用 <c>AppContext.BaseDirectory</c>（红线 B17 规定的路径基准）拼接 exe 名。</summary>
     private static string LspBuildStamp()
@@ -611,7 +770,12 @@ internal sealed class DslLanguageServer
         LogMessage(3, $"LSP 启动：{LspBuildStamp()}（pid={System.Environment.ProcessId}）");
         var caps = new ServerCapabilities
         {
-            TextDocumentSync = 2, // 2 = Incremental（支持行级增量重索引）
+            TextDocumentSync = new TextDocumentSyncOptions
+            {
+                OpenClose = true,
+                Change = 2, // 2 = Incremental（支持行级增量重索引）
+                Save = true,
+            },
             HoverProvider = true,
             DefinitionProvider = true,
             ReferencesProvider = true,
@@ -631,7 +795,10 @@ internal sealed class DslLanguageServer
                     TokenModifiers = [],
                 },
                 Full = true,
+                Range = true,
             },
+            SignatureHelpProvider = true,
+            CodeActionProvider = true,
             Workspace = new WorkspaceCapabilities
             {
                 FileOperations = new FileOperations
@@ -861,7 +1028,11 @@ internal sealed class DslLanguageServer
             if (text[offset] == '\n') line++;
             offset++;
         }
-        return offset + pos.Character;
+        // 客户端可能发越界 position（行尾+1、超长 character、超出行数）；
+        // 钳制到 [0, text.Length] 防 Substring/Slice 越界——与 OffsetToPosition 的 Math.Min 对称。
+        if (pos.Character <= 0) return offset;
+        var result = offset + pos.Character;
+        return result > text.Length ? text.Length : result;
     }
 
     private static Position OffsetToPosition(string text, int offset)

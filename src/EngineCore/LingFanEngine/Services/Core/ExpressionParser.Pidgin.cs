@@ -50,6 +50,8 @@ public static class DslExpressionParser
 
     /// <summary>
     /// 转义字符解析：\" \\ \n \t \r
+    /// <para>未知转义保留两字符原样（如 "C:\dir" 的 \d）——与 DslCore 的 DslParser/DslStatementParser
+    /// 转义语义严格一致（原先此处会丢弃反斜杠导致有损）。</para>
     /// <para>声明在 StringLiteral 之前，确保静态初始化顺序正确。</para>
     /// </summary>
     private static readonly Parser<char, string> _stringChar =
@@ -58,7 +60,9 @@ public static class DslExpressionParser
             'n' => "\n",
             't' => "\t",
             'r' => "\r",
-            _ => c.ToString()
+            '"' => "\"",
+            '\\' => "\\",
+            _ => "\\" + c,
         }))
         .Or(AnyCharExcept('"', '\\').Select(c => c.ToString()));
 

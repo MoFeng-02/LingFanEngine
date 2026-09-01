@@ -138,6 +138,7 @@ export default defineConfig({
           items: [
             { text: "DSL 语法参考", link: "/reference/dsl" },
             { text: "C# API 参考", link: "/reference/csharp-api" },
+            { text: "LSP 语言服务", link: "/reference/lsp" },
           ],
         },
       ],

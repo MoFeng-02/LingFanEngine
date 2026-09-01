@@ -84,10 +84,14 @@ public class BinarySaveService : ISaveService
         var json = JsonSerializer.Serialize(data, LfJsonContext.Default.SaveData);
         var jsonBytes = Encoding.UTF8.GetBytes(json);
         var encryptedData = _encryption.Encrypt(jsonBytes);
-        await File.WriteAllBytesAsync(GetFilePath(slotId), encryptedData);
+
+        // 原子写：先写 .tmp 再同卷 rename 替换。直接 WriteAllBytesAsync 覆盖在崩溃/断电时会留下
+        // 半写文件——CBC/GCM 解密失败 → LoadAsync 返回 null → 存档永久丢失
+        await AtomicWriteAllBytesAsync(GetFilePath(slotId), encryptedData);
 
         // Phase 36: 写入 .meta 轻量索引文件（明文 JSON，仅含展示信息）
         // 枚举存档列表时只读 .meta，无需解密+反序列化完整存档
+        // 提交顺序：先 .sav 后 .meta——枚举以 .meta 为准，保证"看得见的槽必然可加载"
         await WriteMetaAsync(slotId, data);
     }
 
@@ -217,12 +221,33 @@ public class BinarySaveService : ISaveService
                 GameVersion = data.GameVersion
             };
             var metaJson = JsonSerializer.Serialize(info, LfJsonContext.Default.SaveSlotInfo);
-            await File.WriteAllTextAsync(GetMetaFilePath(slotId), metaJson);
+            await AtomicWriteAllTextAsync(GetMetaFilePath(slotId), metaJson);
         }
         catch (Exception ex)
         {
             // .meta 写入失败不影响存档主体
             System.Diagnostics.Debug.WriteLine($"[SaveService] WriteMetaAsync failed for slot '{slotId}': {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// 原子写字节文件：先写临时文件再同卷 rename 替换。
+    /// <para>崩溃/断电时最多留下 .tmp 残留（下次保存覆盖），不会产生半写的目标文件。</para>
+    /// </summary>
+    private static async Task AtomicWriteAllBytesAsync(string path, byte[] data)
+    {
+        var tmp = path + ".tmp";
+        await File.WriteAllBytesAsync(tmp, data);
+        File.Move(tmp, path, overwrite: true);
+    }
+
+    /// <summary>
+    /// 原子写文本文件：先写临时文件再同卷 rename 替换（语义同 <see cref="AtomicWriteAllBytesAsync"/>）。
+    /// </summary>
+    private static async Task AtomicWriteAllTextAsync(string path, string text)
+    {
+        var tmp = path + ".tmp";
+        await File.WriteAllTextAsync(tmp, text);
+        File.Move(tmp, path, overwrite: true);
     }
 }

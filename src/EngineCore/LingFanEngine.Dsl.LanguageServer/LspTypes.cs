@@ -73,8 +73,20 @@ internal static class LspProtocol
 [JsonSerializable(typeof(Dictionary<string, TextEdit[]>))]
 [JsonSerializable(typeof(DidOpenTextDocumentParams))]
 [JsonSerializable(typeof(DidChangeTextDocumentParams))]
+[JsonSerializable(typeof(DidCloseTextDocumentParams))]
+[JsonSerializable(typeof(DidSaveTextDocumentParams))]
+[JsonSerializable(typeof(TextDocumentSyncOptions))]
 [JsonSerializable(typeof(FoldingRangeParams))]
 [JsonSerializable(typeof(SemanticTokensParams))]
+[JsonSerializable(typeof(SemanticTokensRangeParams))]
+[JsonSerializable(typeof(SignatureHelpParams))]
+[JsonSerializable(typeof(SignatureHelp))]
+[JsonSerializable(typeof(SignatureInformation))]
+[JsonSerializable(typeof(ParameterInformation))]
+[JsonSerializable(typeof(CodeActionParams))]
+[JsonSerializable(typeof(CodeAction))]
+[JsonSerializable(typeof(CodeActionContext))]
+[JsonSerializable(typeof(CodeAction[]))]
 [JsonSerializable(typeof(InitializeResult))]
 [JsonSerializable(typeof(InitializeParams))]
 [JsonSerializable(typeof(WorkspaceFolder))]
@@ -250,6 +262,30 @@ internal sealed class DidChangeTextDocumentParams
     public TextDocumentContentChangeEvent[] ContentChanges { get; set; } = [];
 }
 
+internal sealed class DidCloseTextDocumentParams
+{
+    public TextDocumentIdentifier TextDocument { get; set; } = new();
+}
+
+internal sealed class DidSaveTextDocumentParams
+{
+    public TextDocumentIdentifier TextDocument { get; set; } = new();
+    public string? Text { get; set; }
+}
+
+/// <summary>
+/// 文档同步选项（LSP 3.17）：openClose = 发送 didOpen/didClose；
+/// change = 1(Full)/2(Incremental)；save = 发送 didSave。
+/// </summary>
+internal sealed class TextDocumentSyncOptions
+{
+    public bool? OpenClose { get; set; }
+    public int? Change { get; set; }
+    public bool? WillSave { get; set; }
+    public bool? WillSaveWaitUntil { get; set; }
+    public bool? Save { get; set; }
+}
+
 internal sealed class FoldingRangeParams
 {
     public TextDocumentIdentifier TextDocument { get; set; } = new();
@@ -258,6 +294,63 @@ internal sealed class FoldingRangeParams
 internal sealed class SemanticTokensParams
 {
     public TextDocumentIdentifier TextDocument { get; set; } = new();
+}
+
+internal sealed class SemanticTokensRangeParams
+{
+    public TextDocumentIdentifier TextDocument { get; set; } = new();
+    public Range Range { get; set; } = new();
+}
+
+// ---- SignatureHelp ----
+
+internal sealed class SignatureHelpParams
+{
+    public TextDocumentIdentifier TextDocument { get; set; } = new();
+    public Position Position { get; set; } = new();
+}
+
+internal sealed class SignatureHelp
+{
+    public SignatureInformation[]? Signatures { get; set; }
+    public int? ActiveSignature { get; set; }
+    public int? ActiveParameter { get; set; }
+}
+
+internal sealed class SignatureInformation
+{
+    public string Label { get; set; } = string.Empty;
+    public MarkupContent? Documentation { get; set; }
+    public ParameterInformation[]? Parameters { get; set; }
+}
+
+internal sealed class ParameterInformation
+{
+    public string Label { get; set; } = string.Empty;
+    public MarkupContent? Documentation { get; set; }
+}
+
+// ---- CodeAction ----
+
+internal sealed class CodeActionParams
+{
+    public TextDocumentIdentifier TextDocument { get; set; } = new();
+    public Range Range { get; set; } = new();
+    public CodeActionContext Context { get; set; } = new();
+}
+
+internal sealed class CodeActionContext
+{
+    public LspDiagnostic[]? Diagnostics { get; set; }
+    public string[]? Only { get; set; }
+}
+
+internal sealed class CodeAction
+{
+    public string Title { get; set; } = string.Empty;
+    public string? Kind { get; set; }
+    public WorkspaceEdit? Edit { get; set; }
+    public bool? IsPreferred { get; set; }
 }
 
 /// <summary>格式化选项：tabSize = 每级缩进空格数；insertSpaces = true 用空格、false 用制表符。</summary>
@@ -302,18 +395,24 @@ internal sealed class SemanticTokensOptions
 {
     public SemanticTokensLegend Legend { get; set; } = new();
     public bool? Full { get; set; }
+    /// <summary>支持 semanticTokens/range 请求（按行区间返回令牌子集）。</summary>
+    public bool? Range { get; set; }
 }
 
 internal sealed class ServerCapabilities
 {
-    /// <summary>1 = Full（didChange 发送整文）。</summary>
-    public int? TextDocumentSync { get; set; }
+    /// <summary>文档同步选项（openClose/change/save）；null = 不同步。</summary>
+    public TextDocumentSyncOptions? TextDocumentSync { get; set; }
     public bool? HoverProvider { get; set; }
     public bool? DefinitionProvider { get; set; }
     public bool? ReferencesProvider { get; set; }
     public bool? FoldingRangeProvider { get; set; }
     public CompletionOptions? CompletionProvider { get; set; }
     public SemanticTokensOptions? SemanticTokensProvider { get; set; }
+    /// <summary>参数签名提示（textDocument/signatureHelp）。</summary>
+    public bool? SignatureHelpProvider { get; set; }
+    /// <summary>快速修复（textDocument/codeAction）。</summary>
+    public bool? CodeActionProvider { get; set; }
     /// <summary>整文档格式化（textDocument/formatting）。</summary>
     public bool? DocumentFormattingProvider { get; set; }
     /// <summary>选区格式化（textDocument/rangeFormatting）。</summary>
@@ -392,7 +491,12 @@ internal sealed class CompletionItem
     public string Label { get; set; } = string.Empty;
     public int? Kind { get; set; }
     public string? Detail { get; set; }
+    public string? Documentation { get; set; }
     public string? InsertText { get; set; }
+    public string? SortText { get; set; }
+    public string? FilterText { get; set; }
+    public bool Preselect { get; set; }
+    public string[]? CommitCharacters { get; set; }
     public TextEdit? TextEdit { get; set; }
 }
 

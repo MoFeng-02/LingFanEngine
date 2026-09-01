@@ -6,14 +6,28 @@ namespace LingFanEngine.DslCore;
 /// </summary>
 public static class DslKeywords
 {
-    // ====== UI 元素类型 ======    // scene 块内可用的元素类型
+    // ====== UI 元素类型 ======
+    // scene 块内可用的元素类型。权威源 = StoryLoader.s_uiElementTypes（scene 块元素行判定白名单）
+    // ∪ ControlFactory.Create 的 case 集（真实渲染）。二者皆无的类型不进补全（写了也不渲染）；
+    // 纯语句关键字（sprite/live2d/input/label）不在此表——语句身份在 _statements / _display。
     private static readonly HashSet<string> _uiElementTypes = new()
     {
-        "text", "button", "image", "background", "portrait",
-        "panel", "vbox", "hbox", "grid", "dialog", "narrator", "speaker",
-        "choice", "video", "container", "scrollview",
-        "sprite", "live2d", "progressbar", "slider",
-        "checkbox", "input", "label", "spacer", "divider",
+        // 文本类（ControlFactory text 组）
+        "text", "dialog", "narrator", "speaker",
+        // 交互类
+        "button", "choice", "imagebutton",
+        // 图像类
+        "image", "background", "portrait", "video",
+        // 容器类（ControlFactory panel 组 + LayoutHelper.IsContainerType）
+        "panel", "frame", "window", "dialogbox", "choicebox", "infobox",
+        "overlay", "popup", "vbox", "hbox", "grid",
+        "stack", "stackpanel", "canvas", "border",
+        // 滚动（scroll/scrollviewer → ScrollViewer；viewport → scroll_h/scroll_v）
+        "scroll", "scrollviewer", "viewport",
+        // 进度/滑块/选择（bar/vbar → ProgressBar；progressbar 白名单同义保留）
+        "bar", "vbar", "progressbar", "slider", "checkbox",
+        // 间隔
+        "separator", "spacer",
     };
 
     // ====== 语句关键字 ======
@@ -236,10 +250,14 @@ public static class DslKeywords
     private static readonly HashSet<string> _elementAttributes = new()
     {
         // 通用属性
-        "class", "style", "source", "text",
-        "align", "halign", "valign",
-        "width", "height", "fontSize", "order",
-        "cmd", "nav", "value",
+        "class", "style", "source", "src", "path", "text",
+        "align", "halign", "valign", "xalign", "yalign",
+        "width", "height", "fontSize", "font", "order",
+        "cmd", "nav", "value", "color", "fontColor", "textColor",
+        // 交互属性（InteractionBinder：disabled > nav > cmd > hover_* > selected_*）
+        "disabled",
+        "hover_source", "hover_color", "hover_opacity",
+        "selected_source", "selected_color",
         // Grid 附着属性
         "col", "row", "colspan", "rowspan",
         // 通用布局属性

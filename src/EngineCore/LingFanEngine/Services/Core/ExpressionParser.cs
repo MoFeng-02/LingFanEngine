@@ -94,17 +94,9 @@ public static class ExpressionParser
     /// </summary>
     private static object? ResolveValue(string expr, IStateContainer state)
     {
-        // 特殊变量：days / hours / mins / minutes
-        if (expr.Length <= 7)
-        {
-            var lower = expr.ToLowerInvariant();
-            if (lower is "days" or "day")
-                return (state.Get<long>(StateKeys.GameTime.TotalMinutes) / 1440).ToString();
-            if (lower is "hours" or "hour")
-                return ((state.Get<long>(StateKeys.GameTime.TotalMinutes) % 1440) / 60).ToString();
-            if (lower is "mins" or "min" or "minutes")
-                return (state.Get<long>(StateKeys.GameTime.TotalMinutes) % 60).ToString();
-        }
+        // 特殊变量：days / hours / mins / minutes——与 ExpressionEvaluator（AST 路径）共用实现，返回数值
+        if (ExpressionEvaluator.TryGetTimeVariable(expr, state, out var timeValue))
+            return timeValue;
 
         // 从状态容器获取值
         var parts = expr.Split('.');

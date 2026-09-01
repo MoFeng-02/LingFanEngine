@@ -14,18 +14,20 @@ namespace LingFanEngine.Dsl.LanguageService;
 /// </summary>
 public sealed class DslLanguageService : IDslLanguageService
 {
-    private readonly ConcurrentDictionary<string, DslDocument> _documents = new();
+    // 路径键一律 OrdinalIgnoreCase（Windows 路径语义）：URI 还原的小写盘符与本地扫描的原样大小写
+    // 必须命中同一条目，否则 didChange 与读请求分裂在两个键上（读到旧内容）。
+    private readonly ConcurrentDictionary<string, DslDocument> _documents = new(StringComparer.OrdinalIgnoreCase);
     private DslSymbolIndex _symbolIndex = new();
     private readonly IProjectIndex _projectIndex;
     /// <summary>每文件「逐行包围块关键字」缓存——供补全的块级上下文感知（scene 块内首词优先 UI 元素）。
     /// 在 UpdateDocument/IndexProject 重索引后同步重算；典型 .story 文件很小，开销可忽略。</summary>
-    private readonly ConcurrentDictionary<string, string?[]> _enclosingBlocks = new();
+    private readonly ConcurrentDictionary<string, string?[]> _enclosingBlocks = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>折叠结构缓存（区段 + 逐行深度），按「文档实例 + 内容版本号」O(1) 判失效（编辑自增 <see cref="DslDocument.Version"/> → 自动失效）。
     /// 后台 <see cref="IndexProject"/> 建索引后预热，使首次 <c>foldingRange</c> 请求直接命中 → 瞬时（<see cref="ComputeStructure"/> 改 span 零分配 + 缓存命中，大文件不再每次重算 + Split 逐行分配）。</summary>
-    private readonly ConcurrentDictionary<string, FoldingCacheEntry> _foldingCache = new();
+    private readonly ConcurrentDictionary<string, FoldingCacheEntry> _foldingCache = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>语义 token 缓存，按「文档实例 + 内容版本号 + 当前符号索引实例」O(1) 判失效（符号索引交换后旧条目自动失效）。
     /// 同样在 <see cref="IndexProject"/> 预热，使首次 <c>semanticTokens/full</c> 直接命中。</summary>
-    private readonly ConcurrentDictionary<string, SemanticCacheEntry> _semanticCache = new();
+    private readonly ConcurrentDictionary<string, SemanticCacheEntry> _semanticCache = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>折叠缓存条目：文档实例 + 内容版本号 + 折叠区段 + 逐行嵌套深度（O(1) 失效判等，无 O(n) 全文比对）。</summary>
     private sealed record FoldingCacheEntry(DslDocument? Doc, int Version, List<(int Start, int End)> Foldings, int[] Depths);
@@ -222,11 +224,19 @@ public sealed class DslLanguageService : IDslLanguageService
 
             case CompletionContext.ParameterName:
                 if (spec != null)
+                {
+                    // 收集当前行已使用的参数名（key=），补全时排除，避免重复提示
+                    var usedParams = CollectUsedParamNames(lineTokens, source, spec);
                     foreach (var kv in spec.NamedParams)
                     {
+                        if (usedParams.Contains(kv.Key)) continue;  // 已使用，跳过
                         var cat = GetParameterCategory(kv.Key);
-                        items.Add(KwWithCategory(kv.Key, "parameter", cat));
+                        // 参数名补全 InsertText 自动追加 '='，选中后直接进入值输入
+                        var item = KwWithCategory(kv.Key, "parameter", cat);
+                        item.InsertText = kv.Key + "=";
+                        items.Add(item);
                     }
+                }
                 break;
 
             case CompletionContext.VariableReference:
@@ -337,10 +347,114 @@ public sealed class DslLanguageService : IDslLanguageService
         if (replaceStart >= 0)
             foreach (var it in items) it.ReplaceStart = replaceStart;
 
+        // ── 智能补全增强：sortText / filterText / preselect / documentation / commitCharacters ──
+        EnrichCompletionItems(items, prefix, ctx);
+
         return items;
     }
 
     private static readonly string[] s_sceneTypes = { "game", "menu", "ui" };
+
+    /// <summary>
+    /// 补全后处理——填充 sortText / filterText / preselect / documentation / commitCharacters。
+    /// <para>排序策略（对标 C# IntelliSense）：
+    ///   ① 已定义符号（定义站点）最前；
+    ///   ② 前缀匹配优先（区分大小写后退到不区分大小写）；
+    ///   ③ 同类内按字母序。</para>
+    /// </summary>
+    private static void EnrichCompletionItems(List<CompletionItem> items, string prefix, CompletionContext ctx)
+    {
+        if (items.Count == 0) return;
+        var hasPrefix = !string.IsNullOrEmpty(prefix);
+        var bestScore = int.MinValue;
+        CompletionItem? bestItem = null;
+
+        foreach (var it in items)
+        {
+            // ── filterText：客户端据此做过滤 ──
+            it.FilterText = it.DisplayText;
+
+            // ── sortText：智能排序 ──
+            var score = 0;
+            var label = it.DisplayText;
+            if (hasPrefix)
+            {
+                // 精确前缀匹配（大小写敏感）得分最高
+                if (label.StartsWith(prefix, StringComparison.Ordinal))
+                    score = 10000 - label.Length; // 同前缀越短越靠前
+                else if (label.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    score = 9000 - label.Length;   // 不区分大小写次之
+                else if (label.Contains(prefix, StringComparison.OrdinalIgnoreCase))
+                    score = 8000 - label.Length;   // 子串匹配再次之
+                else
+                    score = 7000 - label.Length;   // 无匹配但保留
+            }
+            else
+            {
+                // 无前缀时：已定义符号 > 关键字 > 其他
+                score = it.Kind switch
+                {
+                    "scene" or "label" or "func" or "character" or "style" or "variable" => 9500 - label.Length,
+                    "element" => 9000 - label.Length,    // UI 元素类型
+                    "statement" => 8500 - label.Length,   // 语句关键字
+                    "parameter" => 8000 - label.Length,   // 参数名
+                    "enum" => 7500 - label.Length,        // 枚举值
+                    "tag" => 7000 - label.Length,         // 行内标记
+                    "resource" => 6000 - label.Length,    // 资源路径
+                    _ => 5000 - label.Length,
+                };
+            }
+            it.SortText = score.ToString("D6");
+
+            // ── preselect：最佳匹配预选 ──
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestItem = it;
+            }
+
+            // ── documentation：从 DslKeywordDocs 获取富文本文档 ──
+            if (DslKeywordDocs.TryGet(it.DisplayText, out var kd))
+            {
+                var doc = $"**{kd.Summary}";
+                if (kd.Usage != null) doc += $"\n\n```dsl\n{kd.Usage}\n```";
+                it.Documentation = doc;
+            }
+            else if (it.Kind == "parameter")
+            {
+                // 参数名：显示所属分类
+                var cat = GetParameterCategory(it.DisplayText);
+                it.Documentation = $"**{cat}**\n\n键值参数，用法：`{it.DisplayText}=值`";
+            }
+            else if (it.Kind == "variable")
+            {
+                // 变量：显示作用域
+                it.Documentation = $"**变量引用**\n\n作用域：{it.Detail ?? "全局"}";
+            }
+            else if (it.Kind == "element")
+            {
+                // UI 元素：显示元素说明
+                it.Documentation = $"**UI 元素**\n\n在 scene 块内使用，定义界面组件。";
+            }
+
+            // ── commitCharacters：插入后自动提交的字符 ──
+            it.CommitCharacters = it.Kind switch
+            {
+                // 参数名补全后自动加 = 号并触发值补全
+                "parameter" => null, // 不自动提交，让用户输入 =
+                // 关键字/语句补全后空格自动提交
+                "statement" or "element" or "tag" => " ",
+                // 枚举值/布尔值补全后空格自动提交
+                "enum" => " ",
+                // 标签/函数/场景名补全后不自动提交（可能要加引号或继续输入）
+                _ => null,
+            };
+        }
+
+        // 预选最佳匹配
+        if (bestItem != null && hasPrefix)
+            bestItem.Preselect = true;
+    }
 
     /// <summary>对齐枚举值（与 ControlFactory 的 align/halign/valign 解析一致）。</summary>
     private static readonly string[] s_alignValues = { "left", "center", "right", "stretch", "top", "bottom" };
@@ -433,6 +547,7 @@ public sealed class DslLanguageService : IDslLanguageService
         SymbolKind.Label => SymbolKind.Scene,
         SymbolKind.Scene => SymbolKind.Label,
         SymbolKind.Func => SymbolKind.Label,
+        SymbolKind.Command => null, // C# 侧定义，DSL 无对应定义站点
         _ => null,
     };
 
@@ -464,7 +579,7 @@ public sealed class DslLanguageService : IDslLanguageService
         for (var si = 0; si < tokens.Length; si++)
         {
             var t = tokens[si];
-            if (t.Kind == DslTokenKind.String && offset > t.Offset && offset <= t.Offset + t.Length)
+            if (t.Kind == DslTokenKind.String && offset > t.Offset && offset < t.Offset + t.Length)
             {
                 // 光标在引号字符串内：提取已输入的相对路径前缀（开引号之后、光标之前），用于资源前缀匹配。
                 var prefix = offset > t.Offset + 1
@@ -506,7 +621,10 @@ public sealed class DslLanguageService : IDslLanguageService
         if (offset <= first.Offset + first.Length)
             return (CompletionContext.StatementStart, null, string.Empty, -1);
 
-        // key= 值补全：光标前最近 '=' 紧邻一个标识符（参数名）
+        // key= 值补全：光标前最近 '=' 紧邻一个标识符（参数名）。
+        // 若光标已越过 = 右侧的值 token（如 button text="hello" |），
+        // 说明该参数已输入完毕——跳过继续向上找更早的 '='，
+        // 最终兜底到 ParameterName 补全剩余参数名。
         for (var i = tokens.Length - 1; i >= 1; i--)
         {
             if (tokens[i].Kind == DslTokenKind.Symbol && source[tokens[i].Offset] == '=')
@@ -516,6 +634,9 @@ public sealed class DslLanguageService : IDslLanguageService
                 {
                     // 值起点 = '=' 之后（如 cmd=open_sa → 替换 "open_sa"）
                     var valueStart = tokens[i].Offset + 1;
+                    // 光标已越过 = 右侧的值 token → 该 key=value 已完成，跳过
+                    if (i + 1 < tokens.Length && offset > tokens[i + 1].Offset + tokens[i + 1].Length)
+                        continue;
                     var key = prev.GetText(source).ToString();
                     // 命中命名参数 → 取其值种类；否则视为表达式右值（set x = … / if a == … / while c && …）→ 变量名补全。
                     var r = spec2?.NamedParams.TryGetValue(key, out var rv) == true ? rv : DslCompletionRef.Expression;
@@ -571,6 +692,26 @@ public sealed class DslLanguageService : IDslLanguageService
         _ => CompletionContext.None,
     };
 
+    /// <summary>扫描当前行 token 序列，收集所有已使用的参数名（key= 模式中的 key）。
+    /// 仅收集命中 <paramref name="spec"/>.NamedParams 的 key——位置词引用（如 say 的 by）
+    /// 不在 NamedParams 中，不会被误收集；未在语法表中的 key（拼写错误）同样不收集，
+    /// 保留其补全候选以便用户修正。</summary>
+    private static HashSet<string> CollectUsedParamNames(DslToken[] lineTokens, ReadOnlySpan<char> source, DslStmtGrammar spec)
+    {
+        var used = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 1; i < lineTokens.Length; i++)
+        {
+            if (lineTokens[i].Kind == DslTokenKind.Symbol && source[lineTokens[i].Offset] == '='
+                && lineTokens[i - 1].Kind is DslTokenKind.Identifier or DslTokenKind.Keyword)
+            {
+                var key = lineTokens[i - 1].GetText(source).ToString();
+                if (spec.NamedParams.ContainsKey(key))
+                    used.Add(key);
+            }
+        }
+        return used;
+    }
+
     /// <summary>光标前是否存在未闭合的 {（表达式插值上下文）。</summary>
     private static bool IsInInterpolation(ReadOnlySpan<char> source, int offset)
     {
@@ -589,6 +730,72 @@ public sealed class DslLanguageService : IDslLanguageService
     private static bool IsArrow(DslToken t, ReadOnlySpan<char> source) =>
         t.Kind == DslTokenKind.Symbol && t.Length == 2 && source[t.Offset] == '-' && source[t.Offset + 1] == '>';
 
+    public SignatureHelpInfo? GetSignatureHelp(string filePath, int offset)
+    {
+        if (!_documents.TryGetValue(filePath, out var doc)) return null;
+        var source = doc.Source;
+        var line = doc.GetLineIndex(offset);
+        var lineStart = doc.GetLineStart(line);
+        var lineLen = source.Length - lineStart;
+        if (lineLen > 0)
+        {
+            var nl = source.Slice(lineStart).IndexOf('\n');
+            if (nl >= 0) lineLen = nl;
+        }
+        var lineText = source.Slice(lineStart, lineLen);
+        var lineTokens = DslTokenizer.TokenizeLine(lineText, lineStart);
+
+        if (lineTokens.Length == 0) return null;
+
+        // 跳过行首空白，取第一个实质 token 作为关键字
+        var kwIdx = 0;
+        while (kwIdx < lineTokens.Length && lineTokens[kwIdx].Kind == DslTokenKind.Whitespace)
+            kwIdx++;
+        if (kwIdx >= lineTokens.Length) return null;
+
+        var kwToken = lineTokens[kwIdx];
+        // 光标必须在关键字之后（在关键字本身上不弹签名）
+        if (offset <= kwToken.Offset + kwToken.Length) return null;
+
+        var keyword = kwToken.GetText(source).ToString();
+        var spec = DslGrammar.TryGet(keyword);
+        if (spec == null || spec.NamedParams.Count == 0) return null;
+
+        // 构建参数列表
+        var paramInfos = new List<ParameterInfo>(spec.NamedParams.Count);
+        var labelParts = new List<string>(spec.NamedParams.Count);
+        var paramOrder = new List<string>(spec.NamedParams.Count);
+        foreach (var kv in spec.NamedParams)
+        {
+            paramInfos.Add(new ParameterInfo(kv.Key));
+            labelParts.Add($"{kv.Key}=");
+            paramOrder.Add(kv.Key);
+        }
+
+        var label = $"{keyword}({string.Join(", ", labelParts)})";
+        var sig = new SignatureInfo(label, null, paramInfos);
+
+        // 确定 activeParameter：光标前最近的 key= 的参数索引
+        int? activeParam = null;
+        for (var i = lineTokens.Length - 1; i > kwIdx; i--)
+        {
+            var t = lineTokens[i];
+            if (t.Offset >= offset) continue; // 跳过光标后的 token
+            if (t.Kind == DslTokenKind.Symbol && t.Offset < source.Length && source[t.Offset] == '=')
+            {
+                if (i > 0 && lineTokens[i - 1].Kind is DslTokenKind.Identifier or DslTokenKind.Keyword)
+                {
+                    var paramName = lineTokens[i - 1].GetText(source).ToString();
+                    var idx = paramOrder.IndexOf(paramName);
+                    if (idx >= 0) activeParam = idx;
+                    break;
+                }
+            }
+        }
+
+        return new SignatureHelpInfo([sig], 0, activeParam);
+    }
+
     public HoverInfo? GetHover(string filePath, int offset)
     {
         if (!_documents.TryGetValue(filePath, out var doc)) return null;
@@ -602,7 +809,7 @@ public sealed class DslLanguageService : IDslLanguageService
             {
                 if (o.IsDeclaration)
                 {
-                    var refs = _symbolIndex.FindReferences(o.Kind, o.Name).Count;
+                    var refs = _symbolIndex.FindReferencesWithFallback(o.Kind, FallbackKind(o.Kind), o.Name).Count;
                     var scopeTag = o.Kind == SymbolKind.Variable ? VarScopeBadge(o) : null;
                     var detail = o.Kind == SymbolKind.Variable && scopeTag != null
                         ? $"{KindLabel(o.Kind)} 定义（{scopeTag}）\n{refs} 处引用"
@@ -639,6 +846,10 @@ public sealed class DslLanguageService : IDslLanguageService
             if (DslSymbolIndex.IsInternalVariableName(o.Name))
                 return new HoverInfo(o.Name, "变量（内部临时变量）",
                     new Location(o.FilePath, o.Offset, o.Length));
+            // C# 命令：展示注册信息（来自 CsSymbolIndex）。
+            if (o.Kind == SymbolKind.Command && _projectIndex.GetCommandNames().Contains(o.Name))
+                return new HoverInfo(o.Name, $"命令（C# 注册）\n{o.Name}",
+                    new Location(o.FilePath, o.Offset, o.Length));
             return new HoverInfo(o.Name, $"未定义的{KindLabel(o.Kind)}「{o.Name}」",
                 new Location(o.FilePath, o.Offset, o.Length));
         }
@@ -666,7 +877,7 @@ public sealed class DslLanguageService : IDslLanguageService
                 return new HoverInfo(text, detail, new Location(filePath, token.Value.Offset, token.Value.Length));
             }
             var cat = DslSemanticClassifier.Classify(token.Value, source);
-            return new HoverInfo(text, $"语义类别：{cat}");
+            return new HoverInfo(text, $"语义类别：{SemanticCategoryLabel(cat)}");
         }
         return null;
     }
@@ -716,13 +927,13 @@ public sealed class DslLanguageService : IDslLanguageService
         {
             var def = _symbolIndex.Resolve(o.Kind, fb, o.Name, filePath, o.ScopePath);
             var refs = def != null
-                ? new List<Location>(_symbolIndex.FindReferences(o.Kind, o.Name, def.Value.FilePath))
+                ? new List<Location>(_symbolIndex.FindReferencesWithFallback(o.Kind, fb, o.Name, def.Value.FilePath))
                 : new List<Location>();
             if (def != null) refs.Add(new Location(def.Value.FilePath, def.Value.Offset, def.Value.Length));
             return new ReferenceResult(refs, o.Kind, o.Name);
         }
         // 全局符号（define/set/label/scene/func…）：跨文件引用全收集。
-        var refsAll = new List<Location>(_symbolIndex.FindReferences(o.Kind, o.Name));
+        var refsAll = new List<Location>(_symbolIndex.FindReferencesWithFallback(o.Kind, fb, o.Name));
         var gdef = _symbolIndex.Resolve(o.Kind, fb, o.Name);
         if (gdef != null) refsAll.Add(new Location(gdef.Value.FilePath, gdef.Value.Offset, gdef.Value.Length));
         return new ReferenceResult(refsAll, o.Kind, o.Name);
@@ -835,6 +1046,7 @@ public sealed class DslLanguageService : IDslLanguageService
         SymbolKind.Func => 12,      // Function
         SymbolKind.Character => 8,  // Field
         SymbolKind.Style => 5,      // Class
+        SymbolKind.Command => 12,   // Function
         SymbolKind.Variable => 13,  // Variable
         _ => 13,
     };
@@ -862,11 +1074,16 @@ public sealed class DslLanguageService : IDslLanguageService
     {
         ct.ThrowIfCancellationRequested();
         var diags = _symbolIndex.GetDiagnostics(filePath);
-        // 资源 / 命令引用诊断（需 IProjectIndex，仅本处可访问；_symbolIndex 不引用 ProjectIndex）。
-        // 仅在项目资源索引已建立（ScanProject 成功）后判定，避免「未扫描 → 全盘误报未找到资源」的风暴。
-        if (_scanned && _documents.TryGetValue(filePath, out var doc))
+        // 资源 / 命令引用诊断 + 重复参数诊断（需文档 token，仅此处可访问）。
+        // 仅在文档已加载后执行；未打开的文件只走符号级诊断（未定义引用 + 重复定义）。
+        if (_documents.TryGetValue(filePath, out var doc))
         {
-            var extra = CollectReferenceDiagnostics(filePath, doc.GetAllTokens(), doc.Source);
+            var tokens = doc.GetAllTokens();
+            var source = doc.Source;
+            var extra = new List<Diagnostic>();
+            if (_scanned)
+                extra.AddRange(CollectReferenceDiagnostics(filePath, tokens, source));
+            extra.AddRange(CollectDuplicateParamDiagnostics(filePath, tokens, source));
             if (extra.Count > 0)
             {
                 var merged = new List<Diagnostic>(diags.Count + extra.Count);
@@ -946,6 +1163,46 @@ public sealed class DslLanguageService : IDslLanguageService
                             result.Add(new Diagnostic(DiagnosticSeverity.Warning, $"未找到资源：{value}", new Location(filePath, t.Offset, t.Length)));
                         }
                     }
+                }
+            }
+        }
+        return result;
+    }
+
+    /// <summary>重复参数诊断：扫描每行 token，同一 key 在同一行内出现 ≥2 次 key= 模式时给 Warning。
+    /// 仅针对有 NamedParams 的语句/UI 元素（非声明式语句如 define/set 无 key= 模式，不会误触）。
+    /// 设计取舍：给 Warning 而非 Error——引擎运行时静默覆盖后者，不崩溃，只是创作隐患。</summary>
+    private static List<Diagnostic> CollectDuplicateParamDiagnostics(string filePath, DslToken[] tokens, ReadOnlySpan<char> source)
+    {
+        var result = new List<Diagnostic>();
+        if (tokens.Length == 0) return result;
+
+        var lineStarts = new List<int> { 0 };
+        for (var i = 0; i < source.Length; i++)
+            if (source[i] == '\n') lineStarts.Add(i + 1);
+
+        var i2 = 0;
+        while (i2 < tokens.Length)
+        {
+            var lineIdx = LineOf(lineStarts, tokens[i2].Offset);
+            var lineEnd = (lineIdx + 1 < lineStarts.Count) ? lineStarts[lineIdx + 1] - 1 : source.Length;
+            var start = i2;
+            while (i2 < tokens.Length && tokens[i2].Offset < lineEnd) i2++;
+
+            // 收集本行出现的所有 key= 模式中的 key 名及其首次出现偏移
+            var seenKeys = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (var k = start; k < i2; k++)
+            {
+                if (tokens[k].Kind == DslTokenKind.Symbol && source[tokens[k].Offset] == '='
+                    && k > start
+                    && tokens[k - 1].Kind is DslTokenKind.Identifier or DslTokenKind.Keyword)
+                {
+                    var key = tokens[k - 1].GetText(source).ToString();
+                    if (seenKeys.TryAdd(key, tokens[k - 1].Offset)) continue;
+                    // key 已出现过 → 重复
+                    result.Add(new Diagnostic(DiagnosticSeverity.Warning,
+                        $"重复参数「{key}」（后者覆盖前者）",
+                        new Location(filePath, tokens[k - 1].Offset, tokens[k - 1].Length)));
                 }
             }
         }
@@ -1053,7 +1310,43 @@ public sealed class DslLanguageService : IDslLanguageService
         SymbolKind.Variable => "变量",
         SymbolKind.Character => "角色",
         SymbolKind.Func => "函数",
+        SymbolKind.Style => "样式",
+        SymbolKind.Command => "命令",
         _ => kind.ToString(),
+    };
+
+    /// <summary>语义分类枚举值 → 用户友好的中文标签（hover 显示用）。</summary>
+    private static string SemanticCategoryLabel(SemanticCategory cat) => cat switch
+    {
+        SemanticCategory.ControlFlow => "控制流",
+        SemanticCategory.Navigation => "导航",
+        SemanticCategory.DataOp => "数据操作",
+        SemanticCategory.Media => "媒体",
+        SemanticCategory.Display => "显示/动画",
+        SemanticCategory.SaveLoad => "存档系统",
+        SemanticCategory.Chapter => "章节/成就",
+        SemanticCategory.Rollback => "回溯控制",
+        SemanticCategory.Playback => "播放控制",
+        SemanticCategory.TimeEvent => "时间事件",
+        SemanticCategory.Notify => "通知/调试",
+        SemanticCategory.UiEnhance => "UI 增强",
+        SemanticCategory.UiContainer => "UI 容器",
+        SemanticCategory.UiInteractive => "UI 交互",
+        SemanticCategory.UiDisplay => "UI 显示",
+        SemanticCategory.Parameter => "参数",
+        SemanticCategory.ElementAttribute => "元素属性",
+        SemanticCategory.Keyword => "关键字",
+        SemanticCategory.Function => "内置函数",
+        SemanticCategory.Identifier => "标识符",
+        SemanticCategory.String => "字符串",
+        SemanticCategory.Number => "数字",
+        SemanticCategory.Comment => "注释",
+        SemanticCategory.Symbol => "符号",
+        SemanticCategory.Literal => "字面量",
+        SemanticCategory.Resource => "资源路径",
+        SemanticCategory.SymbolDefinition => "符号定义",
+        SemanticCategory.SymbolReference => "符号引用",
+        _ => "未知",
     };
 
     /// <inheritdoc/>
@@ -1124,10 +1417,59 @@ public sealed class DslLanguageService : IDslLanguageService
             else
             {
                 var firstWord = word.ToString(); // 块关键字很短，分配可忽略（与整行 Split/Trim 不可同日而语）
-                if (DslBlockStructure.IsBlockStarter(firstWord))
+                if (firstWord == "}")
                 {
+                    // 花括号块关闭：弹栈。
+                    if (stack.Count > 0)
+                    {
+                        var (startLine, _) = stack.Pop();
+                        if (li > startLine)
+                            foldings.Add((lineStarts[startLine], lineStarts[li]));
+                    }
+                    // } 后可能跟续行（如 } else {），} 本身深度为弹栈后
+                    var afterBrace = span.Slice(w).TrimStart();
+                    if (afterBrace.Length > 0)
+                    {
+                        var spIdx = afterBrace.IndexOf(' ');
+                        var afterWord = afterBrace.Slice(0, spIdx >= 0 ? spIdx : afterBrace.Length);
+                        var afterStr = afterWord.ToString();
+                        if (afterStr is "else" or "case" or "default")
+                            depths[li] = stack.Count; // 续行：对齐到父块
+                        else if (DslBlockStructure.IsBlockStarter(afterStr))
+                        {
+                            // } else if { / } else while：弹栈后重新压栈
+                            depths[li] = stack.Count;
+                            stack.Push((li, indent));
+                        }
+                        else
+                            depths[li] = stack.Count;
+                    }
+                    else
+                        depths[li] = stack.Count;
+                }
+                else if (DslBlockStructure.IsIndentationBlockEnder(firstWord))
+                {
+                    // end 关键字：弹栈，对齐到父块
+                    if (stack.Count > 0)
+                    {
+                        var (startLine, _) = stack.Pop();
+                        if (li > startLine)
+                            foldings.Add((lineStarts[startLine], lineStarts[li]));
+                    }
                     depths[li] = stack.Count;
-                    stack.Push((li, indent));
+                }
+                else if (DslBlockStructure.IsBlockStarter(firstWord))
+                {
+                    // scene 在已有块内是导航命令（非块起始），不压栈
+                    if (firstWord == "scene" && stack.Count > 0)
+                    {
+                        depths[li] = stack.Count;
+                    }
+                    else
+                    {
+                        depths[li] = stack.Count;
+                        stack.Push((li, indent));
+                    }
                 }
                 else if (firstWord is "else" or "case" or "default")
                 {
@@ -1186,8 +1528,22 @@ public sealed class DslLanguageService : IDslLanguageService
             if (word.Length > 0)
             {
                 var kw = word.ToString();
-                if (DslBlockStructure.IsBlockStarter(kw))
-                    stack.Push((kw, indent));
+                if (kw == "}")
+                {
+                    // 花括号块关闭：弹栈。
+                    if (stack.Count > 0) stack.Pop();
+                }
+                else if (DslBlockStructure.IsIndentationBlockEnder(kw))
+                {
+                    // end 关键字：弹栈。
+                    if (stack.Count > 0) stack.Pop();
+                }
+                else if (DslBlockStructure.IsBlockStarter(kw))
+                {
+                    // scene 在已有块内是导航命令（非块起始），不压栈
+                    if (kw == "scene" && stack.Count > 0) { /* 导航，不压栈 */ }
+                    else stack.Push((kw, indent));
+                }
                 else if (kw is not ("else" or "case" or "default"))
                 {
                     while (stack.Count > 0 && indent <= stack.Peek().Indent) stack.Pop();

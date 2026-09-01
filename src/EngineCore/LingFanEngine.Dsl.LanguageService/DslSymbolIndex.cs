@@ -14,14 +14,15 @@ public sealed class DslSymbolIndex
     private readonly Dictionary<SymbolKey, SymbolOccurrence> _definitions = new();
     // (种类, 名称) -> 所有引用站点
     private readonly Dictionary<SymbolKey, List<SymbolOccurrence>> _references = new();
-    // 文件 -> 该文件内全部出现（用于重索引时清理旧条目）
-    private readonly Dictionary<string, List<SymbolOccurrence>> _byFile = new();
+    // 文件 -> 该文件内全部出现（用于重索引时清理旧条目）。
+    // 路径键 OrdinalIgnoreCase：URI 还原（小写盘符）与本地扫描（原样大小写）须命中同一条目。
+    private readonly Dictionary<string, List<SymbolOccurrence>> _byFile = new(StringComparer.OrdinalIgnoreCase);
     // 局部变量(let/local)定义表：按 文件 -> 变量名 -> 作用域声明列表 三级索引。
     // let/local 是「场景/标签级局部」——仅在声明它的同一文件、同一作用域内可解析（不跨文件、不跨兄弟作用域），
     // 与运行时 LocalScope 的「label→scene→file」回退一致；跨文件 / 跨兄弟作用域的 let 引用必须判为「未定义」，
     // 否则 fileA 的 let 会被误当成 fileB 的引用目标、或 sceneB 的 {x} 误当成 sceneA 的 let 引用目标。
     // 同名变量可在不同作用域各自声明（如 sceneA 与 sceneB 各 let "x"），故值用列表而非单值。
-    private readonly Dictionary<string, Dictionary<string, List<LocalVarDecl>>> _localVarDefsByFile = new();
+    private readonly Dictionary<string, Dictionary<string, List<LocalVarDecl>>> _localVarDefsByFile = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>局部变量声明 + 其所在作用域路径（"scene/名" / "label/名" / "" 文件级）。</summary>
     private readonly struct LocalVarDecl
@@ -145,10 +146,36 @@ public sealed class DslSymbolIndex
         var locations = new List<Location>(list.Count);
         foreach (var o in list)
         {
-            if (inFile != null && !string.Equals(o.FilePath, inFile, StringComparison.Ordinal)) continue;
+            if (inFile != null && !string.Equals(o.FilePath, inFile, StringComparison.OrdinalIgnoreCase)) continue;
             locations.Add(new Location(o.FilePath, o.Offset, o.Length));
         }
         return locations;
+    }
+
+    /// <summary>查找引用（含 fallback kind 合并）：例如 call 目标存为 Func 引用，但 label 定义为 Label；
+    /// 调用方传入 fallbackKind=Func，会同时查询两种 kind 的引用表并去重合并。</summary>
+    public IReadOnlyList<Location> FindReferencesWithFallback(SymbolKind kind, SymbolKind? fallbackKind, string name, string? inFile = null)
+    {
+        var primary = FindReferences(kind, name, inFile);
+        if (fallbackKind == null || fallbackKind.Value == kind)
+            return primary;
+        var secondary = FindReferences(fallbackKind.Value, name, inFile);
+        if (secondary.Count == 0)
+            return primary;
+        // 合并去重（按 offset 去重，同一位置不同 kind 只保留一个）
+        var seen = new HashSet<int>(primary.Count + secondary.Count);
+        var merged = new List<Location>(primary.Count + secondary.Count);
+        foreach (var loc in primary)
+        {
+            if (seen.Add(loc.Offset))
+                merged.Add(loc);
+        }
+        foreach (var loc in secondary)
+        {
+            if (seen.Add(loc.Offset))
+                merged.Add(loc);
+        }
+        return merged;
     }
 
     /// <summary>查找光标位置命中的符号出现（定义或引用），用于悬浮 / 跳转 / 查找引用入口。</summary>
@@ -199,7 +226,7 @@ public sealed class DslSymbolIndex
     {
         var set = new HashSet<SymbolKey>();
         foreach (var kvp in _definitions)
-            if (string.Equals(kvp.Value.FilePath, filePath, StringComparison.Ordinal))
+            if (string.Equals(kvp.Value.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
                 set.Add(kvp.Key);
         return set;
     }
@@ -217,13 +244,13 @@ public sealed class DslSymbolIndex
         intersection.IntersectWith(after);
         changed.ExceptWith(intersection);
 
-        var affected = new HashSet<string>(StringComparer.Ordinal) { editedPath };
+        var affected = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { editedPath };
         foreach (var k in changed)
             if (_references.TryGetValue(k, out var refs))
                 foreach (var r in refs)
                 {
                     // 局部变量(let/local)不跨文件解析：其定义变更只影响同文件引用，忽略其它文件的同名局部引用，避免误重发无关文件诊断。
-                    if (r.Scope == SymbolScope.Local && !string.Equals(r.FilePath, editedPath, StringComparison.Ordinal)) continue;
+                    if (r.Scope == SymbolScope.Local && !string.Equals(r.FilePath, editedPath, StringComparison.OrdinalIgnoreCase)) continue;
                     affected.Add(r.FilePath);
                 }
         return affected;
@@ -238,7 +265,7 @@ public sealed class DslSymbolIndex
         var scopes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var kvp in _byFile)
         {
-            if (filePath != null && !string.Equals(kvp.Key, filePath, StringComparison.Ordinal)) continue;
+            if (filePath != null && !string.Equals(kvp.Key, filePath, StringComparison.OrdinalIgnoreCase)) continue;
             foreach (var o in kvp.Value)
             {
                 if (o.Kind != SymbolKind.Variable || o.Role != SymbolRole.Definition) continue;
@@ -575,20 +602,7 @@ public sealed class DslSymbolIndex
                     if (TryNextIdentifier(lineTokens, 1, source, out var callTarget))
                     { var s = NameSpan(lineTokens[1], source); occurrences.Add(new SymbolOccurrence(SymbolKind.Func, SymbolRole.Reference, callTarget, filePath, s.Offset, s.Length, SymbolScope.Global, false, scopePath)); }
                     break;
-                case "menu":
-                    for (var k = 0; k + 1 < lineTokens.Length; k++)
-                    {
-                        if (lineTokens[k].Kind == DslTokenKind.Symbol && lineTokens[k].GetText(source).ToString() == "->")
-                        {
-                            var target = lineTokens[k + 1];
-                            if (target.Kind == DslTokenKind.Identifier)
-                            {
-                                var name = target.GetText(source).ToString();
-                                occurrences.Add(new SymbolOccurrence(SymbolKind.Label, SymbolRole.Reference, name, filePath, target.Offset, name.Length, SymbolScope.Global, false, scopePath));
-                            }
-                        }
-                    }
-                    break;
+                // menu 选项 -> label 引用由下方通用 -> 扫描统一处理，无需在此重复。
             }
         }
 
@@ -612,6 +626,7 @@ public sealed class DslSymbolIndex
                         {
                             "nav" => SymbolKind.Scene,
                             "class" or "style" => SymbolKind.Style,
+                            "cmd" => SymbolKind.Command,
                             _ => (SymbolKind?)null,
                         };
                         if (refKind is { } kind && lineTokens[k + 1].Kind == DslTokenKind.String)
@@ -626,6 +641,20 @@ public sealed class DslSymbolIndex
                         }
                     }
                 }
+            }
+        }
+
+        // 全行扫描 -> 箭头目标（menu 选项 "文本" -> label_name、或任何行内的 -> 标识符）。
+        // menu 选项行的首 token 是 String（"选项文本"），不走上方 switch；即使首 token 是 Keyword，
+        // switch 也只处理 menu 本体行，不处理其子行。故在此处统一扫描所有行的 -> 引用。
+        for (var k = 1; k + 1 < lineTokens.Length; k++)
+        {
+            if (lineTokens[k].Kind == DslTokenKind.Symbol && lineTokens[k].GetText(source).ToString() == "->"
+                && lineTokens[k + 1].Kind == DslTokenKind.Identifier)
+            {
+                var target = lineTokens[k + 1];
+                var name = target.GetText(source).ToString();
+                occurrences.Add(new SymbolOccurrence(SymbolKind.Label, SymbolRole.Reference, name, filePath, target.Offset, name.Length, SymbolScope.Global, false, scopePath));
             }
         }
 
