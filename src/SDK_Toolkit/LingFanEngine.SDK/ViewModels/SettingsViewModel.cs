@@ -19,7 +19,6 @@ public sealed record LanguageOption(string Code, string Label);
 public partial class SettingsViewModel : ViewModelBase
 {
     private readonly IPlatformService _platformService;
-    private readonly IEngineUpdateService _engineUpdateService;
     private readonly IProjectSession _projectSession;
     private readonly ITemplateUpdateService _templateUpdateService;
 
@@ -69,18 +68,10 @@ public partial class SettingsViewModel : ViewModelBase
         StatusMessage = SdkLocalizer.Loc("Set_LangSwitched", value.Label);
     }
 
-    // P2-4: 引擎版本（只读）——优先从 LingFanEngine.dll 元数据读取真实版本
+    // 引擎版本（只读）——当前打开项目 csproj 的 LingFanEngine PackageReference 版本
+    // （2026-09 起引擎经 NuGet 分发，升级在项目里走 NuGet，SDK 不再热更引擎 DLL）
     [ObservableProperty]
-    private string _engineVersion = "1.0.0";
-
-    // 引擎更新状态文案（UI 显示）
-    [ObservableProperty]
-    private string _engineUpdateMessage = "";
-
-    // 是否正在检查/应用引擎更新（控制按钮可用性）
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(CheckEngineUpdateCommand))]
-    private bool _isCheckingEngineUpdate;
+    private string _engineVersion = "—";
 
     // 模板版本（只读）——当前生效模板版本（缓存 lock 或内置基线）
     [ObservableProperty]
@@ -101,12 +92,10 @@ public partial class SettingsViewModel : ViewModelBase
 
     public SettingsViewModel(
         IPlatformService platformService,
-        IEngineUpdateService engineUpdateService,
         IProjectSession projectSession,
         ITemplateUpdateService templateUpdateService)
     {
         _platformService = platformService;
-        _engineUpdateService = engineUpdateService;
         _projectSession = projectSession;
         _templateUpdateService = templateUpdateService;
 
@@ -130,20 +119,18 @@ public partial class SettingsViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 刷新显示的引擎版本：优先读最终项目的真实版本；未打开项目时回退 SDK 种子版本。
+    /// 刷新显示的引擎版本：读当前打开项目 csproj 的 PackageReference（NuGet 分发后的版本真相）；
+    /// 未打开项目时显示占位（也可被持久化的上次已知值覆盖）。
     /// </summary>
     private void RefreshEngineVersion()
     {
-        string? ver = null;
         if (_projectSession.IsProjectOpen &&
             !string.IsNullOrWhiteSpace(_projectSession.ProjectDirectory))
         {
-            ver = _engineUpdateService.GetProjectEngineVersion(_projectSession.ProjectDirectory);
+            var ver = EnginePackageHelper.GetEnginePackageVersion(_projectSession.ProjectDirectory);
+            if (!string.IsNullOrWhiteSpace(ver))
+                EngineVersion = ver;
         }
-        if (string.IsNullOrWhiteSpace(ver))
-            ver = _engineUpdateService.CurrentEngineVersion; // SDK 种子兜底
-        if (!string.IsNullOrWhiteSpace(ver) && ver != "0.0.0")
-            EngineVersion = ver;
     }
 
     /// <summary>加载设置（AOT 安全：使用 SdkJsonContext）</summary>
@@ -237,58 +224,6 @@ public partial class SettingsViewModel : ViewModelBase
             StatusMessage = SdkLocalizer.Loc("Set_DotNetNo");
         }
     }
-
-    /// <summary>
-    /// 检查并应用引擎 DLL 更新（GitHub Release）。
-    /// <para>检查到新版本时自动下载、sha256 校验、更新 SDK 自带 DLL 缓存；
-    /// 被锁定的 DLL 写入 pending，提示重启 SDK 生效。</para>
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(CanCheckEngineUpdate))]
-    private async Task CheckEngineUpdateAsync()
-    {
-        IsCheckingEngineUpdate = true;
-        EngineUpdateMessage = SdkLocalizer.Loc("Set_EngChecking");
-        StatusMessage = EngineUpdateMessage;
-
-        try
-        {
-            var progress = new Progress<string>(msg =>
-            {
-                EngineUpdateMessage = msg;
-                StatusMessage = msg;
-            });
-
-            var result = await _engineUpdateService.UpdateSdkCacheAsync(progress);
-
-            EngineUpdateMessage = result.Status switch
-            {
-                EngineUpdateStatus.UpToDate => SdkLocalizer.Loc("Set_EngUpToDate", EngineVersion),
-                EngineUpdateStatus.UpdateApplied => SdkLocalizer.Loc("Set_EngApplied", result.ManifestVersion, result.UpdatedDlls.Count),
-                EngineUpdateStatus.PendingRestart => SdkLocalizer.Loc("Set_EngPending", result.ManifestVersion, result.UpdatedDlls.Count, result.PendingDlls.Count),
-                EngineUpdateStatus.Failed => SdkLocalizer.Loc("Set_EngFail", result.ErrorMessage),
-                _ => EngineUpdateMessage,
-            };
-            StatusMessage = EngineUpdateMessage;
-
-            // 热替换成功后刷新显示的引擎版本
-            if (result.Status is EngineUpdateStatus.UpdateApplied or EngineUpdateStatus.PendingRestart
-                && !string.IsNullOrEmpty(result.ManifestVersion))
-            {
-                EngineVersion = result.ManifestVersion;
-            }
-        }
-        catch (Exception ex)
-        {
-            EngineUpdateMessage = SdkLocalizer.Loc("Set_EngExc", ex.Message);
-            StatusMessage = EngineUpdateMessage;
-        }
-        finally
-        {
-            IsCheckingEngineUpdate = false;
-        }
-    }
-
-    private bool CanCheckEngineUpdate() => !IsCheckingEngineUpdate;
 
     /// <summary>
     /// 检查并应用模板更新（GitHub Release 模板 zip）。

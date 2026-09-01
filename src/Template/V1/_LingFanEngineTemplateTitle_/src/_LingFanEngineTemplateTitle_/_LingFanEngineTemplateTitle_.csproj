@@ -24,23 +24,8 @@
 			<PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
 		</PackageReference>
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
-	</ItemGroup>
 
-	<!-- 共享资源已移至项目根/Resources/，由 Directory.Build.props 的 Content 项统一复制到可执行项目输出 -->
-
-	<ItemGroup>
-	  <Reference Include="LingFanEngine">
-	    <HintPath>..\..\DLL\LingFanEngine.dll</HintPath>
-	  </Reference>
-	  <Reference Include="LingFanEngine.Abstractions">
-	    <HintPath>..\..\DLL\LingFanEngine.Abstractions.dll</HintPath>
-	  </Reference>
-	  <Reference Include="LingFanEngine.DslCore">
-	    <HintPath>..\..\DLL\LingFanEngine.DslCore.dll</HintPath>
-	  </Reference>
-	  <Reference Include="Pidgin">
-	    <HintPath>..\..\DLL\Pidgin.dll</HintPath>
-	  </Reference>
+		<PackageReference Include="LingFanEngine" Version="1.0.1" />
 	</ItemGroup>
 
 

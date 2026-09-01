@@ -97,9 +97,6 @@ public static class ProjectConstants
     /// <summary>安全目录名（GeneratedKeys.cs 等安全相关代码）</summary>
     public const string SecurityDir = "Security";
 
-    /// <summary>DLL 引用目录名（引擎 DLL 存放位置）</summary>
-    public const string DllDir = "DLL";
-
     /// <summary>发布输出目录名</summary>
     public const string PublishDir = "publish";
 
@@ -122,37 +119,6 @@ public static class ProjectConstants
 
     /// <summary>JSON 文件扩展名</summary>
     public const string JsonExt = ".json";
-
-    /// <summary>引擎版本锁定文件名（每项目/缓存内声明版本真相，AOT 安全 JSON）。</summary>
-    public const string EngineLockFileName = "engine.lock.json";
-
-    /// <summary>引擎缓存目录名（SDK 已知最新引擎 DLL 集，离线建项目/预览的种子源）。</summary>
-    public const string EngineCacheDir = "engine-cache";
-
-    // ── 引擎 DLL 名称 ───────────────────────────────────────────
-
-    /// <summary>引擎核心 DLL</summary>
-    public const string EngineCoreDll = "LingFanEngine.dll";
-
-    /// <summary>引擎抽象层 DLL</summary>
-    public const string EngineAbstractionsDll = "LingFanEngine.Abstractions.dll";
-
-    /// <summary>DSL 共享解析层 DLL</summary>
-    public const string EngineDslCoreDll = "LingFanEngine.DslCore.dll";
-
-    /// <summary>解析器库 DLL</summary>
-    public const string PidginDll = "Pidgin.dll";
-
-    /// <summary>
-    /// SDK 分发的引擎 DLL 列表（含运行时引擎核心 LingFanEngine.dll）。
-    /// <para>PublishService.UpdateEngineDlls 从 SDK 输出目录复制这些 DLL（4 个）到用户项目。</para>
-    /// <para>包含 LingFanEngine.dll 使发布具备自愈能力：用户项目缺失或引擎更新时，
-    /// 发布会自动补齐/覆盖最新引擎核心，不再依赖模板创建时带入。</para>
-    /// </summary>
-    public static readonly string[] SdkDistributedDlls =
-    [
-        EngineCoreDll, EngineAbstractionsDll, EngineDslCoreDll, PidginDll,
-    ];
 
     // ── 构建相关 ────────────────────────────────────────────────
 

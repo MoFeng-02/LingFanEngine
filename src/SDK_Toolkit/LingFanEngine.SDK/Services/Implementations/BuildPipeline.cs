@@ -212,7 +212,7 @@ public sealed class DetectStage : IBuildStage
     }
 }
 
-/// <summary>阶段②：预处理——DLL 同步、资源迁移、路径修复、源解密、密钥生成、杀进程、清空输出。</summary>
+/// <summary>阶段②：预处理——资源迁移、路径修复、源解密、密钥生成、杀进程、清空输出。</summary>
 public sealed class PreprocessStage : IBuildStage
 {
     public string Name => "预处理";
@@ -221,7 +221,8 @@ public sealed class PreprocessStage : IBuildStage
     {
         var project = ctx.Project;
 
-        BuildPipelineHelpers.UpdateEngineDlls(ctx.ProjectDir, log);
+        // 引擎依赖自 2026-09 起经 NuGet 分发：构建时由 dotnet restore 还原 PackageReference，
+        // 不再从 SDK 复制 DLL 种子（原 BuildPipelineHelpers.UpdateEngineDlls 已退役）。
         BuildPipelineHelpers.MigrateResourcesToResourcesDir(ctx.ProjectDir, ctx.CoreDir, log);
         BuildPipelineHelpers.EnsureCsprojResourcePaths(ctx.ProjectDir, log);
         BuildPipelineHelpers.DecryptSourceFilesIfNeeded(ctx.ResourcesDir, project.ProjectPath, log);
@@ -433,48 +434,6 @@ internal static class BuildPipelineHelpers
             }
         }
         sw.Write('"');
-    }
-
-    /// <summary>将 SDK DLL 复制到用户项目 DLL/（更新引擎依赖）。</summary>
-    public static void UpdateEngineDlls(string projectRootDir, Action<string> log)
-    {
-        try
-        {
-            var sdkDllDir = Path.Combine(AppContext.BaseDirectory, ProjectConstants.DllDir);
-            if (!Directory.Exists(sdkDllDir))
-            {
-                log($"警告: SDK DLL 目录不存在: {sdkDllDir}，跳过引擎 DLL 更新");
-                return;
-            }
-
-            var projectDllDir = Path.Combine(projectRootDir, ProjectConstants.DllDir);
-            if (!Directory.Exists(projectDllDir))
-                Directory.CreateDirectory(projectDllDir);
-
-            var engineDlls = ProjectConstants.SdkDistributedDlls;
-            var updated = 0;
-            var missing = 0;
-            foreach (var dllName in engineDlls)
-            {
-                var srcPath = Path.Combine(sdkDllDir, dllName);
-                if (!File.Exists(srcPath))
-                {
-                    log($"  警告: 源 DLL 不存在: {dllName}（请重新编译引擎核心）");
-                    missing++;
-                    continue;
-                }
-                var destPath = Path.Combine(projectDllDir, dllName);
-                File.Copy(srcPath, destPath, overwrite: true);
-                log($"  已复制: {dllName}");
-                updated++;
-            }
-
-            log($"引擎 DLL 更新完成: {updated} 个成功, {missing} 个缺失");
-        }
-        catch (Exception ex)
-        {
-            log($"警告: 更新引擎 DLL 失败: {ex.Message}");
-        }
     }
 
     /// <summary>杀掉从项目目录运行的游戏进程（防止 DLL/PDB 文件锁定）。</summary>

@@ -31,6 +31,14 @@ public interface IDialogBox
     /// <summary>重置 NVL 模式内部状态（场景切换或退出 NVL 模式时调用）</summary>
     void ResetNvlState();
 
+    /// <summary>
+    /// 尝试消费一次「前进」点击/按键（防陈旧点击重复触发 Complete 的统一闸门）。
+    /// <para>内置 DialogBox 委托 DialogEngine（SetText 后首次成功、其后拒绝）；
+    /// SceneView 的键盘/背景点击与对话框自身点击共用此闸门（C5 收敛，2026-09）。</para>
+    /// <para>默认实现恒返回 true（自定义模板无状态时的宽松行为，与旧版一致）。</para>
+    /// </summary>
+    bool TryConsumeClick() => true;
+
     /// <summary>获取 Avalonia 控件（供 SceneView 添加到面板）</summary>
     Control AsControl();
 }

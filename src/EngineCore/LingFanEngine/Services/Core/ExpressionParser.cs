@@ -12,8 +12,8 @@ namespace LingFanEngine.Services.Core;
 /// - {player.stats.hp} → 嵌套字典深度路径
 /// - {hours:00} → 数值格式化
 /// - {days} → 特殊变量（从 IGameTimeService 计算）
-/// - {gold + 50} → 算术表达式（Pidgin 引擎）
-/// - {hp >= 100 && status == "alive"} → 逻辑表达式（Pidgin 引擎）
+/// - {gold + 50} → 算术表达式（Parlot 引擎）
+/// - {hp >= 100 && status == "alive"} → 逻辑表达式（Parlot 引擎）
 /// </para>
 /// </summary>
 public static class ExpressionParser
@@ -52,7 +52,7 @@ public static class ExpressionParser
                 }
             }
 
-            // 使用 Pidgin 引擎求值
+            // 使用 Parlot 引擎求值
             var rawValue = EvaluateExpression(expr, state);
             var strValue = rawValue?.ToString() ?? expr;
 
@@ -67,20 +67,16 @@ public static class ExpressionParser
     }
 
     /// <summary>
-    /// 使用 Pidgin 引擎求值表达式（带缓存），失败时回退到旧引擎
+    /// 使用表达式引擎求值（带缓存），失败时回退到旧引擎
     /// </summary>
     private static object? EvaluateExpression(string expr, IStateContainer state)
     {
-        var ast = _templateAstCache.GetOrAdd(expr, e =>
-        {
-            var result = DslExpressionParser.Parse(e);
-            return result.Success ? result.Value : null;
-        });
+        var ast = _templateAstCache.GetOrAdd(expr, e => DslExpressionParser.Parse(e));
 
         if (ast != null)
             return ExpressionEvaluator.Evaluate(ast, state);
 
-        // Pidgin 解析失败，回退到旧引擎
+        // 解析失败，回退到旧引擎
         return ResolveValue(expr, state);
     }
 

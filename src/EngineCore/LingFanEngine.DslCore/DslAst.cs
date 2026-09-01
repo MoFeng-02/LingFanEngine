@@ -49,7 +49,7 @@ public sealed partial class SayStmt : DslStatement
     public bool Noskip { get; init; }
     /// <summary>瞬时显示文本（say instant=true，跳过打字机效果）</summary>
     public bool Instant { get; init; }
-    /// <summary>显式启用打字机效果（say typewriter=true）</summary>
+    /// <summary>显式指定打字机效果（say typewriter=true|false；null=未指定用全局默认）</summary>
     public bool? Typewriter { get; init; }
     /// <summary>对话框模板名（say template="xxx"，Phase 65）。null=用角色级 screen 或全局默认</summary>
     public string? Template { get; init; }
@@ -853,7 +853,7 @@ public sealed partial class BgSwitchStmt : DslStatement
 /// </summary>
 public sealed partial class TextTypewriterStmt : DslStatement
 {
-    /// <summary>打字机速度（字符/秒），0=关闭打字机</summary>
+    /// <summary>打字机速度（可见字符/秒），0=立即显示（跳过打字动画）</summary>
     public double Speed { get; init; }
 }
 

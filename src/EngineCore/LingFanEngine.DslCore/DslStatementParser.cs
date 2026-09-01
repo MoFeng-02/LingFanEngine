@@ -1,690 +1,714 @@
 using System.Globalization;
 using LingFanEngine.Abstractions.Interfaces.Events;
-using Pidgin;
-using static Pidgin.Parser;
-using static Pidgin.Parser<char>;
+using Parlot;
+using Parlot.Fluent;
+using static Parlot.Fluent.Parsers;
 
 namespace LingFanEngine.DslCore;
 
 /// <summary>
-/// 基于 Pidgin 的 DSL 语句解析器——逐行解析 DSL 脚本为 AST 语句
+/// 基于 Parlot 的 DSL 语句解析器——逐行解析 DSL 脚本为 AST 语句
+/// <para>2026-09：由 Pidgin（本地 fork DLL）迁移至 Parlot 1.5.8（NuGet），语义同构。</para>
+/// <para>迁移要点：① Pidgin 的 Try 显式回溯全部移除（Parlot 组合子失败自动复位游标）；
+/// ② Ws 必须用 ZeroOrOne(Literals.WhiteSpace) 包裹——原生 WhiteSpaceLiteral 零匹配即失败，
+/// 会导致行尾空白跳过在 EOF 必然失败（v1.5.8 源码实证）；③ 108 条语句解析器顺序表原样保留。</para>
 /// </summary>
 public static class DslStatementParser
 {
     // ====== 基础 token ======
 
-    /// <summary>跳过空白</summary>
-    private static readonly Parser<char, Unit> _ws = SkipWhitespaces;
+    /// <summary>跳过空白（贪婪，零或多——与 Pidgin SkipWhitespaces 语义严格对齐；原生 WhiteSpaceLiteral 零匹配会失败，必须 ZeroOrOne 包裹）</summary>
+    private static readonly Parser<TextSpan> _ws =
+        ZeroOrOne(Literals.WhiteSpace(includeNewLines: true));
 
-    /// <summary>带空白的 token 包装</summary>
-    private static Parser<char, T> Tok<T>(Parser<char, T> p) => p.Before(_ws);
-
-    /// <summary>转义序列：\" \\ \n \t \r；未知转义保留两字符原样（如 Windows 路径 "C:\dir"），与 ExpressionParser.Pidgin 语义一致</summary>
-    private static readonly Parser<char, string> EscapeSequence =
-        Char('\\').Then(Any).Select(c => c switch
-        {
-            '"' => "\"",
-            '\\' => "\\",
-            'n' => "\n",
-            't' => "\t",
-            'r' => "\r",
-            _ => new string(['\\', c]),
-        });
+    /// <summary>转义序列：\" \\ \n \t \r；未知转义保留两字符原样（如 Windows 路径 "C:\dir"），与 DslParser/ExpressionParser 语义一致</summary>
+    private static readonly Parser<string> EscapeSequence =
+        Literals.Char('\\')
+            .SkipAnd(Literals.Pattern(_ => true, 1, 1))
+            .Then(c => c.ToString() switch
+            {
+                "\"" => "\"",
+                "\\" => "\\",
+                "n" => "\n",
+                "t" => "\t",
+                "r" => "\r",
+                var other => "\\" + other,
+            });
 
     /// <summary>字符串段：普通字符段（至少一个非引号非反斜杠）或转义序列（声明顺序：先转义后组合）</summary>
-    private static readonly Parser<char, string> StringSegment =
-        AnyCharExcept('"', '\\').AtLeastOnceString()
+    private static readonly Parser<string> StringSegment =
+        Literals.NoneOf("\"\\")
+            .Then(s => s.ToString())
             .Or(EscapeSequence);
 
     /// <summary>双引号字符串（支持 \" 与 \\ 转义；未知转义保留两字符原样，存量零破坏）</summary>
-    private static readonly Parser<char, string> QuotedString =
-        Char('"').Then(StringSegment.Many().Select(string.Concat)).Before(Char('"'))
-            .Labelled("quoted string");
+    private static readonly Parser<string> QuotedString =
+        Literals.Char('"')
+            .SkipAnd(ZeroOrMany(StringSegment).Then(ss => string.Concat(ss)))
+            .AndSkip(Literals.Char('"'))
+            .Named("quoted string");
 
     /// <summary>标识符 \w+（字母/数字/下划线）</summary>
-    private static readonly Parser<char, string> Identifier =
-        Token(c => char.IsLetterOrDigit(c) || c == '_').AtLeastOnceString()
-            .Labelled("identifier");
+    private static readonly Parser<string> Identifier =
+        Literals.Pattern(c => char.IsLetterOrDigit(c) || c == '_')
+            .Then(s => s.ToString())
+            .Named("identifier");
 
     /// <summary>数字（整数或浮点数）</summary>
-    private static readonly Parser<char, double> Number =
-        (from intPart in Digit.AtLeastOnceString()
-         from fracPart in Try(Char('.').Then(Digit.AtLeastOnceString())).Optional()
-         select double.Parse(intPart + (fracPart.HasValue ? "." + fracPart.Value : ""), CultureInfo.InvariantCulture))
-        .Labelled("number");
+    private static readonly Parser<double> Number =
+        Capture(
+            Literals.Pattern(char.IsDigit)
+                .AndSkip(ZeroOrOne(
+                    Literals.Char('.').AndSkip(Literals.Pattern(char.IsDigit))
+                ))
+        ).Then(s => double.Parse(s.ToString(), CultureInfo.InvariantCulture))
+        .Named("number");
+
+    /// <summary>行尾文本：任意非换行字符，零或多（对应 Pidgin AnyCharExcept('\n','\r').ManyString()）</summary>
+    private static readonly Parser<string> RestToEol =
+        AnyCharBefore(Literals.Char('\n').Or(Literals.Char('\r')), canBeEmpty: true)
+            .Then(s => s.ToString());
+
+    /// <summary>行尾文本（至少一字符——对应 Pidgin AnyCharExcept(...).AtLeastOnceString()）</summary>
+    private static readonly Parser<string> RestToEolNonEmpty =
+        AnyCharBefore(Literals.Char('\n').Or(Literals.Char('\r')), canBeEmpty: false)
+            .Then(s => s.ToString());
 
     /// <summary>{表达式}——返回花括号内的内容</summary>
-    private static readonly Parser<char, string> Expression =
-        Char('{').Then(AnyCharExcept('}').ManyString()).Before(Char('}'))
-            .Select(s => s.Trim())
-            .Labelled("expression");
+    private static readonly Parser<string> Expression =
+        Literals.Char('{')
+            .SkipAnd(AnyCharBefore(Literals.Char('}'), canBeEmpty: true))
+            .AndSkip(Literals.Char('}'))
+            .Then(s => s.ToString().Trim())
+            .Named("expression");
 
-    /// <summary>坐标 (x, y)</summary>
-    private static readonly Parser<char, (double x, double y)> _position =
-        from _1 in String("at").Before(_ws)
-        from _2 in Char('(').Before(_ws)
-        from x in Number.Before(_ws)
-        from _3 in Char(',').Before(_ws)
-        from y in Number.Before(_ws)
-        from _4 in Char(')')
-        select (x, y);
+    /// <summary>坐标 (x, y)——尾部跳过空白，使 at (x, y) 与后续 with "..." 连写可用（文档声明的完整语法）</summary>
+    private static readonly Parser<(double x, double y)> _position =
+        Literals.Text("at").AndSkip(_ws)
+            .AndSkip(Literals.Char('(')).AndSkip(_ws)
+            .And(Number.AndSkip(_ws))
+            .AndSkip(Literals.Char(',')).AndSkip(_ws)
+            .And(Number.AndSkip(_ws))
+            .AndSkip(Literals.Char(')'))
+            .AndSkip(_ws)
+            .Then(t => (t.Item2, t.Item3));
 
     // ====== 语句解析器 ======
 
-    /// <summary>say "text" [by "speaker" | speaker="speaker"] [clickable=true | okey] [noskip=true] [instant=true] [typewriter=true]</summary>
-    private static readonly Parser<char, DslStatement> _say =
-        from _1 in String("say").Before(_ws)
-        from text in QuotedString.Before(_ws)
-        from speaker in (
-            // speaker="speaker" 语法（故事文件中使用的格式）
-            Try(String("speaker=").Then(QuotedString).Before(_ws))
-            // by "speaker" 语法（兼容旧格式）
-            .Or(Try(String("by").Before(_ws).Then(QuotedString)).Before(_ws))
-        ).Optional()
-        from clickable in (
-            // clickable=true 语法
-            Try(String("clickable=true").Before(_ws))
-            // okey 语法糖（等价于 clickable=true）
-            .Or(Try(String("okey").Before(_ws)))
-        ).Optional()
-        from noskip in (
-            // noskip=true 语法（Phase 37）
-            Try(String("noskip=true").Before(_ws))
-        ).Optional()
-        from instant in (
-            // instant=true 语法（DSL 2.0）
-            Try(String("instant=true").Before(_ws))
-        ).Optional()
-        from typewriter in (
-            // typewriter=true 语法（DSL 2.0——强制启用打字机效果）
-            Try(String("typewriter=true").Before(_ws))
-        ).Optional()
-        // Phase 65: template="xxx" —— 对话框模板名
-        from template in Try(String("template=").Then(QuotedString).Before(_ws)).Optional()
-        // voice="path" —— 行内语音（DSL 语音支持）
-        from voice in Try(String("voice=").Then(QuotedString).Before(_ws)).Optional()
-        select (DslStatement)new SayStmt
-        {
-            Text = text,
-            Speaker = speaker.HasValue ? speaker.Value : null,
-            Clickable = clickable.HasValue,
-            Noskip = noskip.HasValue,
-            Instant = instant.HasValue,
-            Typewriter = typewriter.HasValue ? true : null,
-            Template = template.HasValue ? template.Value : null,
-            VoicePath = voice.HasValue ? voice.Value : null
-        };
+    /// <summary>say 前段收窄载体（Parlot Sequence 元组上限 7，say 需 8 个连续值，故中段打包）</summary>
+    private sealed record SayPrefix(string Text, string? Speaker, bool Clickable);
+
+    /// <summary>say "text" [by "speaker" | speaker="speaker"] [clickable=true | okey] [noskip=true] [instant=true] [typewriter=true|false]</summary>
+    private static readonly Parser<DslStatement> _say =
+        Literals.Text("say").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(
+                // speaker="speaker" 语法（故事文件中使用的格式）
+                Literals.Text("speaker=").SkipAnd(QuotedString).AndSkip(_ws)
+                // by "speaker" 语法（兼容旧格式）
+                .Or(Literals.Text("by").AndSkip(_ws).SkipAnd(QuotedString).AndSkip(_ws))
+                .Optional())
+            .And(
+                // clickable=true 语法
+                Literals.Text("clickable=true").AndSkip(_ws)
+                // okey 语法糖（等价于 clickable=true）
+                .Or(Literals.Text("okey").AndSkip(_ws))
+                .Optional())
+            .Then(t => new SayPrefix(t.Item1, t.Item2.HasValue ? t.Item2.Value : null, t.Item3.HasValue))
+            .And(Literals.Text("noskip=true").AndSkip(_ws).Optional())
+            .And(Literals.Text("instant=true").AndSkip(_ws).Optional())
+            .And(Literals.Text("typewriter=true").Then(true).Or(Literals.Text("typewriter=false").Then(false)).AndSkip(_ws).Optional())
+            .And(Literals.Text("template=").SkipAnd(QuotedString).AndSkip(_ws).Optional())
+            .And(Literals.Text("voice=").SkipAnd(QuotedString).AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new SayStmt
+            {
+                Text = t.Item1.Text,
+                Speaker = t.Item1.Speaker,
+                Clickable = t.Item1.Clickable,
+                Noskip = t.Item2.HasValue,
+                Instant = t.Item3.HasValue,
+                Typewriter = t.Item4.HasValue ? t.Item4.Value : null,
+                Template = t.Item5.HasValue ? t.Item5.Value : null,
+                VoicePath = t.Item6.HasValue ? t.Item6.Value : null
+            });
 
     /// <summary>navigate "path" [scene "name"]</summary>
-    private static readonly Parser<char, DslStatement> _navigate =
-        from _1 in String("navigate").Before(_ws)
-        from path in QuotedString.Before(_ws)
-        from scene in Try(String("scene").Before(_ws).Then(QuotedString)).Optional()
-        select (DslStatement)new NavigateStmt
-        {
-            Path = path,
-            SceneName = scene.HasValue ? scene.Value : null
-        };
+    private static readonly Parser<DslStatement> _navigate =
+        Literals.Text("navigate").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(Literals.Text("scene").AndSkip(_ws).SkipAnd(QuotedString).Optional())
+            .Then(t => (DslStatement)new NavigateStmt
+            {
+                Path = t.Item1,
+                SceneName = t.Item2.HasValue ? t.Item2.Value : null
+            });
 
     /// <summary>character "key" name="xxx" color="#xxx" font="xxx" ...</summary>
-    private static readonly Parser<char, string> PropKey =
-        Token(c => char.IsLetter(c) || c == '_').AtLeastOnceString();
+    private static readonly Parser<string> PropKey =
+        Literals.Pattern(c => char.IsLetter(c) || c == '_')
+            .Then(s => s.ToString());
 
-    /// <summary>属性值：引号字符串或裸值（到下一个空格）</summary>
-    private static readonly Parser<char, string> PropValue =
+    /// <summary>属性值：引号字符串或裸值（到下一个空白）</summary>
+    private static readonly Parser<string> PropValue =
         QuotedString
-        .Or(AnyCharExcept(' ', '\t', '\n', '\r').AtLeastOnceString());
+            .Or(Literals.Pattern(c => c != ' ' && c != '\t' && c != '\n' && c != '\r').Then(s => s.ToString()));
 
     /// <summary>单个 key=value 属性对</summary>
-    private static readonly Parser<char, (string key, string value)> _propPair =
-        from key in PropKey.Before(_ws)
-        from _eq in Char('=').Before(_ws)
-        from value in PropValue.Before(_ws)
-        select (key, value);
+    private static readonly Parser<(string key, string value)> _propPair =
+        PropKey.AndSkip(_ws)
+            .AndSkip(Literals.Char('='))
+            .AndSkip(_ws)
+            .And(PropValue.AndSkip(_ws))
+            .Then(t => (t.Item1, t.Item2));
 
     /// <summary>character "key" name="xxx" color="#xxx" ...</summary>
-    private static readonly Parser<char, DslStatement> _character =
-        from _1 in String("character").Before(_ws)
-        from key in QuotedString.Before(_ws)
-        from props in _propPair.Many()
-        select (DslStatement)new CharacterStmt
-        {
-            Key = key,
-            Properties = props.ToDictionary(p => p.key, p => p.value)
-        };
+    private static readonly Parser<DslStatement> _character =
+        Literals.Text("character").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(ZeroOrMany(_propPair))
+            .Then(t => (DslStatement)new CharacterStmt
+            {
+                Key = t.Item1,
+                Properties = t.Item2.ToDictionary(p => p.key, p => p.value)
+            });
 
     /// <summary>set "key" value</summary>
-    private static readonly Parser<char, DslStatement> _set =
-        from _1 in String("set").Before(_ws)
-        from key in QuotedString.Before(_ws)
-        from value in AnyCharExcept('\n', '\r').ManyString()
-        select (DslStatement)new SetStmt
-        {
-            Key = key,
-            ValuePart = value.Trim()
-        };
+    private static readonly Parser<DslStatement> _set =
+        Literals.Text("set").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(RestToEol)
+            .Then(t => (DslStatement)new SetStmt
+            {
+                Key = t.Item1,
+                ValuePart = t.Item2.Trim()
+            });
 
     /// <summary>define "key" value once</summary>
-    private static readonly Parser<char, DslStatement> _define =
-        from _1 in String("define").Before(_ws)
-        from key in QuotedString.Before(_ws)
-        from rest in AnyCharExcept('\n', '\r').ManyString()
-        select MakeDefineOrLet(key, rest, true);
+    private static readonly Parser<DslStatement> _define =
+        Literals.Text("define").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(RestToEol)
+            .Then(t => MakeDefineOrLet(t.Item1, t.Item2, true));
 
     /// <summary>let "key" value once</summary>
-    private static readonly Parser<char, DslStatement> _let =
-        from _1 in String("let").Before(_ws)
-        from key in QuotedString.Before(_ws)
-        from rest in AnyCharExcept('\n', '\r').ManyString()
-        select MakeDefineOrLet(key, rest, false);
+    private static readonly Parser<DslStatement> _let =
+        Literals.Text("let").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(RestToEol)
+            .Then(t => MakeDefineOrLet(t.Item1, t.Item2, false));
 
     /// <summary>local "key" value [once] — DSL 2.0，与 let 等效别名</summary>
-    private static readonly Parser<char, DslStatement> _local =
-        from _1 in String("local").Before(_ws)
-        from key in QuotedString.Before(_ws)
-        from rest in AnyCharExcept('\n', '\r').ManyString()
-        select MakeDefineOrLet(key, rest, false);
+    private static readonly Parser<DslStatement> _local =
+        Literals.Text("local").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(RestToEol)
+            .Then(t => MakeDefineOrLet(t.Item1, t.Item2, false));
 
     /// <summary>undef "key" — DSL 2.0，销毁变量</summary>
-    private static readonly Parser<char, DslStatement> _undef =
-        from _1 in String("undef").Before(_ws)
-        from key in QuotedString
-        select (DslStatement)new UndefStmt { Key = key };
+    private static readonly Parser<DslStatement> _undef =
+        Literals.Text("undef").AndSkip(_ws)
+            .SkipAnd(QuotedString)
+            .Then(key => (DslStatement)new UndefStmt { Key = key });
 
     /// <summary>bgm "path" [volume=N]</summary>
-    private static readonly Parser<char, DslStatement> _bgm =
-        from _1 in String("bgm").Before(_ws)
-        from path in QuotedString.Before(_ws)
-        from volume in Try(String("volume=").Then(Number).Before(_ws)).Optional()
-        select (DslStatement)new BgmStmt
-        {
-            Path = path,
-            Volume = volume.HasValue ? (float)volume.Value : null
-        };
+    private static readonly Parser<DslStatement> _bgm =
+        Literals.Text("bgm").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(Literals.Text("volume=").SkipAnd(Number).AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new BgmStmt
+            {
+                Path = t.Item1,
+                Volume = t.Item2.HasValue ? (float)t.Item2.Value : null
+            });
 
     /// <summary>se "path" [volume=N] — DSL 2.0</summary>
-    private static readonly Parser<char, DslStatement> _se =
-        from _1 in String("se").Before(_ws)
-        from path in QuotedString.Before(_ws)
-        from volume in Try(String("volume=").Then(Number).Before(_ws)).Optional()
-        select (DslStatement)new SeStmt
-        {
-            Path = path,
-            Volume = volume.HasValue ? (float)volume.Value : null
-        };
+    private static readonly Parser<DslStatement> _se =
+        Literals.Text("se").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(Literals.Text("volume=").SkipAnd(Number).AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new SeStmt
+            {
+                Path = t.Item1,
+                Volume = t.Item2.HasValue ? (float)t.Item2.Value : null
+            });
 
     /// <summary>ambient "path" [loop=true|false] [volume=N] — DSL 2.0</summary>
-    private static readonly Parser<char, DslStatement> _ambient =
-        from _1 in String("ambient").Before(_ws)
-        from path in QuotedString.Before(_ws)
-        from loop in Try(String("loop=").Then(String("true").Or(String("false"))).Before(_ws)).Optional()
-        from volume in Try(String("volume=").Then(Number).Before(_ws)).Optional()
-        select (DslStatement)new AmbientStmt
-        {
-            Path = path,
-            Loop = !loop.HasValue || loop.Value == "true",
-            Volume = volume.HasValue ? (float)volume.Value : null
-        };
+    private static readonly Parser<DslStatement> _ambient =
+        Literals.Text("ambient").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(Literals.Text("loop=").SkipAnd(Literals.Text("true").Or(Literals.Text("false"))).AndSkip(_ws).Optional())
+            .And(Literals.Text("volume=").SkipAnd(Number).AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new AmbientStmt
+            {
+                Path = t.Item1,
+                Loop = !t.Item2.HasValue || t.Item2.Value == "true",
+                Volume = t.Item3.HasValue ? (float)t.Item3.Value : null
+            });
 
     /// <summary>voice "path" [volume=N] [auto_stop=true|false]</summary>
-    private static readonly Parser<char, DslStatement> _voice =
-        from _1 in String("voice").Before(_ws)
-        from path in QuotedString.Before(_ws)
-        from volume in Try(String("volume=").Then(Number).Before(_ws)).Optional()
-        from autoStop in Try(String("auto_stop=").Then(String("true").Or(String("false"))).Before(_ws)).Optional()
-        select (DslStatement)new VoiceStmt
-        {
-            Path = path,
-            Volume = volume.HasValue ? (float)volume.Value : null,
-            AutoStop = autoStop.HasValue ? (bool?)(autoStop.Value == "true") : null
-        };
+    private static readonly Parser<DslStatement> _voice =
+        Literals.Text("voice").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(Literals.Text("volume=").SkipAnd(Number).AndSkip(_ws).Optional())
+            .And(Literals.Text("auto_stop=").SkipAnd(Literals.Text("true").Or(Literals.Text("false"))).AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new VoiceStmt
+            {
+                Path = t.Item1,
+                Volume = t.Item2.HasValue ? (float)t.Item2.Value : null,
+                AutoStop = t.Item3.HasValue ? (bool?)(t.Item3.Value == "true") : null
+            });
 
     /// <summary>stop_ambient — DSL 2.0</summary>
-    private static readonly Parser<char, DslStatement> _stopAmbient =
-        String("stop_ambient").ThenReturn((DslStatement)new StopAmbientStmt());
+    private static readonly Parser<DslStatement> _stopAmbient =
+        Literals.Text("stop_ambient").Then((DslStatement)new StopAmbientStmt());
 
     /// <summary>stop_voice</summary>
-    private static readonly Parser<char, DslStatement> _stopVoice =
-        String("stop_voice").ThenReturn((DslStatement)new StopVoiceStmt());
+    private static readonly Parser<DslStatement> _stopVoice =
+        Literals.Text("stop_voice").Then((DslStatement)new StopVoiceStmt());
 
     /// <summary>video "path" [volume=N] [loop=true|false] [autoplay=true|false]</summary>
-    private static readonly Parser<char, DslStatement> _video =
-        from _1 in String("video").Before(_ws)
-        from path in QuotedString.Before(_ws)
-        from volume in Try(String("volume=").Then(Number).Before(_ws)).Optional()
-        from loop in Try(String("loop=").Then(String("true").Or(String("false"))).Before(_ws)).Optional()
-        from autoplay in Try(String("autoplay=").Then(String("true").Or(String("false"))).Before(_ws)).Optional()
-        select (DslStatement)new VideoStmt
-        {
-            Path = path,
-            Volume = volume.HasValue ? (float)volume.Value : null,
-            Loop = loop.HasValue && loop.Value == "true",
-            AutoPlay = !autoplay.HasValue || autoplay.Value == "true"
-        };
+    private static readonly Parser<DslStatement> _video =
+        Literals.Text("video").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(Literals.Text("volume=").SkipAnd(Number).AndSkip(_ws).Optional())
+            .And(Literals.Text("loop=").SkipAnd(Literals.Text("true").Or(Literals.Text("false"))).AndSkip(_ws).Optional())
+            .And(Literals.Text("autoplay=").SkipAnd(Literals.Text("true").Or(Literals.Text("false"))).AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new VideoStmt
+            {
+                Path = t.Item1,
+                Volume = t.Item2.HasValue ? (float)t.Item2.Value : null,
+                Loop = t.Item3.HasValue && t.Item3.Value == "true",
+                AutoPlay = !t.Item4.HasValue || t.Item4.Value == "true"
+            });
 
     /// <summary>stop_video</summary>
-    private static readonly Parser<char, DslStatement> _stopVideo =
-        from _1 in String("stop_video").Before(_ws.Or(End))
-        select (DslStatement)new StopVideoStmt();
+    private static readonly Parser<DslStatement> _stopVideo =
+        // 原 Pidgin 写法 Before(_ws.Or(End))：SkipWhitespaces 从不失败，Or(End) 为死分支，行为等价于 Before(_ws)
+        Literals.Text("stop_video").AndSkip(_ws)
+            .Then((DslStatement)new StopVideoStmt());
 
     /// <summary>pause_video</summary>
-    private static readonly Parser<char, DslStatement> _pauseVideo =
-        from _1 in String("pause_video").Before(_ws.Or(End))
-        select (DslStatement)new PauseVideoStmt();
+    private static readonly Parser<DslStatement> _pauseVideo =
+        Literals.Text("pause_video").AndSkip(_ws)
+            .Then((DslStatement)new PauseVideoStmt());
 
     /// <summary>resume_video</summary>
-    private static readonly Parser<char, DslStatement> _resumeVideo =
-        from _1 in String("resume_video").Before(_ws.Or(End))
-        select (DslStatement)new ResumeVideoStmt();
+    private static readonly Parser<DslStatement> _resumeVideo =
+        Literals.Text("resume_video").AndSkip(_ws)
+            .Then((DslStatement)new ResumeVideoStmt());
 
     /// <summary>seek_video N</summary>
-    private static readonly Parser<char, DslStatement> _seekVideo =
-        from _1 in String("seek_video").Before(_ws)
-        from position in Number
-        select (DslStatement)new SeekVideoStmt { Position = position };
+    private static readonly Parser<DslStatement> _seekVideo =
+        Literals.Text("seek_video").AndSkip(_ws)
+            .SkipAnd(Number)
+            .Then(position => (DslStatement)new SeekVideoStmt { Position = position });
 
     /// <summary>cutscene "path" [skipable=true|false] [volume=N]</summary>
-    private static readonly Parser<char, DslStatement> _cutscene =
-        from _1 in String("cutscene").Before(_ws)
-        from path in QuotedString.Before(_ws)
-        from skipable in Try(String("skipable=").Then(String("true").Or(String("false"))).Before(_ws)).Optional()
-        from volume in Try(String("volume=").Then(Number).Before(_ws)).Optional()
-        select (DslStatement)new CutsceneStmt
-        {
-            Path = path,
-            Skipable = !skipable.HasValue || skipable.Value == "true",
-            Volume = volume.HasValue ? (float)volume.Value : null
-        };
+    private static readonly Parser<DslStatement> _cutscene =
+        Literals.Text("cutscene").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(Literals.Text("skipable=").SkipAnd(Literals.Text("true").Or(Literals.Text("false"))).AndSkip(_ws).Optional())
+            .And(Literals.Text("volume=").SkipAnd(Number).AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new CutsceneStmt
+            {
+                Path = t.Item1,
+                Skipable = !t.Item2.HasValue || t.Item2.Value == "true",
+                Volume = t.Item3.HasValue ? (float)t.Item3.Value : null
+            });
 
     /// <summary>wait N [skipable]</summary>
-    private static readonly Parser<char, DslStatement> _wait =
-        from _1 in String("wait").Before(_ws)
-        from seconds in Number.Before(_ws)
-        from skipable in Try(String("skipable").Before(_ws)).Optional()
-        select (DslStatement)new WaitStmt { Seconds = seconds, IsSkipable = skipable.HasValue };
+    private static readonly Parser<DslStatement> _wait =
+        Literals.Text("wait").AndSkip(_ws)
+            .And(Number.AndSkip(_ws))
+            .And(Literals.Text("skipable").AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new WaitStmt { Seconds = t.Item2, IsSkipable = t.Item3.HasValue });
 
     /// <summary>pause [N] [hard]</summary>
-    private static readonly Parser<char, DslStatement> _pause =
-        from _1 in String("pause").Before(_ws)
-        from seconds in Try(Number.Before(_ws)).Optional()
-        from hard in Try(String("hard").Before(_ws)).Optional()
-        select (DslStatement)new PauseStmt
-        {
-            Seconds = seconds.HasValue ? seconds.Value : null,
-            IsHard = hard.HasValue
-        };
+    private static readonly Parser<DslStatement> _pause =
+        Literals.Text("pause").AndSkip(_ws)
+            .And(Number.AndSkip(_ws).Optional())
+            .And(Literals.Text("hard").AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new PauseStmt
+            {
+                Seconds = t.Item2.HasValue ? t.Item2.Value : null,
+                IsHard = t.Item3.HasValue
+            });
 
-    /// <summary>transition "type" [duration=N] [easing=xxx]</summary>
-    private static readonly Parser<char, DslStatement> _transition =
-        from _1 in String("transition").Before(_ws)
-        from type in QuotedString.Before(_ws)
-        from duration in Try(String("duration=").Then(Number).Before(_ws)).Optional()
-        select (DslStatement)new TransitionStmt
-        {
-            Type = type,
-            Duration = duration.HasValue ? duration.Value : null
-        };
+    /// <summary>transition "type" [duration=N]</summary>
+    private static readonly Parser<DslStatement> _transition =
+        Literals.Text("transition").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(Literals.Text("duration=").SkipAnd(Number).AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new TransitionStmt
+            {
+                Type = t.Item1,
+                Duration = t.Item2.HasValue ? t.Item2.Value : null
+            });
 
     /// <summary>label name:</summary>
-    private static readonly Parser<char, DslStatement> _label =
-        from _1 in String("label").Before(_ws)
-        from name in Identifier.Before(_ws)
-        from _2 in Char(':').Optional()
-        select (DslStatement)new LabelStmt { Name = name };
+    private static readonly Parser<DslStatement> _label =
+        Literals.Text("label").AndSkip(_ws)
+            .SkipAnd(Identifier.AndSkip(_ws))
+            .AndSkip(Literals.Char(':').Optional())
+            .Then(name => (DslStatement)new LabelStmt { Name = name });
 
     /// <summary>jump target</summary>
-    private static readonly Parser<char, DslStatement> _jump =
-        from _1 in String("jump").Before(_ws)
-        from target in Identifier
-        select (DslStatement)new JumpStmt { TargetLabel = target };
+    private static readonly Parser<DslStatement> _jump =
+        Literals.Text("jump").AndSkip(_ws)
+            .SkipAnd(Identifier)
+            .Then(target => (DslStatement)new JumpStmt { TargetLabel = target });
 
     /// <summary>call target</summary>
-    private static readonly Parser<char, DslStatement> _call =
-        from _1 in String("call").Before(_ws)
-        from target in Identifier
-        select (DslStatement)new CallStmt { TargetLabel = target };
+    private static readonly Parser<DslStatement> _call =
+        Literals.Text("call").AndSkip(_ws)
+            .SkipAnd(Identifier)
+            .Then(target => (DslStatement)new CallStmt { TargetLabel = target });
 
     /// <summary>return [value] — DSL 2.0 支持返回值</summary>
-    private static readonly Parser<char, DslStatement> _return =
-        from _1 in String("return")
-        from rest in Try(_ws.Then(AnyCharExcept('\n', '\r').AtLeastOnceString())).Optional()
-        select (DslStatement)new ReturnStmt
-        {
-            ValuePart = rest.HasValue ? rest.Value.Trim() : null
-        };
+    private static readonly Parser<DslStatement> _return =
+        Literals.Text("return")
+            .And(_ws.SkipAnd(RestToEolNonEmpty).Optional())
+            .Then(t => (DslStatement)new ReturnStmt
+            {
+                ValuePart = t.Item2.HasValue ? t.Item2.Value.Trim() : null
+            });
 
     /// <summary>back</summary>
-    private static readonly Parser<char, DslStatement> _back =
-        String("back").ThenReturn((DslStatement)new BackStmt());
+    private static readonly Parser<DslStatement> _back =
+        Literals.Text("back").Then((DslStatement)new BackStmt());
 
     /// <summary>forward</summary>
-    private static readonly Parser<char, DslStatement> _forward =
-        String("forward").ThenReturn((DslStatement)new ForwardStmt());
+    private static readonly Parser<DslStatement> _forward =
+        Literals.Text("forward").Then((DslStatement)new ForwardStmt());
 
     /// <summary>end</summary>
-    private static readonly Parser<char, DslStatement> _end =
-        String("end").ThenReturn((DslStatement)new EndStmt());
+    private static readonly Parser<DslStatement> _end =
+        Literals.Text("end").Then((DslStatement)new EndStmt());
 
     /// <summary>scene "name"</summary>
-    private static readonly Parser<char, DslStatement> _scene =
-        from _1 in String("scene").Before(_ws)
-        from name in QuotedString
-        select (DslStatement)new SceneStmt { SceneName = name };
+    private static readonly Parser<DslStatement> _scene =
+        Literals.Text("scene").AndSkip(_ws)
+            .SkipAnd(QuotedString)
+            .Then(name => (DslStatement)new SceneStmt { SceneName = name });
 
     /// <summary>save "slot" [title "标题"] [screenshot=true|false] / load "slot"</summary>
-    private static readonly Parser<char, DslStatement> _saveLoad =
-        (from kw in String("save").Or(String("load"))
-         from _1 in _ws
-         from slot in QuotedString.Before(_ws)
-         // save 专有参数：title "标题" screenshot=true|false（DSL 2.0）
-         from title in Try(String("title").Before(_ws).Then(QuotedString).Before(_ws)).Optional()
-         from screenshot in Try(String("screenshot=").Then(String("true").Or(String("false"))).Before(_ws)).Optional()
-         select kw == "save"
-             ? (DslStatement)new SaveStmt
-             {
-                 SlotId = slot,
-                 Title = title.HasValue ? title.Value : null,
-                 Screenshot = !screenshot.HasValue || screenshot.Value == "true"
-             }
-             : (DslStatement)new LoadStmt { SlotId = slot });
+    private static readonly Parser<DslStatement> _saveLoad =
+        Literals.Text("save").Or(Literals.Text("load")).AndSkip(_ws)
+            .And(QuotedString.AndSkip(_ws))
+            // save 专有参数：title "标题" screenshot=true|false（DSL 2.0）
+            .And(Literals.Text("title").AndSkip(_ws).SkipAnd(QuotedString).AndSkip(_ws).Optional())
+            .And(Literals.Text("screenshot=").SkipAnd(Literals.Text("true").Or(Literals.Text("false"))).AndSkip(_ws).Optional())
+            .Then(t => t.Item1 == "save"
+                ? (DslStatement)new SaveStmt
+                {
+                    SlotId = t.Item2,
+                    Title = t.Item3.HasValue ? t.Item3.Value : null,
+                    Screenshot = !t.Item4.HasValue || t.Item4.Value == "true"
+                }
+                : (DslStatement)new LoadStmt { SlotId = t.Item2 });
 
     /// <summary>background "path"</summary>
-    private static readonly Parser<char, DslStatement> _background =
-        from _1 in String("background").Before(_ws)
-        from path in QuotedString
-        select (DslStatement)new BackgroundStmt { Path = path };
+    private static readonly Parser<DslStatement> _background =
+        Literals.Text("background").AndSkip(_ws)
+            .SkipAnd(QuotedString)
+            .Then(path => (DslStatement)new BackgroundStmt { Path = path });
 
     /// <summary>duration=N 参数解析</summary>
-    private static readonly Parser<char, double> _durationParam =
-        from _1 in String("duration=")
-        from d in Number
-        select d;
+    private static readonly Parser<double> _durationParam =
+        Literals.Text("duration=").SkipAnd(Number);
 
     /// <summary>with "transition" duration=N — 过渡参数解析</summary>
-    private static readonly Parser<char, (string name, double? duration)> _withTransition =
-        from _1 in String("with").Before(_ws)
-        from name in QuotedString.Before(_ws)
-        from duration in Try(_durationParam).Optional()
-        select (name, duration.HasValue ? (double?)duration.Value : null);
+    private static readonly Parser<(string name, double? duration)> _withTransition =
+        Literals.Text("with").AndSkip(_ws)
+            .And(QuotedString.AndSkip(_ws))
+            .And(_durationParam.Optional())
+            .Then(t => (t.Item2, t.Item3.HasValue ? (double?)t.Item3.Value : null));
 
     /// <summary>show "target" [at (x, y)] [with "transition" duration=N]</summary>
-    private static readonly Parser<char, DslStatement> _show =
-        from _1 in String("show").Before(_ws)
-        from target in QuotedString.Before(_ws)
-        from pos in Try(_position).Optional()
-        from transition in Try(_withTransition).Optional()
-        select (DslStatement)new ShowStmt
-        {
-            Target = target,
-            X = pos.HasValue ? pos.Value.x : null,
-            Y = pos.HasValue ? pos.Value.y : null,
-            Transition = transition.HasValue ? transition.Value.name : null,
-            TransitionDuration = transition.HasValue ? transition.Value.duration : null
-        };
+    private static readonly Parser<DslStatement> _show =
+        Literals.Text("show").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(_position.Optional())
+            .And(_withTransition.Optional())
+            .Then(t => (DslStatement)new ShowStmt
+            {
+                Target = t.Item1,
+                X = t.Item2.HasValue ? t.Item2.Value.x : null,
+                Y = t.Item2.HasValue ? t.Item2.Value.y : null,
+                Transition = t.Item3.HasValue ? t.Item3.Value.name : null,
+                TransitionDuration = t.Item3.HasValue ? t.Item3.Value.duration : null
+            });
 
     /// <summary>hide "target" [with "transition" duration=N]</summary>
-    private static readonly Parser<char, DslStatement> _hide =
-        from _1 in String("hide").Before(_ws)
-        from target in QuotedString.Before(_ws)
-        from transition in Try(_withTransition).Optional()
-        select (DslStatement)new HideStmt
-        {
-            Target = target,
-            Transition = transition.HasValue ? transition.Value.name : null,
-            TransitionDuration = transition.HasValue ? transition.Value.duration : null
-        };
+    private static readonly Parser<DslStatement> _hide =
+        Literals.Text("hide").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(_withTransition.Optional())
+            .Then(t => (DslStatement)new HideStmt
+            {
+                Target = t.Item1,
+                Transition = t.Item2.HasValue ? t.Item2.Value.name : null,
+                TransitionDuration = t.Item2.HasValue ? t.Item2.Value.duration : null
+            });
 
     /// <summary>style "name"|name key=value key=value ...</summary>
-    private static readonly Parser<char, DslStatement> _style =
-        from _1 in String("style").Before(_ws)
-        from name in QuotedString.Or(Identifier).Before(_ws)
-        from props in _propPair.Many()
-        select (DslStatement)new StyleStmt
-        {
-            Name = name,
-            Properties = props.ToDictionary(p => p.key, p => p.value)
-        };
+    private static readonly Parser<DslStatement> _style =
+        Literals.Text("style").AndSkip(_ws)
+            .SkipAnd(QuotedString.Or(Identifier).AndSkip(_ws))
+            .And(ZeroOrMany(_propPair))
+            .Then(t => (DslStatement)new StyleStmt
+            {
+                Name = t.Item1,
+                Properties = t.Item2.ToDictionary(p => p.key, p => p.value)
+            });
 
     /// <summary>animate_block "target" x=100 y=200 opacity=0.5 duration=1.0 easing=xxx</summary>
-    private static readonly Parser<char, DslStatement> _animateBlock =
-        from _1 in String("animate_block").Before(_ws)
-        from target in QuotedString.Before(_ws)
-        from props in _propPair.Many()
-        select ParseAnimateBlock(target, props);
+    private static readonly Parser<DslStatement> _animateBlock =
+        Literals.Text("animate_block").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(ZeroOrMany(_propPair))
+            .Then(t => ParseAnimateBlock(t.Item1, t.Item2));
 
     /// <summary>call_screen "scene_name" [store="key"] [with "k=v,k=v"]</summary>
-    private static readonly Parser<char, DslStatement> _callScreen =
-        from _1 in String("call_screen").Before(_ws)
-        from sceneName in QuotedString.Before(_ws)
-        from store in Try(String("store=").Then(QuotedString).Before(_ws)).Optional()
-        from withParams in Try(String("with").Before(_ws).Then(QuotedString).Before(_ws)).Optional()
-        select (DslStatement)new CallScreenStmt
-        {
-            SceneName = sceneName,
-            StoreKey = store.HasValue ? store.Value : null,
-            Params = withParams.HasValue
-                ? withParams.Value.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                    .Select(p => {
-                        var eqIdx = p.IndexOf('=');
-                        return eqIdx > 0
-                            ? (p[..eqIdx].Trim(), p[(eqIdx + 1)..].Trim().Trim('"'))
-                            : (p.Trim(), "");
-                    }).ToList()
-                : null
-        };
+    private static readonly Parser<DslStatement> _callScreen =
+        Literals.Text("call_screen").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(Literals.Text("store=").SkipAnd(QuotedString).AndSkip(_ws).Optional())
+            .And(Literals.Text("with").AndSkip(_ws).SkipAnd(QuotedString).AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new CallScreenStmt
+            {
+                SceneName = t.Item1,
+                StoreKey = t.Item2.HasValue ? t.Item2.Value : null,
+                Params = t.Item3.HasValue
+                    ? t.Item3.Value.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(p => {
+                            var eqIdx = p.IndexOf('=');
+                            return eqIdx > 0
+                                ? (p[..eqIdx].Trim(), p[(eqIdx + 1)..].Trim().Trim('"'))
+                                : (p.Trim(), "");
+                        }).ToList()
+                    : null
+            });
 
     /// <summary>animate "target" property value [duration=N] [easing=xxx]</summary>
-    private static readonly Parser<char, DslStatement> _animate =
-        from _1 in String("animate").Before(_ws)
-        from target in QuotedString.Before(_ws)
-        from prop in Identifier.Before(_ws)
-        from val in Number.Before(_ws)
-        from duration in Try(String("duration=").Then(Number).Before(_ws)).Optional()
-        from easing in Try(String("easing=").Then(Identifier).Before(_ws)).Optional()
-        select (DslStatement)new AnimateStmt
-        {
-            Target = target,
-            Property = prop,
-            TargetValue = val,
-            Duration = duration.HasValue ? duration.Value : null,
-            Easing = easing.HasValue ? easing.Value : null
-        };
+    private static readonly Parser<DslStatement> _animate =
+        Literals.Text("animate").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(Identifier.AndSkip(_ws))
+            .And(Number.AndSkip(_ws))
+            .And(Literals.Text("duration=").SkipAnd(Number).AndSkip(_ws).Optional())
+            .And(Literals.Text("easing=").SkipAnd(Identifier).AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new AnimateStmt
+            {
+                Target = t.Item1,
+                Property = t.Item2,
+                TargetValue = t.Item3,
+                Duration = t.Item4.HasValue ? t.Item4.Value : null,
+                Easing = t.Item5.HasValue ? t.Item5.Value : null
+            });
 
     /// <summary>menu "title"</summary>
-    private static readonly Parser<char, DslStatement> _menu =
-        from _1 in String("menu").Before(_ws)
-        from prompt in QuotedString
-        select (DslStatement)new MenuStmt { Prompt = prompt };
+    private static readonly Parser<DslStatement> _menu =
+        Literals.Text("menu").AndSkip(_ws)
+            .SkipAnd(QuotedString)
+            .Then(prompt => (DslStatement)new MenuStmt { Prompt = prompt });
 
     /// <summary>"选项文本" -> target_label</summary>
-    private static readonly Parser<char, DslStatement> _menuOption =
-        from text in QuotedString.Before(_ws)
-        from _1 in String("->").Before(_ws)
-        from target in Identifier
-        select (DslStatement)new MenuOptionStmt { Text = text, TargetLabel = target };
+    private static readonly Parser<DslStatement> _menuOption =
+        QuotedString.AndSkip(_ws)
+            .AndSkip(Literals.Text("->").AndSkip(_ws))
+            .And(Identifier)
+            .Then(t => (DslStatement)new MenuOptionStmt { Text = t.Item1, TargetLabel = t.Item2 });
 
     /// <summary>shake [intensity=N] [duration=N]</summary>
-    private static readonly Parser<char, DslStatement> _shake =
-        from _1 in String("shake").Before(_ws)
-        from intensity in Try(String("intensity=").Then(Number).Before(_ws)).Optional()
-        from duration in Try(String("duration=").Then(Number).Before(_ws)).Optional()
-        select (DslStatement)new ShakeStmt
-        {
-            Intensity = intensity.HasValue ? intensity.Value : null,
-            Duration = duration.HasValue ? duration.Value : null
-        };
+    private static readonly Parser<DslStatement> _shake =
+        Literals.Text("shake").AndSkip(_ws)
+            .And(Literals.Text("intensity=").SkipAnd(Number).AndSkip(_ws).Optional())
+            .And(Literals.Text("duration=").SkipAnd(Number).AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new ShakeStmt
+            {
+                Intensity = t.Item2.HasValue ? t.Item2.Value : null,
+                Duration = t.Item3.HasValue ? t.Item3.Value : null
+            });
 
     /// <summary>skip</summary>
-    private static readonly Parser<char, DslStatement> _skip =
-        String("skip").ThenReturn((DslStatement)new ToggleSkipStmt());
+    private static readonly Parser<DslStatement> _skip =
+        Literals.Text("skip").Then((DslStatement)new ToggleSkipStmt());
 
     /// <summary>auto</summary>
-    private static readonly Parser<char, DslStatement> _auto =
-        String("auto").ThenReturn((DslStatement)new ToggleAutoStmt());
+    private static readonly Parser<DslStatement> _auto =
+        Literals.Text("auto").Then((DslStatement)new ToggleAutoStmt());
 
     /// <summary>gallery unlock "id" "imagePath" [title="..."] [scene="..."]</summary>
-    private static readonly Parser<char, DslStatement> _galleryUnlock =
-        from _1 in String("gallery").Before(_ws)
-        from _2 in String("unlock").Before(_ws)
-        from id in QuotedString.Before(_ws)
-        from imagePath in QuotedString.Before(_ws)
-        from title in Try(String("title=").Then(QuotedString).Before(_ws)).Optional()
-        from sceneName in Try(String("scene=").Then(QuotedString).Before(_ws)).Optional()
-        select (DslStatement)new GalleryUnlockStmt
-        {
-            Id = id,
-            ImagePath = imagePath,
-            Title = title.HasValue ? title.Value : null,
-            SceneName = sceneName.HasValue ? sceneName.Value : null
-        };
+    private static readonly Parser<DslStatement> _galleryUnlock =
+        Literals.Text("gallery").AndSkip(_ws)
+            .AndSkip(Literals.Text("unlock").AndSkip(_ws))
+            .And(QuotedString.AndSkip(_ws))
+            .And(QuotedString.AndSkip(_ws))
+            .And(Literals.Text("title=").SkipAnd(QuotedString).AndSkip(_ws).Optional())
+            .And(Literals.Text("scene=").SkipAnd(QuotedString).AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new GalleryUnlockStmt
+            {
+                Id = t.Item2,
+                ImagePath = t.Item3,
+                Title = t.Item4.HasValue ? t.Item4.Value : null,
+                SceneName = t.Item5.HasValue ? t.Item5.Value : null
+            });
 
     /// <summary>gallery_unlock "id" [title="..."] — DSL 2.0 短语法（无路径）</summary>
-    private static readonly Parser<char, DslStatement> _galleryUnlockShort =
-        from _1 in String("gallery_unlock").Before(_ws)
-        from id in QuotedString.Before(_ws)
-        from title in Try(String("title=").Then(QuotedString).Before(_ws)).Optional()
-        from sceneName in Try(String("scene=").Then(QuotedString).Before(_ws)).Optional()
-        select (DslStatement)new GalleryUnlockStmt
-        {
-            Id = id,
-            ImagePath = "",
-            Title = title.HasValue ? title.Value : null,
-            SceneName = sceneName.HasValue ? sceneName.Value : null
-        };
+    private static readonly Parser<DslStatement> _galleryUnlockShort =
+        Literals.Text("gallery_unlock").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(Literals.Text("title=").SkipAnd(QuotedString).AndSkip(_ws).Optional())
+            .And(Literals.Text("scene=").SkipAnd(QuotedString).AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new GalleryUnlockStmt
+            {
+                Id = t.Item1,
+                ImagePath = "",
+                Title = t.Item2.HasValue ? t.Item2.Value : null,
+                SceneName = t.Item3.HasValue ? t.Item3.Value : null
+            });
 
     /// <summary>debug "message" [level=Info]</summary>
-    private static readonly Parser<char, DslStatement> _debugLog =
-        from _1 in String("debug").Before(_ws)
-        from message in QuotedString.Before(_ws)
-        from level in Try(String("level=").Then(Identifier)).Optional()
-        select (DslStatement)new DebugLogStmt
-        {
-            Message = message,
-            Level = level.HasValue ? level.Value : null
-        };
+    private static readonly Parser<DslStatement> _debugLog =
+        Literals.Text("debug").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(Literals.Text("level=").SkipAnd(Identifier).Optional())
+            .Then(t => (DslStatement)new DebugLogStmt
+            {
+                Message = t.Item1,
+                Level = t.Item2.HasValue ? t.Item2.Value : null
+            });
 
-/// <summary>nvl / nvl clear / nvl exit / nvl auto</summary>
-private static readonly Parser<char, DslStatement> _nvl =
-    from _1 in String("nvl")
-    from sub in Try(_ws.Then(String("clear"))).Or(Try(_ws.Then(String("exit")))).Or(Try(_ws.Then(String("auto")))).Optional()
-    select (DslStatement)new NvlStmt
-    {
-        IsClear = sub.HasValue && sub.Value == "clear",
-        IsExit = sub.HasValue && sub.Value == "exit",
-        IsAuto = sub.HasValue && sub.Value == "auto",
-    };
+    /// <summary>nvl / nvl clear / nvl exit / nvl auto</summary>
+    private static readonly Parser<DslStatement> _nvl =
+        Literals.Text("nvl")
+            .And(
+                _ws.SkipAnd(Literals.Text("clear"))
+                .Or(_ws.SkipAnd(Literals.Text("exit")))
+                .Or(_ws.SkipAnd(Literals.Text("auto")))
+                .Optional())
+            .Then(t => (DslStatement)new NvlStmt
+            {
+                IsClear = t.Item2.HasValue && t.Item2.Value == "clear",
+                IsExit = t.Item2.HasValue && t.Item2.Value == "exit",
+                IsAuto = t.Item2.HasValue && t.Item2.Value == "auto",
+            });
 
     /// <summary>input "prompt" store "key" [options=[...]]</summary>
-    private static readonly Parser<char, DslStatement> _input =
-        from _1 in String("input").Before(_ws)
-        from prompt in QuotedString.Before(_ws)
-        from _2 in String("store").Before(_ws)
-        from storeKey in QuotedString.Before(_ws)
-        from options in Try(
-            String("options=").Then(Char('['))
-                .Then(AnyCharExcept(']').ManyString())
-                .Before(Char(']'))
-        ).Optional()
-        select (DslStatement)new InputStmt
-        {
-            Prompt = prompt,
-            StoreKey = storeKey,
-            Options = options.HasValue
-                ? options.Value.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                    .Select(o => o.Trim().Trim('"')).ToArray()
-                : null
-        };
+    private static readonly Parser<DslStatement> _input =
+        Literals.Text("input").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .AndSkip(Literals.Text("store").AndSkip(_ws))
+            .And(QuotedString.AndSkip(_ws))
+            .And(
+                Literals.Text("options=").SkipAnd(Literals.Char('['))
+                    .SkipAnd(AnyCharBefore(Literals.Char(']'), canBeEmpty: true).Then(s => s.ToString()))
+                    .AndSkip(Literals.Char(']'))
+                    .Optional())
+            .Then(t => (DslStatement)new InputStmt
+            {
+                Prompt = t.Item1,
+                StoreKey = t.Item2,
+                Options = t.Item3.HasValue
+                    ? t.Item3.Value.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(o => o.Trim().Trim('"')).ToArray()
+                    : null
+            });
 
     // ====== 块结构（缩进式，无花括号）======
 
     /// <summary>if {cond}</summary>
-    private static readonly Parser<char, DslStatement> _if =
-        from _1 in String("if").Before(_ws)
-        from cond in Expression
-        select (DslStatement)new IfStmt { Condition = cond };
+    private static readonly Parser<DslStatement> _if =
+        Literals.Text("if").AndSkip(_ws)
+            .SkipAnd(Expression)
+            .Then(cond => (DslStatement)new IfStmt { Condition = cond });
 
     /// <summary>else if {cond}</summary>
-    private static readonly Parser<char, DslStatement> _elseIf =
-        from _1 in String("else").Before(_ws)
-        from _2 in String("if").Before(_ws)
-        from cond in Expression
-        select (DslStatement)new ElseIfStmt { Condition = cond };
+    private static readonly Parser<DslStatement> _elseIf =
+        Literals.Text("else").AndSkip(_ws)
+            .AndSkip(Literals.Text("if").AndSkip(_ws))
+            .SkipAnd(Expression)
+            .Then(cond => (DslStatement)new ElseIfStmt { Condition = cond });
 
     /// <summary>else</summary>
-    private static readonly Parser<char, DslStatement> _else =
-        String("else").ThenReturn((DslStatement)new ElseStmt());
+    private static readonly Parser<DslStatement> _else =
+        Literals.Text("else").Then((DslStatement)new ElseStmt());
 
     /// <summary>while {cond}</summary>
-    private static readonly Parser<char, DslStatement> _while =
-        from _1 in String("while").Before(_ws)
-        from cond in Expression
-        select (DslStatement)new WhileStmt { Condition = cond };
+    private static readonly Parser<DslStatement> _while =
+        Literals.Text("while").AndSkip(_ws)
+            .SkipAnd(Expression)
+            .Then(cond => (DslStatement)new WhileStmt { Condition = cond });
 
     // ====== Phase 38: 时间事件与通知 ======
 
     /// <summary>
     /// time_event day=1 hour=12 minute=30 target="scene" once=true condition="{expr}" desc="描述"
     /// </summary>
-    private static readonly Parser<char, DslStatement> _timeEvent =
-        from _1 in String("time_event").Before(_ws)
-        from props in _propPair.Many()
-        select ParseTimeEvent(props);
+    private static readonly Parser<DslStatement> _timeEvent =
+        Literals.Text("time_event").AndSkip(_ws)
+            .SkipAnd(ZeroOrMany(_propPair))
+            .Then(props => ParseTimeEvent(props));
 
     /// <summary>time_pause</summary>
-    private static readonly Parser<char, DslStatement> _timePause =
-        String("time_pause").ThenReturn((DslStatement)new TimePauseStmt());
+    private static readonly Parser<DslStatement> _timePause =
+        Literals.Text("time_pause").Then((DslStatement)new TimePauseStmt());
 
     /// <summary>time_resume</summary>
-    private static readonly Parser<char, DslStatement> _timeResume =
-        String("time_resume").ThenReturn((DslStatement)new TimeResumeStmt());
+    private static readonly Parser<DslStatement> _timeResume =
+        Literals.Text("time_resume").Then((DslStatement)new TimeResumeStmt());
 
     /// <summary>skip_time N</summary>
-    private static readonly Parser<char, DslStatement> _skipTime =
-        from _1 in String("skip_time").Before(_ws)
-        from minutes in Number.Before(_ws)
-        select (DslStatement)new SkipTimeStmt { Minutes = (int)minutes };
+    private static readonly Parser<DslStatement> _skipTime =
+        Literals.Text("skip_time").AndSkip(_ws)
+            .SkipAnd(Number.AndSkip(_ws))
+            .Then(minutes => (DslStatement)new SkipTimeStmt { Minutes = (int)minutes });
 
     /// <summary>
     /// set_time_event "id" HOUR [minute=N] [day=N] [once=true|false] [weekdays="Mon,Tue"] [condition="{expr}"] [desc="描述"]
     /// </summary>
-    private static readonly Parser<char, DslStatement> _setTimeEvent =
-        from _1 in String("set_time_event").Before(_ws)
-        from id in QuotedString.Before(_ws)
-        from hour in Number.Before(_ws)
-        from props in _propPair.Many()
-        select ParseSetTimeEvent(id, (int)hour, props);
+    private static readonly Parser<DslStatement> _setTimeEvent =
+        Literals.Text("set_time_event").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(Number.AndSkip(_ws))
+            .And(ZeroOrMany(_propPair))
+            .Then(t => ParseSetTimeEvent(t.Item1, (int)t.Item2, t.Item3));
 
     /// <summary>unregister_time_event "id" [permanent|temporary]</summary>
-    private static readonly Parser<char, DslStatement> _unregisterTimeEvent =
-        from _1 in String("unregister_time_event").Before(_ws)
-        from id in QuotedString.Before(_ws)
-        from mode in Try(String("permanent").Before(_ws)).Or(Try(String("temporary").Before(_ws))).Optional()
-        select (DslStatement)new UnregisterTimeEventStmt
-        {
-            Id = id,
-            Mode = mode.HasValue
-                ? (mode.Value == "permanent" ? UnregisterMode.Permanent : UnregisterMode.Temporary)
-                : UnregisterMode.Normal
-        };
+    private static readonly Parser<DslStatement> _unregisterTimeEvent =
+        Literals.Text("unregister_time_event").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(
+                Literals.Text("permanent").AndSkip(_ws)
+                .Or(Literals.Text("temporary").AndSkip(_ws))
+                .Optional())
+            .Then(t => (DslStatement)new UnregisterTimeEventStmt
+            {
+                Id = t.Item1,
+                Mode = t.Item2.HasValue
+                    ? (t.Item2.Value == "permanent" ? UnregisterMode.Permanent : UnregisterMode.Temporary)
+                    : UnregisterMode.Normal
+            });
 
     /// <summary>restore_time_event "id"</summary>
-    private static readonly Parser<char, DslStatement> _restoreTimeEvent =
-        from _1 in String("restore_time_event").Before(_ws)
-        from id in QuotedString.Before(_ws)
-        select (DslStatement)new RestoreTimeEventStmt { Id = id };
+    private static readonly Parser<DslStatement> _restoreTimeEvent =
+        Literals.Text("restore_time_event").AndSkip(_ws)
+            .SkipAnd(QuotedString)
+            .Then(id => (DslStatement)new RestoreTimeEventStmt { Id = id });
 
     /// <summary>notify "text" [type=warning] [duration=5.0]</summary>
-    private static readonly Parser<char, DslStatement> _notify =
-        from _1 in String("notify").Before(_ws)
-        from text in QuotedString.Before(_ws)
-        from type in Try(String("type=").Then(Identifier)).Before(_ws).Optional()
-        from duration in Try(String("duration=").Then(Number)).Before(_ws).Optional()
-        select (DslStatement)new NotifyStmt
-        {
-            Text = text,
-            Type = type.HasValue ? type.Value : null,
-            Duration = duration.HasValue ? duration.Value : null
-        };
+    private static readonly Parser<DslStatement> _notify =
+        Literals.Text("notify").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(Literals.Text("type=").SkipAnd(Identifier).AndSkip(_ws).Optional())
+            .And(Literals.Text("duration=").SkipAnd(Number).AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new NotifyStmt
+            {
+                Text = t.Item1,
+                Type = t.Item2.HasValue ? t.Item2.Value : null,
+                Duration = t.Item3.HasValue ? t.Item3.Value : null
+            });
 
     /// <summary>
     /// 解析 time_event 属性列表为 TimeEventStmt
@@ -830,335 +854,334 @@ private static readonly Parser<char, DslStatement> _nvl =
     // ====== Phase 24: Ren'Py 功能对齐 ======
 
     /// <summary>window auto | window show | window hide</summary>
-    private static readonly Parser<char, DslStatement> _window =
-        from _1 in String("window").Before(_ws)
-        from mode in OneOf(
-            String("auto").ThenReturn("auto"),
-            String("show").ThenReturn("show"),
-            String("hide").ThenReturn("hide")
-        )
-        select (DslStatement)new WindowStmt { Mode = mode };
+    private static readonly Parser<DslStatement> _window =
+        Literals.Text("window").AndSkip(_ws)
+            .SkipAnd(
+                Literals.Text("auto").Then("auto")
+                .Or(Literals.Text("show").Then("show"))
+                .Or(Literals.Text("hide").Then("hide")))
+            .Then(mode => (DslStatement)new WindowStmt { Mode = mode });
 
     /// <summary>block_rollback</summary>
-    private static readonly Parser<char, DslStatement> _blockRollback =
-        String("block_rollback").ThenReturn((DslStatement)new BlockRollbackStmt());
+    private static readonly Parser<DslStatement> _blockRollback =
+        Literals.Text("block_rollback").Then((DslStatement)new BlockRollbackStmt());
 
     /// <summary>fix_rollback</summary>
-    private static readonly Parser<char, DslStatement> _fixRollback =
-        String("fix_rollback").ThenReturn((DslStatement)new FixRollbackStmt());
+    private static readonly Parser<DslStatement> _fixRollback =
+        Literals.Text("fix_rollback").Then((DslStatement)new FixRollbackStmt());
 
     /// <summary>break — 退出当前循环</summary>
-    private static readonly Parser<char, DslStatement> _break =
-        String("break").ThenReturn((DslStatement)new BreakStmt());
+    private static readonly Parser<DslStatement> _break =
+        Literals.Text("break").Then((DslStatement)new BreakStmt());
 
     /// <summary>continue — 跳过当前迭代</summary>
-    private static readonly Parser<char, DslStatement> _continue =
-        String("continue").ThenReturn((DslStatement)new ContinueStmt());
+    private static readonly Parser<DslStatement> _continue =
+        Literals.Text("continue").Then((DslStatement)new ContinueStmt());
 
     /// <summary>for "var" in {expr}</summary>
-    private static readonly Parser<char, DslStatement> _for =
-        from _1 in String("for").Before(_ws)
-        from varName in QuotedString.Before(_ws)
-        from _2 in String("in").Before(_ws)
-        from src in Expression
-        select (DslStatement)new ForStmt { VarName = varName, SourceExpr = src };
+    private static readonly Parser<DslStatement> _for =
+        Literals.Text("for").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .AndSkip(Literals.Text("in").AndSkip(_ws))
+            .And(Expression)
+            .Then(t => (DslStatement)new ForStmt { VarName = t.Item1, SourceExpr = t.Item2 });
 
     // ====== Phase 44: 叙事增强 ======
 
     /// <summary>switch {expr}</summary>
-    private static readonly Parser<char, DslStatement> _switch =
-        from _1 in String("switch").Before(_ws)
-        from expr in Expression
-        select (DslStatement)new SwitchStmt { Expression = expr };
+    private static readonly Parser<DslStatement> _switch =
+        Literals.Text("switch").AndSkip(_ws)
+            .SkipAnd(Expression)
+            .Then(expr => (DslStatement)new SwitchStmt { Expression = expr });
 
     /// <summary>case N</summary>
-    private static readonly Parser<char, DslStatement> _case =
-        from _1 in String("case").Before(_ws)
-        from val in AnyCharExcept('\n', '\r').ManyString()
-        select (DslStatement)new CaseStmt { Value = val.Trim() };
+    private static readonly Parser<DslStatement> _case =
+        Literals.Text("case").AndSkip(_ws)
+            .SkipAnd(RestToEol)
+            .Then(val => (DslStatement)new CaseStmt { Value = val.Trim() });
 
     /// <summary>default</summary>
-    private static readonly Parser<char, DslStatement> _default =
-        String("default").ThenReturn((DslStatement)new DefaultStmt());
+    private static readonly Parser<DslStatement> _default =
+        Literals.Text("default").Then((DslStatement)new DefaultStmt());
 
     /// <summary>func name(param1, param2)</summary>
-    private static readonly Parser<char, DslStatement> _func =
-        from _1 in String("func").Before(_ws)
-        from name in Identifier.Before(_ws)
-        from _2 in Char('(')
-        from paramsStr in AnyCharExcept(')').ManyString()
-        from _3 in Char(')')
-        select (DslStatement)new FuncStmt
-        {
-            Name = name,
-            Parameters = paramsStr.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(p => p.Trim()).ToList()
-        };
+    private static readonly Parser<DslStatement> _func =
+        Literals.Text("func").AndSkip(_ws)
+            .SkipAnd(Identifier.AndSkip(_ws))
+            .AndSkip(Literals.Char('('))
+            .And(AnyCharBefore(Literals.Char(')'), canBeEmpty: true).Then(s => s.ToString()))
+            .AndSkip(Literals.Char(')'))
+            .Then(t => (DslStatement)new FuncStmt
+            {
+                Name = t.Item1,
+                Parameters = t.Item2.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(p => p.Trim()).ToList()
+            });
 
     /// <summary>array "key" [item1, item2, ...] [once]</summary>
-    private static readonly Parser<char, DslStatement> _array =
-        from _1 in String("array").Before(_ws)
-        from key in QuotedString.Before(_ws)
-        from _2 in Char('[')
-        from itemsStr in AnyCharExcept(']').ManyString()
-        from _3 in Char(']').Before(_ws)
-        from once in Try(String("once").Before(_ws)).Optional()
-        select (DslStatement)new ArrayStmt
-        {
-            Key = key,
-            Items = itemsStr.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(s => s.Trim().Trim('"')).ToList(),
-            IsDefine = once.HasValue
-        };
+    private static readonly Parser<DslStatement> _array =
+        Literals.Text("array").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .AndSkip(Literals.Char('['))
+            .And(AnyCharBefore(Literals.Char(']'), canBeEmpty: true).Then(s => s.ToString()))
+            .AndSkip(Literals.Char(']').AndSkip(_ws))
+            .And(Literals.Text("once").AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new ArrayStmt
+            {
+                Key = t.Item1,
+                Items = t.Item2.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(s => s.Trim().Trim('"')).ToList(),
+                IsDefine = t.Item3.HasValue
+            });
 
     /// <summary>array_push "key" "value"</summary>
-    private static readonly Parser<char, DslStatement> _arrayPush =
-        from _1 in String("array_push").Before(_ws)
-        from key in QuotedString.Before(_ws)
-        from value in AnyCharExcept('\n', '\r').ManyString()
-        select (DslStatement)new ArrayPushStmt { Key = key, ValuePart = value.Trim() };
+    private static readonly Parser<DslStatement> _arrayPush =
+        Literals.Text("array_push").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(RestToEol)
+            .Then(t => (DslStatement)new ArrayPushStmt { Key = t.Item1, ValuePart = t.Item2.Trim() });
 
     /// <summary>array_pop "key"</summary>
-    private static readonly Parser<char, DslStatement> _arrayPop =
-        from _1 in String("array_pop").Before(_ws)
-        from key in QuotedString
-        select (DslStatement)new ArrayPopStmt { Key = key };
+    private static readonly Parser<DslStatement> _arrayPop =
+        Literals.Text("array_pop").AndSkip(_ws)
+            .SkipAnd(QuotedString)
+            .Then(key => (DslStatement)new ArrayPopStmt { Key = key });
 
     /// <summary>foreach "var" in "key"</summary>
-    private static readonly Parser<char, DslStatement> _foreach =
-        from _1 in String("foreach").Before(_ws)
-        from varName in QuotedString.Before(_ws)
-        from _2 in String("in").Before(_ws)
-        from srcKey in QuotedString
-        select (DslStatement)new ForeachStmt { VarName = varName, SourceKey = srcKey };
+    private static readonly Parser<DslStatement> _foreach =
+        Literals.Text("foreach").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .AndSkip(Literals.Text("in").AndSkip(_ws))
+            .And(QuotedString)
+            .Then(t => (DslStatement)new ForeachStmt { VarName = t.Item1, SourceKey = t.Item2 });
 
     /// <summary>dict "key" {"field":value,...} [once]</summary>
-    private static readonly Parser<char, DslStatement> _dict =
-        from _1 in String("dict").Before(_ws)
-        from key in QuotedString.Before(_ws)
-        from _2 in Char('{')
-        from body in AnyCharExcept('}').ManyString()
-        from _3 in Char('}').Before(_ws)
-        from once in Try(String("once").Before(_ws)).Optional()
-        select ParseDictStmt(key, body, once.HasValue);
+    private static readonly Parser<DslStatement> _dict =
+        Literals.Text("dict").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .AndSkip(Literals.Char('{'))
+            .And(AnyCharBefore(Literals.Char('}'), canBeEmpty: true).Then(s => s.ToString()))
+            .AndSkip(Literals.Char('}').AndSkip(_ws))
+            .And(Literals.Text("once").AndSkip(_ws).Optional())
+            .Then(t => ParseDictStmt(t.Item1, t.Item2, t.Item3.HasValue));
 
     /// <summary>dict_set "key" "field" value</summary>
-    private static readonly Parser<char, DslStatement> _dictSet =
-        from _1 in String("dict_set").Before(_ws)
-        from key in QuotedString.Before(_ws)
-        from field in QuotedString.Before(_ws)
-        from value in AnyCharExcept('\n', '\r').ManyString()
-        select (DslStatement)new DictSetStmt { Key = key, Field = field, ValuePart = value.Trim() };
+    private static readonly Parser<DslStatement> _dictSet =
+        Literals.Text("dict_set").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(QuotedString.AndSkip(_ws))
+            .And(RestToEol)
+            .Then(t => (DslStatement)new DictSetStmt { Key = t.Item1, Field = t.Item2, ValuePart = t.Item3.Trim() });
 
     // ====== Phase 45: UI 增强 ======
 
     /// <summary>popup "name" [width=N] [height=N] [mask=true|false]</summary>
-    private static readonly Parser<char, DslStatement> _popup =
-        from _1 in String("popup").Before(_ws)
-        from name in QuotedString.Before(_ws)
-        from props in _propPair.Many()
-        select ParsePopup(name, props);
+    private static readonly Parser<DslStatement> _popup =
+        Literals.Text("popup").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(ZeroOrMany(_propPair))
+            .Then(t => ParsePopup(t.Item1, t.Item2));
 
     /// <summary>zindex N</summary>
-    private static readonly Parser<char, DslStatement> _zindex =
-        from _1 in String("zindex").Before(_ws)
-        from z in Number
-        select (DslStatement)new ZindexStmt { ZIndex = (int)z };
+    private static readonly Parser<DslStatement> _zindex =
+        Literals.Text("zindex").AndSkip(_ws)
+            .SkipAnd(Number)
+            .Then(z => (DslStatement)new ZindexStmt { ZIndex = (int)z });
 
     /// <summary>sprite "id" src="path" [x=N] [y=N] [fade=N]</summary>
-    private static readonly Parser<char, DslStatement> _sprite =
-        from _1 in String("sprite").Before(_ws)
-        from id in QuotedString.Before(_ws)
-        from props in _propPair.Many()
-        select ParseSprite(id, props);
+    private static readonly Parser<DslStatement> _sprite =
+        Literals.Text("sprite").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(ZeroOrMany(_propPair))
+            .Then(t => ParseSprite(t.Item1, t.Item2));
 
     /// <summary>sprite_state "id" emotion="smile"</summary>
-    private static readonly Parser<char, DslStatement> _spriteState =
-        from _1 in String("sprite_state").Before(_ws)
-        from id in QuotedString.Before(_ws)
-        from props in _propPair.Many()
-        select (DslStatement)new SpriteStateStmt
-        {
-            Id = id,
-            Emotion = props.FirstOrDefault(p => p.key == "emotion").value ?? ""
-        };
+    private static readonly Parser<DslStatement> _spriteState =
+        Literals.Text("sprite_state").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(ZeroOrMany(_propPair))
+            .Then(t => (DslStatement)new SpriteStateStmt
+            {
+                Id = t.Item1,
+                Emotion = t.Item2.FirstOrDefault(p => p.key == "emotion").value ?? ""
+            });
 
     /// <summary>sprite_move "id" [x=N] [y=N] [duration=N]</summary>
-    private static readonly Parser<char, DslStatement> _spriteMove =
-        from _1 in String("sprite_move").Before(_ws)
-        from id in QuotedString.Before(_ws)
-        from props in _propPair.Many()
-        select ParseSpriteMove(id, props);
+    private static readonly Parser<DslStatement> _spriteMove =
+        Literals.Text("sprite_move").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(ZeroOrMany(_propPair))
+            .Then(t => ParseSpriteMove(t.Item1, t.Item2));
 
     /// <summary>sprite_hide "id" [fade=N]</summary>
-    private static readonly Parser<char, DslStatement> _spriteHide =
-        from _1 in String("sprite_hide").Before(_ws)
-        from id in QuotedString.Before(_ws)
-        from props in _propPair.Many()
-        select (DslStatement)new SpriteHideStmt
-        {
-            Id = id,
-            Fade = GetPropDouble(props, "fade")
-        };
+    private static readonly Parser<DslStatement> _spriteHide =
+        Literals.Text("sprite_hide").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(ZeroOrMany(_propPair))
+            .Then(t => (DslStatement)new SpriteHideStmt
+            {
+                Id = t.Item1,
+                Fade = GetPropDouble(t.Item2, "fade")
+            });
 
     /// <summary>bg_switch "path" [transition=fade] [duration=N]</summary>
-    private static readonly Parser<char, DslStatement> _bgSwitch =
-        from _1 in String("bg_switch").Before(_ws)
-        from path in QuotedString.Before(_ws)
-        from props in _propPair.Many()
-        select (DslStatement)new BgSwitchStmt
-        {
-            Path = path,
-            Transition = props.FirstOrDefault(p => p.key == "transition").value,
-            Duration = GetPropDouble(props, "duration")
-        };
+    private static readonly Parser<DslStatement> _bgSwitch =
+        Literals.Text("bg_switch").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(ZeroOrMany(_propPair))
+            .Then(t => (DslStatement)new BgSwitchStmt
+            {
+                Path = t.Item1,
+                Transition = t.Item2.FirstOrDefault(p => p.key == "transition").value,
+                Duration = GetPropDouble(t.Item2, "duration")
+            });
 
     /// <summary>text_typewriter speed=N</summary>
-    private static readonly Parser<char, DslStatement> _textTypewriter =
-        from _1 in String("text_typewriter").Before(_ws)
-        from _2 in String("speed=")
-        from speed in Number
-        select (DslStatement)new TextTypewriterStmt { Speed = speed };
+    private static readonly Parser<DslStatement> _textTypewriter =
+        Literals.Text("text_typewriter").AndSkip(_ws)
+            .AndSkip(Literals.Text("speed="))
+            .SkipAnd(Number)
+            .Then(speed => (DslStatement)new TextTypewriterStmt { Speed = speed });
 
     // ====== Phase 46: Live2D ======
 
     /// <summary>live2d_char "id" src="path" [height=N] [x=N] [y=N] [fade=N] ...</summary>
-    private static readonly Parser<char, DslStatement> _live2dChar =
-        from _1 in String("live2d_char").Before(_ws)
-        from id in QuotedString.Before(_ws)
-        from props in _propPair.Many()
-        select ParseLive2DChar(id, props);
+    private static readonly Parser<DslStatement> _live2dChar =
+        Literals.Text("live2d_char").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(ZeroOrMany(_propPair))
+            .Then(t => ParseLive2DChar(t.Item1, t.Item2));
 
     /// <summary>live2d_show "id"</summary>
-    private static readonly Parser<char, DslStatement> _live2dShow =
-        from _1 in String("live2d_show").Before(_ws)
-        from id in QuotedString
-        select (DslStatement)new Live2DShowStmt { Id = id };
+    private static readonly Parser<DslStatement> _live2dShow =
+        Literals.Text("live2d_show").AndSkip(_ws)
+            .SkipAnd(QuotedString)
+            .Then(id => (DslStatement)new Live2DShowStmt { Id = id });
 
     /// <summary>live2d_motion "id" name="motion" [fade=N] [loop=true|false]</summary>
-    private static readonly Parser<char, DslStatement> _live2dMotion =
-        from _1 in String("live2d_motion").Before(_ws)
-        from id in QuotedString.Before(_ws)
-        from props in _propPair.Many()
-        select (DslStatement)new Live2DMotionStmt
-        {
-            Id = id,
-            Name = props.FirstOrDefault(p => p.key == "name").value ?? "",
-            Fade = GetPropDouble(props, "fade"),
-            Loop = GetPropBool(props, "loop", true)
-        };
+    private static readonly Parser<DslStatement> _live2dMotion =
+        Literals.Text("live2d_motion").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(ZeroOrMany(_propPair))
+            .Then(t => (DslStatement)new Live2DMotionStmt
+            {
+                Id = t.Item1,
+                Name = t.Item2.FirstOrDefault(p => p.key == "name").value ?? "",
+                Fade = GetPropDouble(t.Item2, "fade"),
+                Loop = GetPropBool(t.Item2, "loop", true)
+            });
 
     /// <summary>live2d_expr "id" name="expression" [fade=N]</summary>
-    private static readonly Parser<char, DslStatement> _live2dExpr =
-        from _1 in String("live2d_expr").Before(_ws)
-        from id in QuotedString.Before(_ws)
-        from props in _propPair.Many()
-        select (DslStatement)new Live2DExprStmt
-        {
-            Id = id,
-            Name = props.FirstOrDefault(p => p.key == "name").value ?? "",
-            Fade = GetPropDouble(props, "fade")
-        };
+    private static readonly Parser<DslStatement> _live2dExpr =
+        Literals.Text("live2d_expr").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(ZeroOrMany(_propPair))
+            .Then(t => (DslStatement)new Live2DExprStmt
+            {
+                Id = t.Item1,
+                Name = t.Item2.FirstOrDefault(p => p.key == "name").value ?? "",
+                Fade = GetPropDouble(t.Item2, "fade")
+            });
 
     /// <summary>live2d_param "id" param="BodyAngleX" value=-8 [weight=0.6]</summary>
-    private static readonly Parser<char, DslStatement> _live2dParam =
-        from _1 in String("live2d_param").Before(_ws)
-        from id in QuotedString.Before(_ws)
-        from props in _propPair.Many()
-        select (DslStatement)new Live2DParamStmt
-        {
-            Id = id,
-            ParamName = props.FirstOrDefault(p => p.key == "param").value ?? "",
-            Value = GetPropDouble(props, "value") ?? 0,
-            Weight = GetPropDouble(props, "weight") ?? 1.0
-        };
+    private static readonly Parser<DslStatement> _live2dParam =
+        Literals.Text("live2d_param").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(ZeroOrMany(_propPair))
+            .Then(t => (DslStatement)new Live2DParamStmt
+            {
+                Id = t.Item1,
+                ParamName = t.Item2.FirstOrDefault(p => p.key == "param").value ?? "",
+                Value = GetPropDouble(t.Item2, "value") ?? 0,
+                Weight = GetPropDouble(t.Item2, "weight") ?? 1.0
+            });
 
     /// <summary>live2d_hide "id" [fade=N]</summary>
-    private static readonly Parser<char, DslStatement> _live2dHide =
-        from _1 in String("live2d_hide").Before(_ws)
-        from id in QuotedString.Before(_ws)
-        from props in _propPair.Many()
-        select (DslStatement)new Live2DHideStmt
-        {
-            Id = id,
-            Fade = GetPropDouble(props, "fade")
-        };
+    private static readonly Parser<DslStatement> _live2dHide =
+        Literals.Text("live2d_hide").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .And(ZeroOrMany(_propPair))
+            .Then(t => (DslStatement)new Live2DHideStmt
+            {
+                Id = t.Item1,
+                Fade = GetPropDouble(t.Item2, "fade")
+            });
 
     /// <summary>live2d_pause "id"</summary>
-    private static readonly Parser<char, DslStatement> _live2dPause =
-        from _1 in String("live2d_pause").Before(_ws)
-        from id in QuotedString
-        select (DslStatement)new Live2DPauseStmt { Id = id };
+    private static readonly Parser<DslStatement> _live2dPause =
+        Literals.Text("live2d_pause").AndSkip(_ws)
+            .SkipAnd(QuotedString)
+            .Then(id => (DslStatement)new Live2DPauseStmt { Id = id });
 
     /// <summary>live2d_resume "id"</summary>
-    private static readonly Parser<char, DslStatement> _live2dResume =
-        from _1 in String("live2d_resume").Before(_ws)
-        from id in QuotedString
-        select (DslStatement)new Live2DResumeStmt { Id = id };
+    private static readonly Parser<DslStatement> _live2dResume =
+        Literals.Text("live2d_resume").AndSkip(_ws)
+            .SkipAnd(QuotedString)
+            .Then(id => (DslStatement)new Live2DResumeStmt { Id = id });
 
     // ====== Phase 47: 存档/成就/章节 ======
 
     /// <summary>auto_save true|false</summary>
-    private static readonly Parser<char, DslStatement> _autoSave =
-        from _1 in String("auto_save").Before(_ws)
-        from enabled in String("true").Or(String("false"))
-        select (DslStatement)new AutoSaveStmt { Enabled = enabled == "true" };
+    private static readonly Parser<DslStatement> _autoSave =
+        Literals.Text("auto_save").AndSkip(_ws)
+            .SkipAnd(Literals.Text("true").Or(Literals.Text("false")))
+            .Then(enabled => (DslStatement)new AutoSaveStmt { Enabled = enabled == "true" });
 
     /// <summary>save_delete "slot"</summary>
-    private static readonly Parser<char, DslStatement> _saveDelete =
-        from _1 in String("save_delete").Before(_ws)
-        from slot in QuotedString
-        select (DslStatement)new SaveDeleteStmt { SlotId = slot };
+    private static readonly Parser<DslStatement> _saveDelete =
+        Literals.Text("save_delete").AndSkip(_ws)
+            .SkipAnd(QuotedString)
+            .Then(slot => (DslStatement)new SaveDeleteStmt { SlotId = slot });
 
     /// <summary>chapter "id" name "章节名" [unlock=true|false]</summary>
-    private static readonly Parser<char, DslStatement> _chapter =
-        from _1 in String("chapter").Before(_ws)
-        from id in QuotedString.Before(_ws)
-        from _2 in String("name").Before(_ws)
-        from chapterName in QuotedString.Before(_ws)
-        from unlock in Try(String("unlock=").Then(String("true").Or(String("false"))).Before(_ws)).Optional()
-        select (DslStatement)new ChapterStmt
-        {
-            Id = id,
-            ChapterName = chapterName,
-            Unlock = !unlock.HasValue || unlock.Value == "true"
-        };
+    private static readonly Parser<DslStatement> _chapter =
+        Literals.Text("chapter").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .AndSkip(Literals.Text("name").AndSkip(_ws))
+            .And(QuotedString.AndSkip(_ws))
+            .And(Literals.Text("unlock=").SkipAnd(Literals.Text("true").Or(Literals.Text("false"))).AndSkip(_ws).Optional())
+            .Then(t => (DslStatement)new ChapterStmt
+            {
+                Id = t.Item1,
+                ChapterName = t.Item2,
+                Unlock = !t.Item3.HasValue || t.Item3.Value == "true"
+            });
 
     /// <summary>achievement "id" name "成就名"</summary>
-    private static readonly Parser<char, DslStatement> _achievement =
-        from _1 in String("achievement").Before(_ws)
-        from id in QuotedString.Before(_ws)
-        from _2 in String("name").Before(_ws)
-        from achName in QuotedString
-        select (DslStatement)new AchievementStmt { Id = id, AchievementName = achName };
+    private static readonly Parser<DslStatement> _achievement =
+        Literals.Text("achievement").AndSkip(_ws)
+            .SkipAnd(QuotedString.AndSkip(_ws))
+            .AndSkip(Literals.Text("name").AndSkip(_ws))
+            .And(QuotedString)
+            .Then(t => (DslStatement)new AchievementStmt { Id = t.Item1, AchievementName = t.Item2 });
 
     /// <summary>auto_speed N</summary>
-    private static readonly Parser<char, DslStatement> _autoSpeed =
-        from _1 in String("auto_speed").Before(_ws)
-        from speed in Number
-        select (DslStatement)new AutoSpeedStmt { Speed = speed };
+    private static readonly Parser<DslStatement> _autoSpeed =
+        Literals.Text("auto_speed").AndSkip(_ws)
+            .SkipAnd(Number)
+            .Then(speed => (DslStatement)new AutoSpeedStmt { Speed = speed });
 
     /// <summary>no_skip</summary>
-    private static readonly Parser<char, DslStatement> _noSkip =
-        String("no_skip").ThenReturn((DslStatement)new NoSkipStmt());
+    private static readonly Parser<DslStatement> _noSkip =
+        Literals.Text("no_skip").Then((DslStatement)new NoSkipStmt());
 
     /// <summary>force_skip</summary>
-    private static readonly Parser<char, DslStatement> _forceSkip =
-        String("force_skip").ThenReturn((DslStatement)new ForceSkipStmt());
+    private static readonly Parser<DslStatement> _forceSkip =
+        Literals.Text("force_skip").Then((DslStatement)new ForceSkipStmt());
 
     // ====== Phase 48: 视频增强 ======
 
     /// <summary>video_skipable true|false</summary>
-    private static readonly Parser<char, DslStatement> _videoSkipable =
-        from _1 in String("video_skipable").Before(_ws)
-        from enabled in String("true").Or(String("false"))
-        select (DslStatement)new VideoSkipableStmt { Enabled = enabled == "true" };
+    private static readonly Parser<DslStatement> _videoSkipable =
+        Literals.Text("video_skipable").AndSkip(_ws)
+            .SkipAnd(Literals.Text("true").Or(Literals.Text("false")))
+            .Then(enabled => (DslStatement)new VideoSkipableStmt { Enabled = enabled == "true" });
 
     /// <summary>video_auto_nav "scene"</summary>
-    private static readonly Parser<char, DslStatement> _videoAutoNav =
-        from _1 in String("video_auto_nav").Before(_ws)
-        from scene in QuotedString
-        select (DslStatement)new VideoAutoNavStmt { SceneName = scene };
+    private static readonly Parser<DslStatement> _videoAutoNav =
+        Literals.Text("video_auto_nav").AndSkip(_ws)
+            .SkipAnd(QuotedString)
+            .Then(scene => (DslStatement)new VideoAutoNavStmt { SceneName = scene });
 
     // ====== 辅助方法 ======
 
@@ -1352,7 +1375,7 @@ private static readonly Parser<char, DslStatement> _nvl =
     /// <summary>
     /// 所有语句解析器（按优先级排列——长的关键字在前避免前缀冲突）
     /// </summary>
-    private static readonly Parser<char, DslStatement>[] _statementParsers =
+    private static readonly Parser<DslStatement>[] _statementParsers =
     [
         // 块结构（缩进式，无花括号）
         _elseIf,
@@ -1472,6 +1495,13 @@ private static readonly Parser<char, DslStatement> _nvl =
     ];
 
     /// <summary>
+    /// 完整语句解析器（语句 + 尾部空白 + 行尾）——静态一次构建，
+    /// 避免原 Pidgin 版在循环内每次新建 parser 包装的分配。
+    /// </summary>
+    private static readonly Parser<DslStatement>[] _fullStatementParsers =
+        _statementParsers.Select(p => p.AndSkip(_ws).Eof()).ToArray();
+
+    /// <summary>
     /// 解析单行 DSL 脚本为语句 AST
     /// </summary>
     /// <param name="line">DSL 行文本（已 Trim）</param>
@@ -1482,13 +1512,12 @@ private static readonly Parser<char, DslStatement> _nvl =
         if (string.IsNullOrWhiteSpace(line))
             return null;
 
-        foreach (var parser in _statementParsers)
+        foreach (var parser in _fullStatementParsers)
         {
-            var result = parser.Before(_ws).Before(End).Parse(line);
-            if (result.Success)
+            if (parser.TryParse(line, out var stmt) && stmt is not null)
             {
-                result.Value.LineNumber = lineNumber;
-                return result.Value;
+                stmt.LineNumber = lineNumber;
+                return stmt;
             }
         }
 
@@ -1522,13 +1551,12 @@ private static readonly Parser<char, DslStatement> _nvl =
             return true;
         }
 
-        foreach (var parser in _statementParsers)
+        foreach (var parser in _fullStatementParsers)
         {
-            var result = parser.Before(_ws).Before(End).Parse(line);
-            if (result.Success)
+            if (parser.TryParse(line, out var parsed) && parsed is not null)
             {
-                result.Value.LineNumber = lineNumber;
-                stmt = result.Value;
+                parsed.LineNumber = lineNumber;
+                stmt = parsed;
                 error = null;
                 return true;
             }

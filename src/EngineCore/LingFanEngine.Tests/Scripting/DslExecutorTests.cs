@@ -120,6 +120,82 @@ public class DslExecutorTests
     }
 
     [Fact]
+    public void ForStatement_ParsesVarNameAndSourceExpr()
+    {
+        // Parlot 迁移回归：关键字 "for" 字面量不得泄漏进 VarName（原 .And/.SkipAnd 混错）
+        var stmt = LingFanEngine.DslCore.DslStatementParser.ParseLine("for \"i\" in {items}");
+
+        stmt.Should().NotBeNull();
+        var forStmt = stmt.Should().BeOfType<LingFanEngine.DslCore.ForStmt>().Subject;
+        forStmt.VarName.Should().Be("i");
+        forStmt.SourceExpr.Should().Be("items");
+    }
+
+    [Fact]
+    public void SayStatement_TypewriterExplicitFalse_Parses()
+    {
+        // 2026-09（A3）：say typewriter=false 关闭打字机（此前只有 =true，无法关闭）
+        var stmt = LingFanEngine.DslCore.DslStatementParser.ParseLine("say \"静默显示\" typewriter=false");
+
+        stmt.Should().NotBeNull();
+        var say = stmt.Should().BeOfType<LingFanEngine.DslCore.SayStmt>().Subject;
+        say.Typewriter.Should().BeFalse();
+
+        // =true 语义不变
+        var stmt2 = LingFanEngine.DslCore.DslStatementParser.ParseLine("say \"打字\" typewriter=true");
+        stmt2.Should().BeOfType<LingFanEngine.DslCore.SayStmt>().Subject.Typewriter.Should().BeTrue();
+
+        // 缺省 = 未指定（null，用全局默认）
+        var stmt3 = LingFanEngine.DslCore.DslStatementParser.ParseLine("say \"默认\"");
+        stmt3.Should().BeOfType<LingFanEngine.DslCore.SayStmt>().Subject.Typewriter.Should().BeNull();
+    }
+
+    [Fact]
+    public void ForeachStatement_ParsesVarNameAndSourceKey()
+    {
+        var stmt = LingFanEngine.DslCore.DslStatementParser.ParseLine("foreach \"v\" in \"myArray\"");
+
+        stmt.Should().NotBeNull();
+        var foreachStmt = stmt.Should().BeOfType<LingFanEngine.DslCore.ForeachStmt>().Subject;
+        foreachStmt.VarName.Should().Be("v");
+        foreachStmt.SourceKey.Should().Be("myArray");
+    }
+
+    [Fact]
+    public void FuncStatement_ParsesNameAndParameters()
+    {
+        var stmt = LingFanEngine.DslCore.DslStatementParser.ParseLine("func myFunc(a, b)");
+
+        stmt.Should().NotBeNull();
+        var funcStmt = stmt.Should().BeOfType<LingFanEngine.DslCore.FuncStmt>().Subject;
+        funcStmt.Name.Should().Be("myFunc");
+        funcStmt.Parameters.Should().BeEquivalentTo(["a", "b"]);
+    }
+
+    [Fact]
+    public void DictSetStatement_ParsesKeyFieldValue()
+    {
+        var stmt = LingFanEngine.DslCore.DslStatementParser.ParseLine("dict_set \"cfg\" \"level\" 42");
+
+        stmt.Should().NotBeNull();
+        var dictSet = stmt.Should().BeOfType<LingFanEngine.DslCore.DictSetStmt>().Subject;
+        dictSet.Key.Should().Be("cfg");
+        dictSet.Field.Should().Be("level");
+        dictSet.ValuePart.Should().Be("42");
+    }
+
+    [Fact]
+    public void AchievementStatement_ParsesIdAndName()
+    {
+        var stmt = LingFanEngine.DslCore.DslStatementParser.ParseLine("achievement \"ach01\" name \"初见\"");
+
+        stmt.Should().NotBeNull();
+        var ach = stmt.Should().BeOfType<LingFanEngine.DslCore.AchievementStmt>().Subject;
+        ach.Id.Should().Be("ach01");
+        ach.AchievementName.Should().Be("初见");
+    }
+
+    [Fact]
     public async Task ConditionEvaluationFailure_TreatedAsFalse_ExecutionContinues()
     {
         // 语句级错误隔离：条件含类型错误（字符串与数字比较 "gold > \"a\""）时

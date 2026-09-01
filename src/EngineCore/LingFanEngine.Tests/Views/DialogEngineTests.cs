@@ -130,27 +130,93 @@ public class DialogEngineTests
 
         var result = engine.Advance(0.001);
 
-        // {fast} 触发 SkipToEnd，返回完整原文（标签剥离由 ApplyInlineMarkup 负责）
-        result.Should().Be("head{fast}tail");
+        // 2026-09 契约：{fast} 越过快进点后剩余文本立即显示；返回干净文本（控制标签已剥离）
+        result.Should().Be("headtail");
         engine.IsComplete.Should().BeTrue();
     }
 
     [Fact]
-    public void Advance_WaitTag_PausesAndRemovesTag()
+    public void Advance_WaitTag_PausesAtTag()
     {
         var engine = Create(out _);
         engine.SetText("ab{w}cd");
 
         var result = engine.Advance(10.0); // 一次推到标签位置
 
-        result.Should().Be("ab");
+        result.Should().Be("ab"); // {w} 前停住，返回干净文本
         engine.IsPausedByTag.Should().BeTrue();
-        engine.FullText.Should().Be("abcd"); // {w} 已从文本移除
+        engine.FullText.Should().Be("ab{w}cd"); // 原文保持不变（不再改写 _fullText）
 
         engine.ResumeFromPause();
         engine.IsPausedByTag.Should().BeFalse();
         var after = engine.Advance(10.0);
         after.Should().Be("abcd");
+        engine.IsComplete.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Advance_WaitTagWithSeconds_AutoResumes()
+    {
+        var engine = Create(out _);
+        engine.SetText("ab{w=0.1}cd");
+
+        engine.Advance(10.0).Should().Be("ab"); // 停住
+        engine.IsPausedByTag.Should().BeTrue();
+
+        engine.Advance(0.05).Should().BeNull(); // 未到 0.1s 不恢复
+        var after = engine.Advance(0.1); // 到时自动恢复并继续
+        after.Should().Be("abcd");
+        engine.IsComplete.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Advance_SurrogatePair_NeverSplits()
+    {
+        // emoji 是代理对——打字机任何位置都不能切出孤立半截代理
+        var engine = Create(out _);
+        var emoji = "\U0001F600\U0001F601\U0001F602"; // 3 个 emoji，6 个 UTF-16 单元
+        engine.SetText(emoji);
+
+        for (int i = 0; i < 20 && !engine.IsComplete; i++)
+        {
+            var partial = engine.Advance(0.02);
+            if (partial != null)
+            {
+                // 任何前缀都不能以孤立高代理结尾
+                (partial.Length == 0 || !char.IsHighSurrogate(partial[^1]))
+                    .Should().BeTrue($"前缀 [{partial}] 不得以孤立高代理结尾（代理对不可切割）");
+            }
+        }
+        engine.IsComplete.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Advance_PunctuationPause_SlowsReveal()
+    {
+        // 标点后停顿：有标点文本的推进应比无标点文本慢（同速同时长下显示更少）
+        var plain = Create(out _);
+        plain.SetText("abcdefghij");
+        var withPunct = Create(out _);
+        withPunct.SetText("ab，cdefghij");
+
+        string? p = null, w = null;
+        for (int i = 0; i < 3; i++)
+        {
+            p = plain.Advance(0.02);
+            w = withPunct.Advance(0.02);
+        }
+        (w?.Length ?? 0).Should().BeLessThanOrEqualTo(p?.Length ?? 0,
+            "标点停顿后，显示进度不应超过无标点对照");
+    }
+
+    [Fact]
+    public void Advance_SpeedZero_DisplaysInstantly()
+    {
+        var engine = Create(out var state);
+        state.Set(StateKeys.Dialog.TypewriterSpeed, 0.0); // 0 = 立即显示
+        engine.SetText("立即显示");
+
+        engine.Advance(0.001).Should().Be("立即显示");
         engine.IsComplete.Should().BeTrue();
     }
 
@@ -178,6 +244,60 @@ public class DialogEngineTests
         engine.IsComplete.Should().BeTrue();
         engine.IsPausedByTag.Should().BeFalse();
         state.Get<bool>(StateKeys.Dialog.TypewriterDone).Should().BeTrue();
+    }
+
+    // ========== 溢出裁剪提示 + 分段渲染（C4/B1），2026-09 ==========
+
+    [Fact]
+    public void SetNvlText_RawSkipHint_ConvertsToVisibleCoords()
+    {
+        var engine = Create(out _);
+        // 前段含样式标签（12 标签字符）：raw 坐标 ≠ 可见坐标
+        engine.SetNvlText("{b}旧行{/b}\n");
+
+        // 裁剪提示：保留部分原文长 10（{b}旧行{/b}\n = 3+2+4+1，标签字符不计可见）
+        var skip = engine.SetNvlText("{b}旧行{/b}\n新内容", 10);
+
+        skip.Should().Be(3, "SkipHint 按可见坐标换算：旧行 2 字 + 换行 = 3 个可见字符（标签不计宽）");
+        engine.CharIndex.Should().Be(3);
+        // 可见文本 = 「旧行\n新内容」；当前显示前 3 字符 = 旧行+换行
+        engine.VisibleText().Should().Be("旧行\n");
+    }
+
+    [Fact]
+    public void Segments_SplitByStyleTags_MergedStyles()
+    {
+        var engine = Create(out _);
+        engine.SetText("普通{b}加粗{/b}尾部");
+
+        var segs = engine.Segments;
+        string.Concat(segs.Select(s => s.Text)).Should().Be("普通加粗尾部",
+            "分段文本拼接 = 纯可见文本（标签剥离）");
+        segs.Should().Contain(s => s.Text == "加粗" && s.Style.Bold, "加粗段样式正确");
+        segs.Should().Contain(s => s.Text == "尾部" && !s.Style.Bold, "闭合标签后样式恢复");
+    }
+
+    [Fact]
+    public void Advance_TypewriterFalseState_DisplaysInstantly()
+    {
+        var engine = Create(out var state);
+        state.Set(StateKeys.Dialog.TypewriterEnabled, false);
+        engine.SetText("不打字");
+
+        engine.Advance(0.001).Should().Be("不打字");
+        engine.IsComplete.Should().BeTrue();
+    }
+
+    [Fact]
+    public void TryConsumeClick_OncePerText()
+    {
+        var engine = Create(out _);
+        engine.SetText("x");
+
+        engine.TryConsumeClick().Should().BeTrue("本句首次点击应被消费");
+        engine.TryConsumeClick().Should().BeFalse("重复点击（双击/快速点击）应被拒绝");
+        engine.SetText("y");
+        engine.TryConsumeClick().Should().BeTrue("新文本加载后点击重新生效");
     }
 
     // ========== NVL 追加检测 ==========

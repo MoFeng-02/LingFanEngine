@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using LingFanEngine.SDK.Constants;
+using LingFanEngine.SDK.Utils;
 
 namespace LingFanEngine.SDK.AI;
 
@@ -52,12 +53,9 @@ public static class ProjectTools
             return Task.FromResult("{\"ok\":false,\"missing\":[\"项目目录不存在\"]}");
 
         var missing = new List<string>();
-        var dllDir = Path.Combine(projectDir, ProjectConstants.DllDir);
-        if (!Directory.Exists(dllDir))
-            missing.Add($"{ProjectConstants.DllDir}/");
-        foreach (var dll in ProjectConstants.SdkDistributedDlls)
-            if (!File.Exists(Path.Combine(projectDir, ProjectConstants.DllDir, dll)))
-                missing.Add(dll);
+        // 引擎经 NuGet 分发：检查项目 csproj 内 LingFanEngine PackageReference 是否存在
+        if (EnginePackageHelper.GetEnginePackageVersion(projectDir) == null)
+            missing.Add("PackageReference: LingFanEngine");
 
         var resourcesDir = Path.Combine(projectDir, ProjectConstants.ResourcesDir);
         if (!Directory.Exists(resourcesDir))

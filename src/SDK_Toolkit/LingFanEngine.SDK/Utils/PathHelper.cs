@@ -73,18 +73,6 @@ public static class PathHelper
     }
 
     /// <summary>
-    /// 获取 SDK 引擎缓存目录（离线建项目/预览引擎的 DLL 种子源）。
-    /// <para>%LOCALAPPDATA%\LingFanEngine\engine-cache。该目录由 SDK 安装包自带全部 4 个 DLL 填充，
-    /// 因此离线/首次建项目时已是最新 4 个齐全状态，不存在「只 3 个」的降级形态。</para>
-    /// </summary>
-    public static string GetEngineCacheDirectory()
-    {
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "LingFanEngine", ProjectConstants.EngineCacheDir);
-    }
-
-    /// <summary>
     /// 获取模板更新缓存目录（从 Release 下载的模板 zip 解压落盘处）。
     /// <para>%LOCALAPPDATA%\LingFanEngine\template-cache。仅作为「覆盖内置嵌入模板」的源：
     /// 分发模式下若缓存版本高于内置，则建项目用缓存；否则用内置嵌入 zip。</para>

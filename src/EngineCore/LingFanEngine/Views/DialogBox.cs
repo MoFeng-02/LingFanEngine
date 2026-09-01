@@ -22,14 +22,6 @@ public class DialogBox : UserControl, IDialogBox
     private readonly DialogEngine _engine;
     private string? _lastSideImage;
 
-    /// <summary>点击消费标志——防止陈旧点击重复设置 Dialog.Complete。
-    /// <para>用户点击完成 say N 后，IsComplete 仍为 true（直到下一句 SetText 重置打字机）。
-    /// 若用户在窗口期内再次点击（双击/快速点击），会重复设置 Dialog.Complete = true，
-    /// 被 DslExecutor.WaitForDialogComplete 的 fast path 直接消费，跳过下一句的等待。</para>
-    /// <para>此标志在 SetText 时重置（新文本加载=点击重新生效），在 PointerPressed 中检查。</para>
-    /// <para>线程安全：PointerPressed 和 SetText 都在 UI 线程执行，无需同步。</para>
-    private bool _clickConsumed;
-
     /// <summary>打字机速度（字符/秒）——委托 DialogEngine</summary>
     public double TypeSpeed
     {
@@ -38,6 +30,10 @@ public class DialogBox : UserControl, IDialogBox
     }
     public bool IsComplete => _engine.IsComplete;
     public bool IsPausedByTag => _engine.IsPausedByTag;
+
+    // ── 增量渲染（B1：按 Segments 增量构建 Run，消除每帧全量 markup 重建） ──
+    /// <summary>增量渲染器（状态机已提取为共享组件 DialogTextRenderer，供模板复用）</summary>
+    private readonly DialogTextRenderer _renderer;
 
     private string? _bgPath; // 当前背景图路径
 
@@ -79,6 +75,7 @@ public class DialogBox : UserControl, IDialogBox
             FontSize = 18, TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(10, 4, 10, 10)
         };
+        _renderer = new DialogTextRenderer(_contentText);
         var stack = new StackPanel();
         stack.Children.Add(_speakerText);
         stack.Children.Add(_contentText);
@@ -111,9 +108,8 @@ public class DialogBox : UserControl, IDialogBox
             if (!_root.IsVisible) return;
             if (IsPausedByTag && !IsComplete) { _engine.ResumeFromPause(); return; }
             if (!IsComplete) { SkipToEnd(); }
-            else if (!_clickConsumed)
+            else if (_engine.TryConsumeClick())
             {
-                _clickConsumed = true;
                 _state.Set(StateKeys.Dialog.Complete, true);
                 _state.Set(StateKeys.Dialog.WaitingSayComplete, true);
             }
@@ -122,10 +118,7 @@ public class DialogBox : UserControl, IDialogBox
 
     public void SetText(string text, string? speaker = null)
     {
-        // 重置点击消费标志——新文本加载，点击重新生效
-        _clickConsumed = false;
-
-        // Phase 24: 更新侧脸图
+        // Phase 24: 更新侧脸图（新对话立即生效，不等下一帧）
         UpdateSideImage();
 
         // 颜色/字体样式（NVL 和 ADV 模式都需要）
@@ -141,6 +134,9 @@ public class DialogBox : UserControl, IDialogBox
         if (!string.IsNullOrEmpty(spkFont)) _speakerText.FontFamily = new FontFamily(spkFont);
         if (!string.IsNullOrEmpty(txtFont)) _contentText.FontFamily = new FontFamily(txtFont);
 
+        // 回溯重放（A5）：重看已读内容不打字机——直接完整显示
+        var isReplay = _state.Get<bool>(StateKeys.Rollback.IsReplay);
+
         // NVL 模式：调整对话框样式（全屏半透明，而非底部小条）
         var nvlActive = _state.Get<bool>(StateKeys.Nvl.Active);
         if (nvlActive)
@@ -153,17 +149,19 @@ public class DialogBox : UserControl, IDialogBox
             _speakerText.IsVisible = false;
             _root.IsVisible = true;
 
-            // Phase 65: 委托 DialogEngine 处理 NVL 累积逻辑
-            var oldLen = _engine.SetNvlText(text);
-            if (oldLen > 0)
-                DialogEngine.ApplyInlineMarkup(_contentText.Inlines!, text[..oldLen]);
-            else
-                DialogEngine.ApplyInlineMarkup(_contentText.Inlines!, "");
+            // Phase 65: 委托 DialogEngine 处理 NVL 累积逻辑（含溢出裁剪 SkipHint，C4）
+            var skipHint = _state.Get<int>(StateKeys.Nvl.SkipHint);
+            _state.Set(StateKeys.Nvl.SkipHint, -1);
+            _engine.SetNvlText(text, skipHint);
+            if (isReplay) _engine.SkipToEnd();
+            ResetRenderState();
+            _renderer.RenderUpTo(_engine.CharIndex);
             return;
         }
 
         // ADV 模式——委托 DialogEngine
         _engine.SetText(text);
+        if (isReplay) _engine.SkipToEnd();
 
         _root.VerticalAlignment = VerticalAlignment.Bottom;
         _root.HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -173,29 +171,41 @@ public class DialogBox : UserControl, IDialogBox
         _speakerText.IsVisible = !string.IsNullOrEmpty(speaker);
         if (_speakerText.IsVisible) _speakerText.Text = speaker;
         _root.IsVisible = true;
-        DialogEngine.ApplyInlineMarkup(_contentText.Inlines!, "");
+        ResetRenderState();
+        _renderer.RenderUpTo(_engine.CharIndex);
     }
 
     // ========== Inline Markup ==========
 
-    // Phase 65: 委托 DialogEngine.Advance 推进打字机
+    // Phase 65: 委托 DialogEngine.Advance 推进打字机；
+    // 2026-09（B1）：渲染按 Segments 增量构建——只增长边界段 Run 的文本，
+    // 不再每帧全量解析 markup / 重建全部 Run（长文本与 NVL 累积场景的主要开销）
     public void Advance(double deltaSeconds)
     {
         if (!_root.IsVisible || IsComplete) return;
         // Phase 24: 每帧同步侧脸图（可能在对话期间切换）
         UpdateSideImage();
-        var raw = _engine.Advance(deltaSeconds);
-        if (raw != null)
-            DialogEngine.ApplyInlineMarkup(_contentText.Inlines!, raw);
+        var before = _engine.CharIndex;
+        _engine.Advance(deltaSeconds);
+        if (_engine.CharIndex != before)
+            _renderer.RenderUpTo(_engine.CharIndex);
     }
 
     public void SkipToEnd()
     {
-        var full = _engine.SkipToEnd();
-        DialogEngine.ApplyInlineMarkup(_contentText.Inlines!, full);
+        _engine.SkipToEnd();
+        _renderer.RenderUpTo(_engine.CharIndex);
     }
 
     public void Hide() { _root.IsVisible = false; _sideImage.IsVisible = false; }
+
+    /// <summary>统一前进点击闸门（C5）——委托 DialogEngine.TryConsumeClick</summary>
+    public bool TryConsumeClick() => _engine.TryConsumeClick();
+
+    // ========== 增量渲染（B1——委托 DialogTextRenderer） ==========
+
+    /// <summary>重置增量渲染状态（新文本加载时调用）</summary>
+    private void ResetRenderState() => _renderer.Reset(_engine.Segments);
 
     /// <summary>重置 NVL 模式内部状态（场景切换或退出 NVL 模式时调用）</summary>
     public void ResetNvlState() => _engine.ResetNvlState();

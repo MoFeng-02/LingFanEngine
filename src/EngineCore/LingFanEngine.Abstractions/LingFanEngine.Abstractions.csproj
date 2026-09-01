@@ -6,6 +6,19 @@
 		<Nullable>enable</Nullable>
 		<LangVersion>latest</LangVersion>
 		<JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+
+		<!-- NuGet 包元数据（2026-09 起引擎经 NuGet 分发，替代 4-DLL zip 模式） -->
+		<!-- CI 发布时以 -p:Version=<tag> 覆盖版本 -->
+		<Version>0.3.0</Version>
+		<PackageId>LingFanEngine.Abstractions</PackageId>
+		<Authors>MoFeng-02</Authors>
+		<Description>灵泛引擎抽象层——实体、接口与事件契约（可视化小说引擎 LingFanEngine）</Description>
+		<PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MoFeng-02/LingFanEngine</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MoFeng-02/LingFanEngine</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageTags>visual-novel;engine;avalonia;cross-platform</PackageTags>
+		<IsAotCompatible>true</IsAotCompatible>
 	</PropertyGroup>
 
 	<ItemGroup>

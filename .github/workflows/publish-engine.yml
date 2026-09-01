@@ -1,24 +1,28 @@
 # =============================================================================
-# 引擎 + SDK 自动发布工作流
+# 引擎 + SDK 自动发布工作流（NuGet 分发模式，2026-09 起）
 # -----------------------------------------------------------------------------
 # 触发：推送 tag `vX.Y.Z` 时自动：
-#   1. publish-engine     : 构建 4 个引擎库 → 打包 LingFanEngine.DLLs.zip + updates/latest.json
-#   2. publish-sdk-windows: 在 windows-latest 上 AOT 发布 SDK.Desktop (win-x64, WinExe 无控制台)
-#   3. publish-sdk-linux  : 在 ubuntu-latest 上 AOT 发布 SDK.Desktop (linux-x64, 需 clang)
-#   4. publish-sdk-macos  : 在 macos-latest 上 AOT 发布 SDK.Desktop (osx-arm64)
-#   5. release            : 汇总所有产物，创建 GitHub Release 并上传 asset
+#   1. publish-engine     : dotnet pack 三个引擎库 → push nuget.org（OIDC 受信任发布）
+#                           + GitHub Packages 镜像
+#   2. publish-template   : 注入引擎版本到模板 csproj → 打包 Template.zip + template-latest.json
+#   3. publish-sdk-windows: 在 windows-latest 上 AOT 发布 SDK.Desktop (win-x64, WinExe 无控制台)
+#   4. publish-sdk-linux  : 在 ubuntu-latest 上 AOT 发布 SDK.Desktop (linux-x64, 需 clang)
+#   5. publish-sdk-macos  : 在 macos-latest 上 AOT 发布 SDK.Desktop (osx-arm64)
+#   6. release            : 汇总所有产物，创建 GitHub Release 并上传 asset
 #
 # 版本全部由 tag 自动校准（-p:Version），不再写死。
-# Pidgin 为本地魔改分发（不随 NuGet），其版本从 DLL 真实元数据读取，独立于引擎 tag。
+#
+# NuGet 发布前置条件（一次性配置）：
+#   - nuget.org 用户名下为本仓库创建 Trusted Publishing 策略（owner=MoFeng-02，
+#     repository=LingFanEngine，workflow=publish-engine.yml，environment=production）
+#   - 仓库 Secrets 配置 NUGET_USER = nuget.org 用户名（profile name，非邮箱）
+#   - GitHub Packages 镜像用内置 GITHUB_TOKEN，无需额外配置
 #
 # 说明：
 #   - SDK.Desktop 的 OutputType 按构建机 OS 条件化：Windows=WinExe（无控制台），
 #     其他平台=Avalonia 不支持 WinExe 故退为 Exe（会带控制台窗口，功能正常）。
-#   - 每个 SDK job 先 `dotnet build` 引擎库，确保 bin 目录存在 4 个 DLL，
-#     SyncEngineDlls target 才能把它们复制进 SDK 安装包的 DLL/ 子目录（自愈种子）。
-#   - 版本号统一在 `Compute version` 步骤（shell: bash）中从 tag 剥离 `v` 前缀，
-#     通过 ${{ steps.version.outputs.VERSION }} 注入；不在 run 脚本里做 shell 展开，
-#     避免 Windows runner 默认 PowerShell 无法解析 ${GITHUB_REF_NAME#v} 导致版本为空。
+#   - SDK/模板经 NuGet 引擎依赖（ProjectReference / PackageReference），无需预构建引擎
+#     种子 DLL（原 SyncEngineDlls 机制已退役）。
 # =============================================================================
 name: Publish Engine + SDK
 
@@ -26,82 +30,170 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Pack only (skip publish to NuGet.org)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   publish-engine:
-    runs-on: ubuntu-latest
+    name: Pack & Publish NuGet packages
+    runs-on: windows-latest
+    environment: production
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
-      - name: Compute version
-        id: version
-        shell: bash
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/nuget.config') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
 
-      # 构建引擎核心库（传递依赖会一并产出 Abstractions / DslCore / Pidgin 到 bin 目录）
-      # 版本号由 tag 注入（-p:Version），使 DLL 程序集版本与发布 tag 保持一致（不再写死 1.0.0）
-      - name: Build engine core (Release)
-        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${{ steps.version.outputs.VERSION }}
-
-      - name: Collect DLLs + compute sha256 + generate manifest
-        id: collect
-        shell: bash
+      - name: Resolve package version
+        shell: pwsh
         run: |
-          set -euo pipefail
-          OUT="src/EngineCore/LingFanEngine/bin/Release/net10.0"
-          DLLS=(LingFanEngine.dll LingFanEngine.Abstractions.dll LingFanEngine.DslCore.dll Pidgin.dll)
-          VER="${{ steps.version.outputs.VERSION }}"
-          mkdir -p publish
-          declare -A SUMS
-          for d in "${DLLS[@]}"; do
-            cp "$OUT/$d" "publish/$d"
-            SUMS[$d]=$(sha256sum "publish/$d" | cut -d' ' -f1)
-          done
-          TAG="${{ github.ref_name }}"
-          # Pidgin 为本地魔改分发，读其 DLL 真实版本（取前三段 X.Y.Z）；读取失败时回落引擎版本
-          PIDGIN_VER=$(pwsh -NoProfile -Command "try { [System.Reflection.AssemblyName]::GetAssemblyName((Resolve-Path '$OUT/Pidgin.dll')).Version.ToString(3) } catch { '${{ steps.version.outputs.VERSION }}' }")
-          PIDGIN_VER="${PIDGIN_VER//[$'\r\n']/}"
-          [ -z "$PIDGIN_VER" ] && PIDGIN_VER="$VER"
-          cat > updates/latest.json <<EOF
-          {
-            "version": "$VER",
-            "sdkVersion": "$VER",
-            "releaseNotesUrl": "https://github.com/MoFeng-02/LingFanEngine/releases/tag/$TAG",
-            "assetUrl": "https://github.com/MoFeng-02/LingFanEngine/releases/download/$TAG/LingFanEngine.DLLs.zip",
-            "assetSha256": "",
-            "breakingAbstractions": false,
-            "breakingDlls": [],
-            "publishedUtc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "minSdkVersion": "$VER",
-            "dllChecksums": {
-              "LingFanEngine.dll": "${SUMS[LingFanEngine.dll]}",
-              "LingFanEngine.Abstractions.dll": "${SUMS[LingFanEngine.Abstractions.dll]}",
-              "LingFanEngine.DslCore.dll": "${SUMS[LingFanEngine.DslCore.dll]}",
-              "Pidgin.dll": "${SUMS[Pidgin.dll]}"
-            },
-            "dllVersions": {
-              "LingFanEngine.dll": "$VER",
-              "LingFanEngine.Abstractions.dll": "$VER",
-              "LingFanEngine.DslCore.dll": "$VER",
-              "Pidgin.dll": "$PIDGIN_VER"
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME.StartsWith('v')) {
+            $version = $env:GITHUB_REF_NAME.Substring(1)
+          } else {
+            $version = "0.0.0-ci.$($env:GITHUB_RUN_NUMBER)"
+          }
+          "PACKAGE_VERSION=$version" >> $env:GITHUB_ENV
+          Write-Host "Resolved PACKAGE_VERSION=$version"
+
+          # 提取纯数字版本（去掉 -alpha/-beta/-rc 等预发布后缀）
+          # 专门用于 AssemblyVersion / FileVersion，解决 CS7034/CS7035 编译错误
+          $cleanVersion = $version -replace '-.*$', ''
+          $parts = $cleanVersion.Split('.')
+          while ($parts.Count -lt 4) {
+            $cleanVersion += '.0'
+            $parts = $cleanVersion.Split('.')
+          }
+          "ASSEMBLY_VERSION=$cleanVersion" >> $env:GITHUB_ENV
+          Write-Host "Resolved ASSEMBLY_VERSION=$cleanVersion"
+
+      # 三个引擎库统一 pack：全套版本属性（nupkg 版本与程序集版本随 tag 一致；
+      # -p:Version 等 MSBuild 全局属性会沿 ProjectReference 传递，依赖链同步校准）
+      - name: Pack all engine libraries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $projects = @(
+            'src/EngineCore/LingFanEngine.Abstractions/LingFanEngine.Abstractions.csproj',
+            'src/EngineCore/LingFanEngine.DslCore/LingFanEngine.DslCore.csproj',
+            'src/EngineCore/LingFanEngine/LingFanEngine.csproj'
+          )
+          foreach ($proj in $projects) {
+            Write-Host "Packing $proj ..."
+            dotnet pack $proj -c Release -f net10.0 -o ./artifacts --nologo `
+              -p:Version=$env:PACKAGE_VERSION `
+              -p:PackageVersion=$env:PACKAGE_VERSION `
+              -p:InformationalVersion=$env:PACKAGE_VERSION `
+              -p:AssemblyVersion=$env:ASSEMBLY_VERSION `
+              -p:FileVersion=$env:ASSEMBLY_VERSION `
+              -p:ContinuousIntegrationBuild=true `
+              -p:Deterministic=true
+            if ($LASTEXITCODE -ne 0) { Write-Error "Pack failed: $proj"; exit 1 }
+          }
+
+      - name: List packed packages
+        shell: pwsh
+        run: |
+          Get-ChildItem ./artifacts -Filter '*.nupkg' |
+            Select-Object Name, Length |
+            Format-Table -AutoSize
+
+      - name: NuGet login (OIDC → temp API key)
+        id: login
+        # 受信任发布：用 GitHub OIDC token 向 nuget.org 换一次性临时 key（约 1h 有效）。
+        # 须在本仓库 Secrets 配置 NUGET_USER = 你的 nuget.org 用户名（profile name，非邮箱），
+        # 且该用户名下已建好匹配本仓库/工作流/环境的 Trusted Publishing 策略。
+        if: |
+          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+          (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Publish to NuGet.org (OIDC trusted publishing)
+        if: |
+          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+          (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pkgs = Get-ChildItem ./artifacts -Filter '*.nupkg' -File
+          if (-not $pkgs) {
+            Write-Error "No .nupkg files found under ./artifacts"
+            exit 1
+          }
+          foreach ($pkg in $pkgs) {
+            Write-Host "Pushing $($pkg.Name) ($([math]::Round($pkg.Length/1KB, 1)) KB) ..."
+            dotnet nuget push $pkg.FullName `
+              --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" `
+              --skip-duplicate `
+              --no-symbols `
+              --source https://api.nuget.org/v3/index.json
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Failed to push package: $($pkg.Name)"
+              exit $LASTEXITCODE
             }
           }
-          EOF
-          (cd publish && zip -r ../LingFanEngine.DLLs.zip .)
 
-      - name: Upload engine package
+      - name: Publish to GitHub Packages (NuGet)
+        # 同一批 nupkg 同时推到 GitHub Packages，使仓库 "Packages" 页自动列出。
+        # 鉴权用 GITHUB_TOKEN（自动注入），需上方 permissions 含 packages: write。
+        if: |
+          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+          (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pkgs = Get-ChildItem ./artifacts -Filter '*.nupkg' -File
+          if (-not $pkgs) {
+            Write-Error "No .nupkg files found under ./artifacts"
+            exit 1
+          }
+          $ghSource = "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+          foreach ($pkg in $pkgs) {
+            Write-Host "Pushing $($pkg.Name) to GitHub Packages ($([math]::Round($pkg.Length/1KB, 1)) KB) ..."
+            dotnet nuget push $pkg.FullName `
+              --api-key "${{ secrets.GITHUB_TOKEN }}" `
+              --skip-duplicate `
+              --no-symbols `
+              --source $ghSource
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Failed to push package to GitHub Packages: $($pkg.Name)"
+              exit $LASTEXITCODE
+            }
+          }
+
+      - name: Upload engine packages
         uses: actions/upload-artifact@v4
         with:
           name: engine-package
-          path: |
-            LingFanEngine.DLLs.zip
-            updates/latest.json
+          path: artifacts/*.nupkg
 
   publish-template:
     runs-on: ubuntu-latest
@@ -122,6 +214,13 @@ jobs:
           TAG="${{ github.ref_name }}"   # 仅用于定位本次 Release 的 asset 下载地址
           TPL_DIR="src/Template/V1"
           ZIP="LingFanEngine.Template.zip"
+
+          # 引擎版本注入：把模板主 csproj 的 LingFanEngine PackageReference 版本替换为本次 tag 版本
+          # （模板源码中的基线版本仅用于开发期本地 local-feed 构建）
+          ENGINE_VER="${GITHUB_REF_NAME#v}"
+          MAIN_CSPROJ="$TPL_DIR/_LingFanEngineTemplateTitle_/src/_LingFanEngineTemplateTitle_/_LingFanEngineTemplateTitle_.csproj"
+          sed -i -E "s|(<PackageReference\s+Include=\"LingFanEngine\"\s+Version=\")[^\"]+(\")|\1${ENGINE_VER}\2|g" "$MAIN_CSPROJ"
+          echo "模板引擎版本注入: LingFanEngine -> ${ENGINE_VER}"
 
           # 打包模板目录（排除构建产物、VCS 以及任何 zip 残留）
           (cd "$TPL_DIR" && zip -r "${{ github.workspace }}/$ZIP" . \
@@ -169,10 +268,7 @@ jobs:
         shell: bash
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      # 先构建引擎库，确保 bin/Release/net10.0 存在 4 个 DLL，供 SyncEngineDlls 复制进 SDK 安装包
-      - name: Build engine libs (seed for SyncEngineDlls)
-        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${{ steps.version.outputs.VERSION }}
-
+      # 引擎经 NuGet 分发：SDK 的 ProjectReference 由 MSBuild 自动按需构建，无需种子 DLL
       - name: AOT publish SDK.Desktop (win-x64)
         run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:PackTemplate=true -p:Version=${{ steps.version.outputs.VERSION }}
 
@@ -211,9 +307,6 @@ jobs:
       - name: Install NativeAOT dependencies
         run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
 
-      - name: Build engine libs (seed for SyncEngineDlls)
-        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${{ steps.version.outputs.VERSION }}
-
       - name: AOT publish SDK.Desktop (linux-x64)
         run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:PackTemplate=true -p:Version=${{ steps.version.outputs.VERSION }}
 
@@ -245,9 +338,6 @@ jobs:
         shell: bash
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Build engine libs (seed for SyncEngineDlls)
-        run: dotnet build src/EngineCore/LingFanEngine/LingFanEngine.csproj -c Release -f net10.0 -p:Version=${{ steps.version.outputs.VERSION }}
-
       - name: AOT publish SDK.Desktop (osx-arm64)
         run: dotnet publish src/SDK_Toolkit/LingFanEngine.SDK.Desktop/LingFanEngine.SDK.Desktop.csproj -c Release -r osx-arm64 --self-contained true -p:PublishAot=true -p:PackTemplate=true -p:Version=${{ steps.version.outputs.VERSION }}
 
@@ -267,7 +357,7 @@ jobs:
     needs: [publish-engine, publish-template, publish-sdk-windows, publish-sdk-linux, publish-sdk-macos]
     runs-on: ubuntu-latest
     # 仅 release job 需要写权限创建 Release；其余 job 继承仓库默认 token（含 actions 作用域，
-    # 供 upload/download-artifact 正常调 API）。不在 workflow 顶层写 permissions，避免未列出作用域被降级为 none。
+    # 供 upload/download-artifact 正常调 API）。
     permissions:
       contents: write
       actions: read
@@ -283,10 +373,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: LingFan Engine Sdk
+          name: LingFan Engine ${{ github.ref_name }}
           files: |
-            artifacts/engine-package/LingFanEngine.DLLs.zip
-            artifacts/engine-package/updates/latest.json
+            artifacts/engine-package/*.nupkg
             artifacts/template-package/LingFanEngine.Template.zip
             artifacts/template-package/updates/template-latest.json
             artifacts/sdk-windows/LingFanEngine.SDK.Desktop-win-x64.zip

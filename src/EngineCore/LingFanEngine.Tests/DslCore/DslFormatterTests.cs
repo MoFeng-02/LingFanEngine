@@ -60,8 +60,9 @@ public class DslFormatterTests
             "  else\n" +
             "    say \"z\"\n" +
             "  say \"done\"\n";
-        // 按域缩进：普通体行继承当前块深度，因此 "say done" 仍视为 if 块内的体行，
-        // 缩进到与 if 体同级。若作者意图为 if 结束后语句，需用新块关键字或显式写在 if 体外。
+        // 块结束判定与引擎 CompileBody 对齐：say done 与 if 同列（== 块缩进）且 if 已有体行，
+        // 故 if 块在此结束，say done 回到 label 体（缩进 2）。旧版「域推导」把块后语句
+        // 永久吞进块体，与引擎真实判块不一致（格式化会静默改变程序行为），已修正。
         var expected =
             "label t:\n" +
             "  if {a}\n" +
@@ -70,7 +71,7 @@ public class DslFormatterTests
             "    say \"y\"\n" +
             "  else\n" +
             "    say \"z\"\n" +
-            "    say \"done\"\n";
+            "  say \"done\"\n";
         DslFormatter.Format(src).Should().Be(expected);
     }
 

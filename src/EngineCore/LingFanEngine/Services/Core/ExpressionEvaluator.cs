@@ -15,7 +15,7 @@ public delegate object? DslFunction(object?[] args, IStateContainer state);
 
 /// <summary>
 /// 表达式 AST 求值器
-/// <para>将 Pidgin 解析出的 AST 在给定状态容器下求值为运行时值。</para>
+/// <para>将 Parlot 解析出的 AST 在给定状态容器下求值为运行时值。</para>
 /// <para>支持：算术/比较/逻辑运算（含短路）、函数调用、三元条件、变量路径。</para>
 /// </summary>
 public static class ExpressionEvaluator

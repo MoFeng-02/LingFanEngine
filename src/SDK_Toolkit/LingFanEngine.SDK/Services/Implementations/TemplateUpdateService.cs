@@ -247,7 +247,7 @@ public class TemplateUpdateService : ITemplateUpdateService
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
             return false;
         var host = uri.Host;
-        return EngineUpdateDefaults.AllowedManifestHosts.Any(allowed =>
+        return TemplateDefaults.AllowedManifestHosts.Any(allowed =>
             string.Equals(host, allowed, StringComparison.OrdinalIgnoreCase) ||
             host.EndsWith("." + allowed, StringComparison.OrdinalIgnoreCase));
     }

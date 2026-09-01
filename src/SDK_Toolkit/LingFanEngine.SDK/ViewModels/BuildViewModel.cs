@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using LingFanEngine.SDK.I18n;
 using LingFanEngine.SDK.Models;
 using LingFanEngine.SDK.Services.Abstractions;
+using LingFanEngine.SDK.Utils;
 
 namespace LingFanEngine.SDK.ViewModels;
 
@@ -16,7 +17,6 @@ public partial class BuildViewModel : ViewModelBase
 {
     private readonly IPublishService _publishService;
     private readonly IProjectSession _session;
-    private readonly IEngineUpdateService _engineUpdateService;
     private readonly IRunService _runService;
 
     [ObservableProperty]
@@ -79,23 +79,12 @@ public partial class BuildViewModel : ViewModelBase
     public string StopGameLabel => SdkLocalizer.Loc("Action_StopGame");
     public string EngineDepLabel => SdkLocalizer.Loc("Build_EngineDep");
     public string CurrentEngineVersionLabel => string.Format(SdkLocalizer.Loc("Build_CurrentVer"), EngineDependencyVersion);
-    public string UpdateEngineLabel => SdkLocalizer.Loc("Action_UpdateEngine");
-    public string UpdateHintLabel => SdkLocalizer.Loc("Build_UpdateHint");
     public string BuildLogLabel => SdkLocalizer.Loc("Build_Log");
 
-    // ===== 项目引擎依赖（版本隔离核心） =====
-    // 当前项目 DLL/ 内的引擎版本（来自 engine.lock.json / LingFanEngine.dll 元数据）
+    // ===== 项目引擎依赖（NuGet 分发） =====
+    // 当前项目 csproj 的 LingFanEngine PackageReference 版本（版本真相在 csproj）
     [ObservableProperty]
     private string _engineDependencyVersion = "—";
-
-    // 项目引擎依赖更新状态文案
-    [ObservableProperty]
-    private string _projectEngineUpdateMessage = "";
-
-    // 是否正在检查/应用项目引擎更新（控制按钮可用性）
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(UpdateProjectEngineCommand))]
-    private bool _isUpdatingProjectEngine;
 
     // ===== 游戏运行（启动/停止） =====
     // 是否正在启动游戏（含未构建时自动构建）
@@ -115,11 +104,10 @@ public partial class BuildViewModel : ViewModelBase
     public ObservableCollection<string> LogEntries { get; } = new();
 
     public BuildViewModel(IPublishService publishService, IProjectSession session,
-        IEngineUpdateService engineUpdateService, IRunService runService)
+        IRunService runService)
     {
         _publishService = publishService;
         _session = session;
-        _engineUpdateService = engineUpdateService;
         _runService = runService;
 
         // 监听项目会话
@@ -249,9 +237,6 @@ public partial class BuildViewModel : ViewModelBase
         {
             _isLoading = false;
         }
-
-        // 项目开关影响命令可用性（是否可更新引擎依赖）
-        UpdateProjectEngineCommand.NotifyCanExecuteChanged();
     }
 
     private void OnProjectClosed()
@@ -265,10 +250,8 @@ public partial class BuildViewModel : ViewModelBase
         EnableEncryption = false;
         EncryptResources = false;
 
-        // 引擎依赖版本回到占位，并禁用更新按钮
+        // 引擎依赖版本回到占位
         EngineDependencyVersion = "—";
-        ProjectEngineUpdateMessage = "";
-        UpdateProjectEngineCommand.NotifyCanExecuteChanged();
 
         // 重置游戏运行状态
         LaunchMessage = "";
@@ -279,7 +262,7 @@ public partial class BuildViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 刷新「项目引擎依赖版本」展示：优先读最终项目 engine.lock.json / DLL 元数据（版本真相在最终项目）；
+    /// 刷新「项目引擎依赖版本」展示：读项目 csproj 的 LingFanEngine PackageReference（NuGet 分发后版本真相）；
     /// 未打开项目时显示占位。
     /// </summary>
     private void RefreshProjectEngineVersion()
@@ -289,7 +272,7 @@ public partial class BuildViewModel : ViewModelBase
             EngineDependencyVersion = "—";
             return;
         }
-        var ver = _engineUpdateService.GetProjectEngineVersion(_session.ProjectDirectory);
+        var ver = EnginePackageHelper.GetEnginePackageVersion(_session.ProjectDirectory);
         EngineDependencyVersion = string.IsNullOrWhiteSpace(ver) ? "—" : ver;
     }
 
@@ -373,57 +356,6 @@ public partial class BuildViewModel : ViewModelBase
     }
 
     private bool CanBuild => _session.IsProjectOpen && !IsBuilding && !IsLaunching;
-
-    /// <summary>
-    /// 检查并应用「项目引擎依赖」更新（GitHub Release）。
-    /// <para>仅替换项目 DLL/ 内 4 个引擎 DLL（版本隔离点），逐 DLL 比对 + sha256 校验；
-    /// 锁定/缺失 DLL 视为 0.0.0 触发更新，已最新或更新失败绝不降级。更新后回写 engine.lock.json。</para>
-    /// <para>注意：更新仅替换开发态 DLL，需重新构建发布后新版本才会编入最终 exe。</para>
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(CanUpdateProjectEngine))]
-    private async Task UpdateProjectEngineAsync()
-    {
-        var dir = _session.ProjectDirectory;
-        if (!_session.IsProjectOpen || string.IsNullOrWhiteSpace(dir))
-        {
-            ProjectEngineUpdateMessage = SdkLocalizer.Loc("St_NeedProject");
-            return;
-        }
-
-        IsUpdatingProjectEngine = true;
-        ProjectEngineUpdateMessage = SdkLocalizer.Loc("Bld_UpdCheck");
-
-        try
-        {
-            var progress = new Progress<string>(msg => ProjectEngineUpdateMessage = msg);
-            var result = await _engineUpdateService.UpdateProjectAsync(dir, progress);
-
-            ProjectEngineUpdateMessage = result.Status switch
-            {
-                EngineUpdateStatus.UpToDate => SdkLocalizer.Loc("Bld_UpdLatest", EngineDependencyVersion),
-                EngineUpdateStatus.UpdateApplied => SdkLocalizer.Loc("Bld_UpdApplied", result.ManifestVersion, result.UpdatedDlls.Count),
-                EngineUpdateStatus.Failed => SdkLocalizer.Loc("Bld_UpdFail", result.ErrorMessage),
-                _ => ProjectEngineUpdateMessage,
-            };
-
-            // 热替换成功后刷新版本展示
-            if (result.Status == EngineUpdateStatus.UpdateApplied
-                && !string.IsNullOrEmpty(result.ManifestVersion))
-            {
-                EngineDependencyVersion = result.ManifestVersion;
-            }
-        }
-        catch (Exception ex)
-        {
-            ProjectEngineUpdateMessage = SdkLocalizer.Loc("Bld_UpdExc", ex.Message);
-        }
-        finally
-        {
-            IsUpdatingProjectEngine = false;
-        }
-    }
-
-    private bool CanUpdateProjectEngine() => _session.IsProjectOpen && !IsUpdatingProjectEngine;
 
     // ===== 游戏运行：启动 / 停止 =====
 

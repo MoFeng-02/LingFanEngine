@@ -23,8 +23,27 @@ public static class TemplateDefaults
     /// </summary>
     public const string BuiltinVersion = "1.0.0";
 
-    /// <summary>IHttpClientFactory 命名客户端名称（与引擎更新共用 engine-update 客户端，避免重复注册）。</summary>
+    /// <summary>IHttpClientFactory 命名客户端名称（模板更新与远端检查共用客户端）。</summary>
     public const string HttpClientName = "engine-update";
+
+    /// <summary>HTTP 请求超时（秒）。GitHub raw/asset 通常较快，给 60s 余量。</summary>
+    public const int RequestTimeoutSeconds = 60;
+
+    /// <summary>HTTP User-Agent（GitHub API 强制要求；raw 也建议带）。</summary>
+    public const string UserAgent = "LingFanEngine-SDK";
+
+    /// <summary>
+    /// 允许拉取 manifest 的主机白名单（安全）。
+    /// <para>仅官方 GitHub/Gitee 源可拉取——防止恶意 manifest 投毒（指向伪造 asset 的 zip）。
+    /// 支持精确匹配与子域（如 *.githubusercontent.com、*.github.io）。</para>
+    /// </summary>
+    public static readonly string[] AllowedManifestHosts =
+    [
+        "raw.githubusercontent.com",
+        "github.com",
+        "github.io",
+        "gitee.com",
+    ];
 
     /// <summary>模板缓存目录名（位于 %LOCALAPPDATA%/LingFanEngine/ 下）。</summary>
     public const string TemplateCacheDir = "template-cache";

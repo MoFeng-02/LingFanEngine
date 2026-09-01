@@ -10,7 +10,7 @@ namespace LingFanEngine.Services.Scripting;
 /// <summary>
 /// 灵泛 DSL 脚本引擎 v3
 /// <para>缩进式块结构（无 end 关键字），2 遍编译（AST 构建 + 命令生成）。</para>
-/// <para>完全基于 Pidgin 解析器，零正则表达式，NativeAOT 友好。</para>
+/// <para>完全基于 Parlot 解析器，零正则表达式，NativeAOT 友好。</para>
 /// </summary>
 public class LingFanDslEngine : IScriptEngine
 {

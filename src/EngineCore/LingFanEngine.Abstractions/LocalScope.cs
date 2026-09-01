@@ -116,10 +116,18 @@ public static class LocalScope
     }
 
     /// <summary>读取局部变量：按 label→scene→file 回退，最后回退全局键 <paramref name="name"/></summary>
+    /// <para>name 可为裸名（如 let "x" 后读 "x" / "_local_x"）或带 <c>_local_</c> 前缀的引用
+    /// （如表达式 <c>{_local_i + 1}</c>、<c>while {_local_i < 3}</c>）——后者剥前缀后按作用域链查，
+    /// 与 <see cref="Write"/> 的剥前缀行为对称，保证读写命中同一键（不对称时读到 null，
+    /// 循环条件 null&lt;N 恒真导致死循环）。</para>
     public static object? Read(IStateContainer state, string name)
     {
         var (file, scene, label) = Current(state);
-        var baseName = name.Replace('.', '_');
+        // 与 Write 对称：Write("_local_x") 剥前缀取 baseName "x"，读取带前缀引用时同样剥前缀
+        var scopedName = name.StartsWith(Prefix, System.StringComparison.Ordinal)
+            ? name[Prefix.Length..]
+            : name;
+        var baseName = scopedName.Replace('.', '_');
         if (!string.IsNullOrEmpty(label))
         {
             var v = state.Get<object>(Key(file, scene, label, baseName));

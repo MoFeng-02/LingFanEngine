@@ -1,4 +1,4 @@
-﻿﻿﻿﻿using System;
+﻿﻿﻿using System;
 using System.Net.Http.Headers;
 using LingFanEngine.SDK.AI;
 using LingFanEngine.SDK.Constants;
@@ -39,23 +39,21 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<IPackToolService>()));
         services.AddSingleton<IAssetManager, AssetManager>();
 
-        // ===== 引擎 DLL 独立更新服务 =====
+        // ===== 远端更新客户端（模板更新；引擎自 2026-09 起经 NuGet 分发，SDK 不再做引擎 DLL 热更） =====
         // 通过 IHttpClientFactory 注册命名客户端，由工厂管理 handler 池，避免套接字耗尽。
         // SDK 版本作为 User-Agent 后缀，便于 GitHub 侧识别客户端。
         var sdkVersion = typeof(ServiceCollectionExtensions).Assembly
             .GetName().Version?.ToString(3) ?? "0.0.0";
-        services.AddHttpClient(EngineUpdateDefaults.HttpClientName, client =>
+        services.AddHttpClient(TemplateDefaults.HttpClientName, client =>
         {
-            client.Timeout = TimeSpan.FromSeconds(EngineUpdateDefaults.RequestTimeoutSeconds);
+            client.Timeout = TimeSpan.FromSeconds(TemplateDefaults.RequestTimeoutSeconds);
             client.DefaultRequestHeaders.UserAgent.ParseAdd(
-                $"{EngineUpdateDefaults.UserAgent}/{sdkVersion}");
+                $"{TemplateDefaults.UserAgent}/{sdkVersion}");
             client.DefaultRequestHeaders.Accept.Add(
                 new MediaTypeWithQualityHeaderValue("application/json"));
         });
-        services.AddSingleton<IEngineUpdateService, EngineUpdateService>();
 
         // ===== 模板更新服务（从 Release 拉取模板 zip 并做版本管理） =====
-        // 复用上述 engine-update 命名客户端（TemplateDefaults.HttpClientName == EngineUpdateDefaults.HttpClientName）。
         services.AddSingleton<ITemplateUpdateService, TemplateUpdateService>();
 
         // ===== 游戏运行服务（启动/停止用户已构建的游戏） =====

@@ -80,15 +80,30 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>, IDefaultCom
                 nvlSpeakers += "\n";
             nvlSpeakers += speakerName ?? "";
 
+            // C2（2026-09）：NVL 说话者内联样式——名字加粗 + 角色色（对标 Ren'Py NVL speaker style）
+            var nvlSpeakerColor = sd.SpeakerColor ?? GetCharProp(charDef, "color");
+            var styledSpeaker = !string.IsNullOrEmpty(speakerName) && IsValidHexColor(nvlSpeakerColor)
+                ? $"{{color={nvlSpeakerColor}}}{{b}}{speakerName}{{/b}}{{/color}}"
+                : speakerName;
+
             // 累积显示文本——说话者名称内联（对标 Ren'Py NVL 默认布局）
             // 格式："说话者：对话文本" 或 "对话文本"（无说话者时）
-            var displayLine = string.IsNullOrEmpty(speakerName)
+            var displayLine = string.IsNullOrEmpty(styledSpeaker)
                 ? dialogText
-                : $"{speakerName}：{dialogText}";
+                : $"{styledSpeaker}：{dialogText}";
 
             if (!string.IsNullOrEmpty(nvlText))
                 nvlText += "\n";
             nvlText += displayLine;
+
+            // C4（2026-09）：NVL 溢出自动滚动——超过最大行数时滚出最旧行（对标 Ren'Py nvl 滚动体验）。
+            // 裁剪后经 Nvl.SkipHint 告知视图层「保留部分已显示」，打字机只打字新行。
+            var lineCount = CountLines(nvlText);
+            if (lineCount > MaxNvlLines)
+            {
+                nvlText = TrimOldestLines(nvlText, lineCount - MaxNvlLines);
+                ctx.State.Set(StateKeys.Nvl.SkipHint, nvlText.Length);
+            }
 
             ctx.State.Set(StateKeys.Nvl.Text, nvlText);
             ctx.State.Set(StateKeys.Nvl.Speakers, nvlSpeakers);
@@ -152,6 +167,45 @@ public class ShowDialogHandler : ICommandHandler<ShowDialogCommand>, IDefaultCom
     {
         if (charDef == null) return null;
         return charDef.TryGetValue(key, out var val) && val is string s ? s : null;
+    }
+
+    // ── NVL 溢出滚动（C4，2026-09） ──
+
+    /// <summary>NVL 最大累积行数：超出后最旧行滚出（保持屏幕可读，对标 Ren'Py nvl 滚动）</summary>
+    private const int MaxNvlLines = 12;
+
+    /// <summary>统计行数（'\n' 分隔；空文本为 0 行）</summary>
+    private static int CountLines(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return 0;
+        var count = 1;
+        foreach (var c in text)
+            if (c == '\n') count++;
+        return count;
+    }
+
+    /// <summary>裁掉最旧的 count 行（保留其后内容；不足时返回原文）</summary>
+    private static string TrimOldestLines(string text, int count)
+    {
+        if (count <= 0) return text;
+        int idx = -1;
+        for (int i = 0; i < count; i++)
+        {
+            idx = text.IndexOf('\n', idx + 1);
+            if (idx < 0) return text;
+        }
+        return text[(idx + 1)..];
+    }
+
+    /// <summary>校验十六进制颜色（#RGB/#RRGGBB/#AARRGGBB）——防非法值进入 {color=} 标签</summary>
+    private static bool IsValidHexColor(string? s)
+    {
+        if (string.IsNullOrEmpty(s) || s[0] != '#') return false;
+        var len = s.Length;
+        if (len is not (4 or 7 or 9)) return false;
+        for (int i = 1; i < len; i++)
+            if (!Uri.IsHexDigit(s[i])) return false;
+        return true;
     }
 
     /// <summary>

@@ -6,13 +6,14 @@ namespace LingFanEngine.Dsl.LanguageService;
 /// <summary>
 /// DSL 纯缩进规整器（保守格式化）。
 /// <para>设计红线：① 只重排缩进 + 去除行尾空白；② 原样保留每行内容与行内注释，绝不丢信息；
-/// ③ 块嵌套由<b>关键字域</b>推导：普通体行（say/set/let/se 等）继承当前块深度，不根据自
-/// 身缩进弹栈；只有开块关键字与 <c>else</c> 续行会调整缩进栈。这样单个 body 行的缩进
-/// 错误不会污染整域结构，符合用户「按域缩进」的预期。</para>
+/// ③ 块结束判定与引擎 CompileBody 语义对齐——普通体行缩进恰好回落到块缩进且块已有体行时弹栈
+/// （块后语句不吞进块体）；缩进浅于块或块尚无体行时视为缩进错误、修复进体（不破坏域）。
+/// 这样格式化输出与引擎按缩进判块的行为一致，不会静默改变程序结构。</para>
 /// <para>为什么不用 AST 重建：解析器逐行消费、不保留 trivia，而 DSL 支持整行 <c>//</c>/<c>#</c> 与行内注释
 /// （<see cref="LingFanEngine"/> 加载链路 <c>StripInlineComment</c>），AST 重建会丢注释。故采用缩进栈算法。</para>
 /// <para>续行语义：仅 <c>else</c>/<c>else if</c>（首词取 "else"）对齐到所属 <c>if</c> 同级（比体浅一层）、
-/// 不压栈不弹栈、<c>depth = stack.Count - 1</c>。<c>case</c>/<c>default</c> 与 <c>scene</c>/<c>if</c> 等同属开块（见
+/// 不压栈不弹栈、<c>depth = stack.Count - 1</c>。花括号续行块（<c>} else {</c>）压栈使体 +1（由闭合 <c>}</c> 弹出）。
+/// <c>case</c>/<c>default</c> 与 <c>scene</c>/<c>if</c> 等同属开块（见
 /// <see cref="DslBlockStructure.IsIndentationBlockStarter"/>），压栈使体更深。此规则经真实脚本逐行验证。</para>
 /// </summary>
 internal static class DslFormatter
@@ -20,8 +21,9 @@ internal static class DslFormatter
     /// <summary>规范缩进单位（空格数）。LSP 客户端可在 FormattingOptions 中覆写 tabSize。</summary>
     private const int DefaultIndentUnit = 2;
 
-    /// <summary>缩进栈条目：记录开块关键字及其原始缩进，用于决定后续开块/续行的嵌套关系。</summary>
-    private readonly record struct StackEntry(int Indent, string Keyword);
+    /// <summary>缩进栈条目：记录开块关键字、其原始缩进、以及是否已出现真实体行（缩进深于块的行），
+    /// 用于区分「块结束」与「体行缩进错误」。</summary>
+    private readonly record struct StackEntry(int Indent, string Keyword, bool HasBody);
 
     /// <summary>格式化整篇文档，返回重排后的完整文本（保留原换行风格）。</summary>
     public static string Format(string source, int? tabSize = null, bool insertSpaces = true)
@@ -80,9 +82,15 @@ internal static class DslFormatter
             {
                 var continuation = GetFirstWord(afterBrace);
                 if (IsContinuation(continuation))
-                    return Indent((stack.Count > 0 ? stack.Count - 1 : 0) * unit, insertSpaces) + afterBrace;
+                {
+                    var contDepth = stack.Count > 0 ? stack.Count - 1 : 0;
+                    // 花括号续行块（"} else {"）：压栈使体 +1（由闭合 } 弹出）
+                    if (afterBrace.EndsWith('{'))
+                        stack.Push(new StackEntry(contDepth * unit, continuation, HasBody: false));
+                    return Indent(contDepth * unit, insertSpaces) + "} " + afterBrace;
+                }
                 // } 后跟普通语句（如 "} say hi"），按当前栈深
-                return Indent(stack.Count * unit, insertSpaces) + afterBrace;
+                return Indent(stack.Count * unit, insertSpaces) + "} " + afterBrace;
             }
             return Indent(stack.Count * unit, insertSpaces) + trimmed;
         }
@@ -111,17 +119,33 @@ internal static class DslFormatter
                 // 开块关键字：按自身缩进弹出同级或外层开块，然后压入自身。
                 PopBlocksForStarter(stack, indent, firstWord);
                 depth = stack.Count;
-                stack.Push(new StackEntry(indent, firstWord));
+                stack.Push(new StackEntry(indent, firstWord, HasBody: false));
             }
         }
         else
         {
-            // 普通体行：继承当前块深度，不根据自身缩进弹栈。
-            // 这是「按域缩进」的核心：单个 say/set 的缩进错误不会破坏 if/scene 等域结构。
+            // 普通体行——块结束判定与引擎 CompileBody 语义对齐：
+            // ① 缩进浅于块 → 视为体行缩进错误，修复进体（不可能有意比块本身还浅）；
+            // ② 缩进恰好等于块缩进且块已有真实体行 → 块结束，弹栈
+            //    （while/if/menu 等缩进块无显式结束标记，块结束只能靠缩进回落识别；
+            //     不弹栈会把块后语句永久吞进块体——如 while 后的语句全进循环体）；
+            // ③ 缩进等于块缩进但块尚无体行 → 全平脚本的缩进错误，修复进体。
+            // 真实体行（缩进深于块）标记 HasBody，供 ② 判定。
+            while (stack.Count > 0 && stack.Peek().Indent == indent && stack.Peek().HasBody)
+                stack.Pop();
+            if (stack.Count > 0 && indent > stack.Peek().Indent)
+                MarkHasBody(stack);
             depth = stack.Count;
         }
 
         return Indent(depth * unit, insertSpaces) + trimmed;
+    }
+
+    /// <summary>标记栈顶块已出现真实体行（record struct 值语义，需弹出重压）。</summary>
+    private static void MarkHasBody(Stack<StackEntry> stack)
+    {
+        var top = stack.Pop();
+        stack.Push(top with { HasBody = true });
     }
 
     /// <summary>

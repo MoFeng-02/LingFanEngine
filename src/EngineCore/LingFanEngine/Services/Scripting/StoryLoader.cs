@@ -747,7 +747,7 @@ ExtractSceneBlocks(string script)
             var line = rawLine.TrimEnd('\r');
 
             // scene "xxx" 开始（仅顶格行识别为场景定义，缩进的 scene 是 DSL 导航命令）
-            // 快速前缀过滤 + Pidgin 解析器
+            // 快速前缀过滤 + Parlot 解析器
             var lineIndent = 0;
             foreach (var ch in rawLine)
             {
@@ -837,7 +837,7 @@ ExtractSceneBlocks(string script)
                 }
 
                 // scene 块内的 define 行 → 解析为场景级变量定义（不进入 entry script）
-                // 快速前缀过滤 + Pidgin 解析器
+                // 快速前缀过滤 + Parlot 解析器
                 if (trimmed.StartsWith("define ") || trimmed.StartsWith("define\t"))
                 {
                     var defineEntry = DslParser.ParseDefineLine(trimmed);
@@ -941,7 +941,7 @@ ExtractSceneBlocks(string script)
     }
 
     /// <summary>
-    /// 解析 scene 块内的 UI 元素行（委托给 Pidgin 解析器）
+    /// 解析 scene 块内的 UI 元素行（委托给 Parlot 解析器）
     /// <para>支持属性任意顺序，at/size 语法糖自动展开。</para>
     /// </summary>
     internal static UIElementEntity? ParseSceneElement(string line)

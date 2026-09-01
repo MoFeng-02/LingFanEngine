@@ -760,6 +760,11 @@ public const string SeenSayIndices = "__seen_say_indices";
         /// <summary>NVL 已积累的条目数 (int)</summary>
         public const string Count = "__nvl_count";
 
+        /// <summary>NVL 溢出裁剪提示 (int，原文坐标)：
+        /// 滚动裁掉旧行后，保留部分的原文长度（DialogBox 读取后传给 DialogEngine.SetNvlText
+        /// 作为 rawSkipHint，使打字机只打字新行；-1=无裁剪，走前缀追加检测）。读取方负责复位 -1。</summary>
+        public const string SkipHint = "__nvl_skip_hint";
+
         /// <summary>「nvl auto」作用域自动推进标记 (bool)。由 nvl auto 开启、nvl exit 时自动关闭；属播放模式状态，回溯/存档均隔离。</summary>
         public const string AutoScoped = "__nvl_auto_scoped";
     }

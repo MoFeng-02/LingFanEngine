@@ -81,19 +81,13 @@
                 </StackPanel>
             </StackPanel>
 
-            <!-- 引擎依赖 -->
+            <!-- 引擎依赖（NuGet 分发：版本来自项目 csproj 的 PackageReference，升级走 NuGet） -->
             <StackPanel Grid.Row="3" Spacing="6" Margin="0,0,0,16">
                 <TextBlock Text="{Binding EngineDepLabel}" FontWeight="Bold" Foreground="{DynamicResource Brush.TextHover}" />
                 <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,4,0,0">
                     <TextBlock Text="{Binding CurrentEngineVersionLabel}" FontSize="13"
                                VerticalAlignment="Center" Foreground="{DynamicResource Brush.TextHover}" />
-                    <Button Content="{Binding UpdateEngineLabel}" Command="{Binding UpdateProjectEngineCommand}" FontSize="13" Padding="16,6"
-                            Background="{DynamicResource Brush.Accent}" Foreground="{DynamicResource Brush.TextBright}" BorderThickness="0" />
                 </StackPanel>
-                <TextBlock Text="{Binding ProjectEngineUpdateMessage}" FontSize="12" Foreground="{DynamicResource Brush.Info}"
-                           TextWrapping="Wrap" />
-                <TextBlock Text="{Binding UpdateHintLabel}" FontSize="11"
-                           Foreground="{DynamicResource Brush.TextMuted}" />
                 <TextBlock Text="{Binding LaunchMessage}" FontSize="12" Foreground="{DynamicResource Brush.Info}"
                            TextWrapping="Wrap" Margin="0,4,0,0" />
             </StackPanel>

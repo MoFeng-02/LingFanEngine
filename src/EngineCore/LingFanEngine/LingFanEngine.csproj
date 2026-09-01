@@ -8,6 +8,18 @@
 
 		<!-- Native AOT 兼容声明（库项目，实际 AOT 编译在可执行项目上） -->
 		<IsAotCompatible>true</IsAotCompatible>
+
+		<!-- NuGet 包元数据（2026-09 起引擎经 NuGet 分发，替代 4-DLL zip 模式） -->
+		<!-- CI 发布时以 -p:Version=<tag> 覆盖版本 -->
+		<Version>0.3.0</Version>
+		<PackageId>LingFanEngine</PackageId>
+		<Authors>MoFeng-02</Authors>
+		<Description>灵泛引擎——跨平台可视化小说引擎（Avalonia / .NET 10 / Native AOT）</Description>
+		<PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MoFeng-02/LingFanEngine</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MoFeng-02/LingFanEngine</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageTags>visual-novel;engine;avalonia;cross-platform</PackageTags>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -54,12 +66,5 @@
 		<ProjectReference Include="..\LingFanEngine.Abstractions\LingFanEngine.Abstractions.csproj" />
 		<ProjectReference Include="..\LingFanEngine.DslCore\LingFanEngine.DslCore.csproj" />
 	</ItemGroup>
-
-	<ItemGroup>
-		<Reference Include="Pidgin">
-			<HintPath>..\..\..\DLL\Pidgin.dll</HintPath>
-			<Private>true</Private>
-			<!-- 确保复制到输出目录 -->
-		</Reference>
-	</ItemGroup>
+	<!-- Parlot 经 DslCore 的 PackageReference 传递（NuGet 管理，无本地 DLL） -->
 </Project>

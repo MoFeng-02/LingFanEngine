@@ -48,48 +48,8 @@
 	  <ProjectReference Include="..\..\EngineCore\LingFanEngine.DslCore\LingFanEngine.DslCore.csproj" />
 	</ItemGroup>
 
-	<!-- 将 DLL/ 目录复制到输出目录的 DLL/ 子目录 -->
-	<!-- 供 PublishService.UpdateEngineDlls 运行时复制到用户项目的 DLL/ 目录 -->
-
-	<!-- 引擎 DLL 自动同步 -->
-	<!-- 编译前从引擎各项目输出目录复制最新 DLL 到 SDK/DLL/（4个）和 Template/DLL/（4个） -->
-	<!-- SDK/DLL/ 与 Template/DLL/ 均含 Abstractions + DslCore + Pidgin + LingFanEngine， -->
-	<!-- 保证发布时 SDK 能把最新引擎核心一并复制到用户项目。 -->
-	<Target Name="SyncEngineDlls" BeforeTargets="PrepareForBuild">
-		<PropertyGroup>
-			<EngineBinDir>$(MSBuildThisFileDirectory)..\..\EngineCore\LingFanEngine\bin\$(Configuration)\net10.0</EngineBinDir>
-			<AbstractionsBinDir>$(MSBuildThisFileDirectory)..\..\EngineCore\LingFanEngine.Abstractions\bin\$(Configuration)\net10.0</AbstractionsBinDir>
-			<DslCoreBinDir>$(MSBuildThisFileDirectory)..\..\EngineCore\LingFanEngine.DslCore\bin\$(Configuration)\net10.0</DslCoreBinDir>
-			<SdkDllDir>$(MSBuildThisFileDirectory)DLL</SdkDllDir>
-			<TemplateDllDir>$(MSBuildThisFileDirectory)..\..\Template\V1\_LingFanEngineTemplateTitle_\DLL</TemplateDllDir>
-		</PropertyGroup>
-
-		<!-- SDK/DLL/: 4 个 DLL（编辑所需 3 个 + 运行时引擎 LingFanEngine.dll） -->
-		<!-- LingFanEngine.dll 一并携带，使发布时 SDK 能自愈地把最新引擎复制到用户项目， -->
-		<!-- 不再依赖用户项目创建时从模板带入（旧设计：缺失只警告、引擎更新无法传播）。 -->
-		<ItemGroup>
-			<SdkSyncDlls Include="$(EngineBinDir)\LingFanEngine.dll" Condition="Exists('$(EngineBinDir)\LingFanEngine.dll')" />
-			<SdkSyncDlls Include="$(AbstractionsBinDir)\LingFanEngine.Abstractions.dll" Condition="Exists('$(AbstractionsBinDir)\LingFanEngine.Abstractions.dll')" />
-			<SdkSyncDlls Include="$(DslCoreBinDir)\LingFanEngine.DslCore.dll" Condition="Exists('$(DslCoreBinDir)\LingFanEngine.DslCore.dll')" />
-			<SdkSyncDlls Include="$(EngineBinDir)\Pidgin.dll" Condition="Exists('$(EngineBinDir)\Pidgin.dll')" />
-		</ItemGroup>
-
-		<!-- Template/DLL/: 4 个 DLL（含 LingFanEngine.dll） -->
-		<ItemGroup>
-			<TplSyncDlls Include="$(EngineBinDir)\LingFanEngine.dll" Condition="Exists('$(EngineBinDir)\LingFanEngine.dll')" />
-			<TplSyncDlls Include="$(AbstractionsBinDir)\LingFanEngine.Abstractions.dll" Condition="Exists('$(AbstractionsBinDir)\LingFanEngine.Abstractions.dll')" />
-			<TplSyncDlls Include="$(DslCoreBinDir)\LingFanEngine.DslCore.dll" Condition="Exists('$(DslCoreBinDir)\LingFanEngine.DslCore.dll')" />
-			<TplSyncDlls Include="$(EngineBinDir)\Pidgin.dll" Condition="Exists('$(EngineBinDir)\Pidgin.dll')" />
-		</ItemGroup>
-
-		<Copy SourceFiles="@(SdkSyncDlls)" DestinationFolder="$(SdkDllDir)" SkipUnchangedFiles="true" />
-		<Copy SourceFiles="@(TplSyncDlls)" DestinationFolder="$(TemplateDllDir)" SkipUnchangedFiles="true" />
-
-		<!-- 将同步后的 DLL 作为 Content 输出到构建/发布目录，确保 SDK 安装目录包含 DLL/ 种子 -->
-		<ItemGroup>
-			<Content Include="$(SdkDllDir)\*.dll" CopyToOutputDirectory="PreserveNewest" />
-		</ItemGroup>
-	</Target>
+	<!-- 引擎依赖经 NuGet 传递（2026-09 起引擎以 NuGet 包分发，SDK 不再携带/同步 DLL 种子）：
+	     DslCore 的 ProjectReference 仅供 SDK 自身编译使用；用户项目经 PackageReference 还原。 -->
 
 	<!-- P2-1: 模板 ZIP 嵌入资源 -->
 	<!-- 构建时把 src/Template/V1 打包为 template.zip 并嵌入程序集 -->

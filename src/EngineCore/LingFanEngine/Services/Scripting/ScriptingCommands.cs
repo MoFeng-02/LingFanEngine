@@ -228,7 +228,7 @@ public static class DslExpressionEvaluator
     private static readonly ConcurrentDictionary<string, Expr?> _astCache = new();
 
     /// <summary>
-    /// 求值 DSL 表达式（基于 Pidgin AST 引擎，带编译缓存）
+    /// 求值 DSL 表达式（基于 Parlot AST 引擎，带编译缓存）
     /// </summary>
     /// <param name="expr">表达式文本（不含花括号）</param>
     /// <param name="state">状态容器，用于读取变量</param>
@@ -241,21 +241,17 @@ public static class DslExpressionEvaluator
         expr = expr.Trim();
 
         // 从缓存获取或编译 AST
-        var ast = _astCache.GetOrAdd(expr, e =>
-        {
-            var result = DslExpressionParser.Parse(e);
-            return result.Success ? result.Value : null;
-        });
+        var ast = _astCache.GetOrAdd(expr, e => DslExpressionParser.Parse(e));
 
         if (ast != null)
             return ExpressionEvaluator.Evaluate(ast, state);
 
-        // Pidgin 解析失败，回退到旧引擎
+        // 解析失败，回退到旧引擎
         return EvaluateLegacy(expr, state);
     }
 
     /// <summary>
-    /// 旧版求值——Pidgin 解析失败时的回退（不使用正则）
+    /// 旧版求值——Parlot 解析失败时的回退（不使用正则）
     /// </summary>
     /// <param name="expr">表达式文本（不含花括号）</param>
     /// <param name="state">状态容器，用于读取变量</param>
@@ -318,7 +314,7 @@ public static class DslExpressionEvaluator
     }
 
     /// <summary>
-    /// 求值布尔表达式（基于 Pidgin AST 引擎）——用于 if/elif 条件判断
+    /// 求值布尔表达式（基于 Parlot AST 引擎）——用于 if/elif 条件判断
     /// <para>与 Evaluate 不同，此方法始终返回 bool。</para>
     /// </summary>
     public static bool EvaluateBool(string expr, IStateContainer state)
@@ -329,21 +325,17 @@ public static class DslExpressionEvaluator
         expr = expr.Trim();
 
         // 从缓存获取或编译 AST
-        var ast = _astCache.GetOrAdd(expr, e =>
-        {
-            var result = DslExpressionParser.Parse(e);
-            return result.Success ? result.Value : null;
-        });
+        var ast = _astCache.GetOrAdd(expr, e => DslExpressionParser.Parse(e));
 
         if (ast != null)
             return ExpressionEvaluator.EvaluateBool(ast, state);
 
-        // Pidgin 解析失败，回退到旧引擎
+        // 解析失败，回退到旧引擎
         return EvaluateBoolLegacy(expr, state);
     }
 
     /// <summary>
-    /// 旧版布尔求值——Pidgin 解析失败时的回退（不使用正则）
+    /// 旧版布尔求值——Parlot 解析失败时的回退（不使用正则）
     /// <para>与 Evaluate 不同，此方法始终返回 bool。</para>
     /// </summary>
     private static bool EvaluateBoolLegacy(string expr, IStateContainer state)

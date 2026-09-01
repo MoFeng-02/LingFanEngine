@@ -108,7 +108,7 @@ public class StoryRegistry : IStoryRegistry
                     if (lineIndent != 0) continue;
 
                     // 匹配 scene "name"（支持 scene 行属性如 layout=canvas type=menu）
-                    // 快速前缀过滤 + Pidgin 解析器
+                    // 快速前缀过滤 + Parlot 解析器
                     if (trimmed.StartsWith("scene ") || trimmed.StartsWith("scene\t"))
                     {
                         var sceneHeader = DslParser.ParseSceneHeader(trimmed);
@@ -121,7 +121,7 @@ public class StoryRegistry : IStoryRegistry
                     }
 
                     // 匹配 label xxx:（全局 label 索引）
-                    // 快速前缀过滤 + Pidgin 解析器
+                    // 快速前缀过滤 + Parlot 解析器
                     if (trimmed.StartsWith("label ") || trimmed.StartsWith("label\t"))
                     {
                         var labelName = DslParser.ParseLabelLine(trimmed);

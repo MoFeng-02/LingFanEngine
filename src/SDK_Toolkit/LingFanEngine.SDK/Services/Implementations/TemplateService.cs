@@ -27,12 +27,10 @@ namespace LingFanEngine.SDK.Services.Implementations;
 /// </summary>
 public class TemplateService : ITemplateService
 {
-    private readonly IEngineUpdateService _engineUpdateService;
     private readonly ITemplateUpdateService _templateUpdateService;
 
-    public TemplateService(IEngineUpdateService engineUpdateService, ITemplateUpdateService templateUpdateService)
+    public TemplateService(ITemplateUpdateService templateUpdateService)
     {
-        _engineUpdateService = engineUpdateService;
         _templateUpdateService = templateUpdateService;
     }
 
@@ -172,8 +170,8 @@ public class TemplateService : ITemplateService
         // 将 Directory.Build.props.temp 重命名为 Directory.Build.props
         RenameTempPropsFiles(projectDir);
 
-        // 为新建项目播种引擎 DLL（4 个齐全，离线也基于缓存）：DLL/ + engine.lock.json
-        await _engineUpdateService.SeedNewProjectEngineAsync(projectDir);
+        // 引擎依赖不再播种（2026-09 起经 NuGet 分发）：项目 csproj 的 PackageReference
+        // 由 dotnet restore 自动还原，无需 DLL 目录/engine.lock.json。
     }
 
     /// <summary>复制模板目录（排除 bin/obj/.vs 和残留文件）</summary>

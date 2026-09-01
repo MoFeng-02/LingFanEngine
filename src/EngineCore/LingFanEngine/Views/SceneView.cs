@@ -45,12 +45,9 @@ public partial class SceneView : UserControl, ISceneRenderer
     private string _lastSceneName = "";
     private string _lastDialogText = "";
 
-    /// <summary>对话点击消费标志——防止陈旧点击/按键重复设置 Dialog.Complete。
-    /// <para>与 DialogBox._clickConsumed 同理：用户完成 say N 后，IsComplete 仍为 true，
-    /// 窗口期内的再次点击会重复设 Dialog.Complete=true，被下一句的等待消费。</para>
-    /// <para>此标志覆盖 SceneView 的场景背景点击、对话遮罩点击、键盘快捷键。</para>
-    /// <para>在 UpdateDialog 时重置（新文本加载=点击重新生效）。</para>
-    private bool _dialogClickConsumed;
+    /// <summary>前进点击兜底闸门——仅在对话框缺失时使用（正常路径走 IDialogBox.TryConsumeClick，
+    /// 由 DialogEngine 统一防重入，C5 收敛 2026-09）。</summary>
+    private bool _fallbackClickConsumed;
     private string _lastLanguage = "";
     private bool _layoutDirty;
     private string _currentLayoutMode = "grid";
@@ -115,18 +112,16 @@ public partial class SceneView : UserControl, ISceneRenderer
             {
                 if (_dialogBoxIF != null && !_dialogBoxIF.IsComplete)
                     _dialogBoxIF.SkipToEnd();
-                else if (!_dialogClickConsumed)
+                else if (ConsumeForwardClick())
                 {
-                    _dialogClickConsumed = true;
                     _state.Set(StateKeys.Dialog.WaitingSayComplete, true);
                     _state.Set(StateKeys.Dialog.Complete, true);
                 }
             }
             else if (e.Key == Avalonia.Input.Key.Escape)
             {
-                if (!_dialogClickConsumed)
+                if (ConsumeForwardClick())
                 {
-                    _dialogClickConsumed = true;
                     _state.Set(StateKeys.Dialog.WaitingSayComplete, true);
                     _state.Set(StateKeys.Dialog.Complete, true);
                 }
@@ -309,8 +304,7 @@ public partial class SceneView : UserControl, ISceneRenderer
 
         rootPanel.PointerPressed += (_, _) =>
         {
-            if (_dialogClickConsumed) return;
-            _dialogClickConsumed = true;
+            if (!ConsumeForwardClick()) return;
             _state.Set(StateKeys.Dialog.WaitingSayComplete, true);
             _state.Set(StateKeys.Dialog.Complete, true);
         };
@@ -381,8 +375,7 @@ public partial class SceneView : UserControl, ISceneRenderer
         };
         _dialogMask.PointerPressed += (_, _) =>
         {
-            if (_dialogClickConsumed) return;
-            _dialogClickConsumed = true;
+            if (!ConsumeForwardClick()) return;
             _state.Set(StateKeys.Dialog.WaitingSayComplete, true);
             _state.Set(StateKeys.Dialog.Complete, true);
         };
@@ -519,10 +512,24 @@ public partial class SceneView : UserControl, ISceneRenderer
 
     // ========== 对话框 ==========
 
+    /// <summary>
+    /// 前进点击统一闸门（C5）：对话框存在时走 IDialogBox.TryConsumeClick
+    /// （DialogEngine 防重入——本句已完成后的重复点击/按键被拒绝）；
+    /// 对话框缺失时退化为本地一次性闸门（不再向无等待的执行流发 Complete）。
+    /// </summary>
+    private bool ConsumeForwardClick()
+    {
+        if (_dialogBoxIF != null)
+            return _dialogBoxIF.TryConsumeClick();
+        if (_fallbackClickConsumed) return false;
+        _fallbackClickConsumed = true;
+        return true;
+    }
+
     private void UpdateDialog(string text)
     {
-        // 重置点击消费标志——新文本加载，点击/按键重新生效
-        _dialogClickConsumed = false;
+        // 兜底闸门复位（对话框路径的闸门由 DialogEngine 在 SetText 时重置）
+        _fallbackClickConsumed = false;
 
         // Phase 65: 模板注册表可用时，按名解析并切换
         if (_dialogRegistry != null && _dialogRegistry.GetDefault() != null)
