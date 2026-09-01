@@ -81,6 +81,29 @@ public class AnimationServiceTests
     }
 
     [Fact]
+    public void Update_RepeatPingPong_SecondPassMovesBackTowardStart()
+    {
+        // 回归（2026-09 repeat 动画静止 BUG）：旧实现循环时 From=Target 且 Target 不变，
+        // 第二轮起 current 恒 = target（补间区间长度为 0）——repeat 动画第一轮后完全静止。
+        // 修复：往返（ping-pong）——交换 from/target，第二轮从 target 回到起点。
+        var state = new StateContainer();
+        Setup(state, "p", 0, 100, 10, 10, "Linear", true, repeat: -1); // 无限循环
+
+        var svc = new AnimationService();
+        svc.Update(0, state); // 第一轮结束 → 交换：from=100, target=0
+
+        // 第二轮推进一半（elapsed 5 / duration 10，Linear）→ current = 100 + (0-100)*0.5 = 50
+        svc.Update(5.0, state);
+        state.Get<double>(Key("p", StateKeys.Animation.CurrentSuffix)).Should().BeApproximately(50.0, 0.0001);
+
+        // 第二轮结束 → 再次交换回 from=0, target=100（无限循环不停止）
+        svc.Update(5.0, state);
+        state.Get<bool>(Key("p", StateKeys.Animation.ActiveSuffix)).Should().BeTrue();
+        state.Get<double>(Key("p", StateKeys.Animation.FromSuffix)).Should().BeApproximately(0.0, 0.0001);
+        state.Get<double>(Key("p", StateKeys.Animation.TargetSuffix)).Should().BeApproximately(100.0, 0.0001);
+    }
+
+    [Fact]
     public void Update_NoActiveAnimations_Noop()
     {
         var state = new StateContainer();

@@ -441,15 +441,20 @@ public class GameLoop : IGameLoop
                     {
                         var spinEnd = stopwatch.ElapsedTicks + remainingTicks;
 
-                        // 仅当剩余时间 > delayThresholdTicks 时才用 Task.Delay。
-                        // 高精度定时器激活时阈值=3ms，Task.Delay 精度 ~1ms，高帧率也能高效让出 CPU。
+                        // 仅当剩余时间 > delayThresholdTicks 时才让出 CPU。
+                        // 高精度定时器激活时阈值=3ms，等待精度 ~1ms，高帧率也能高效让出 CPU。
                         // 未激活时阈值=16ms（系统默认定时器分辨率），避免超睡。
+                        // 2026-09（AOT 帧率修复）：等待改为 HighResolutionTimer.Wait（高分辨率可等待
+                        // 定时器，阻塞式）——NativeAOT 下 await Task.Delay 唤醒精度退化为 ~15.6ms
+                        // （即使 timeBeginPeriod(1) 生效），60fps 节流实测掉到 ~50fps；
+                        // 阻塞等待同时消除线程池续体调度延迟。本循环运行在专用后台线程，阻塞安全。
                         if (remainingTicks > delayThresholdTicks)
                         {
                             var delayMs = (remainingTicks * 1000L) / Stopwatch.Frequency - spinMarginMs;
                             if (delayMs > 1)
                             {
-                                await Task.Delay((int)delayMs, ct);
+                                HighResolutionTimer.Wait((int)delayMs);
+                                if (ct.IsCancellationRequested) return;
                             }
                         }
 

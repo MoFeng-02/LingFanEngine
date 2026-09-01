@@ -20,6 +20,76 @@ public static class HighResolutionTimer
     [DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
     private static extern uint TimeEndPeriod(uint uPeriod);
 
+    // ── 高分辨率可等待定时器（2026-09，AOT 帧率修复）──
+    // NativeAOT 下 await Task.Delay 的唤醒精度退化为 ~15.6ms（即使 timeBeginPeriod(1) 已生效，
+    // JIT 下正常）——GameLoop 60fps 节流每帧睡 ~10-14ms，每次超睡导致实际 ~50fps（实测）。
+    // CreateWaitableTimerExW(HIGH_RESOLUTION)（Win10 1803+）提供 ~1ms 精度且不依赖
+    // timeBeginPeriod，JIT/AOT 实测均稳定 60fps。非 Windows / 旧系统回退 Thread.Sleep
+    // （Linux/macOS 原生 ~1ms；旧 Windows 靠 timeBeginPeriod）。
+    [DllImport("kernel32.dll", SetLastError = true, EntryPoint = "CreateWaitableTimerExW")]
+    private static extern nint CreateWaitableTimerEx(nint attrs, nint name, uint flags, uint access);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetWaitableTimer(nint timer, ref long dueTime, int period,
+        nint completionRoutine, nint argToCompletion, bool resume);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool WaitForSingleObject(nint handle, uint milliseconds);
+
+    /// <summary>CREATE_WAITABLE_TIMER_HIGH_RESOLUTION——Win10 1803+ 高精度定时器标志</summary>
+    private const uint HighResolutionFlag = 0x00000002;
+    /// <summary>TIMER_ALL_ACCESS</summary>
+    private const uint TimerAllAccess = 0x1F0003;
+
+    /// <summary>懒创建的高精度定时器句柄（仅 GameLoop 专用线程使用，无线程同步问题）</summary>
+    private static nint s_hiresTimer;
+    /// <summary>句柄初始化状态：0=未尝试，1=可用，-1=不可用（回退 Thread.Sleep）</summary>
+    private static int s_hiresState;
+
+    /// <summary>
+    /// 高精度阻塞等待指定毫秒数（供 GameLoop 帧率节流在专用后台线程调用——阻塞该线程是安全的，
+    /// 且相比 await Task.Delay 消除了线程池续体调度延迟）。
+    /// <para>Windows 10 1803+：高分辨率可等待定时器（~1ms 精度，不依赖 timeBeginPeriod）。</para>
+    /// <para>其他平台 / 旧 Windows：Thread.Sleep（Linux/macOS 原生 ~1ms；旧 Windows 依赖 timeBeginPeriod）。</para>
+    /// </summary>
+    public static void Wait(int milliseconds)
+    {
+        if (milliseconds <= 0) return;
+
+        if (s_isWindows)
+        {
+            // 懒初始化（一次性）——状态机避免每次调用重复 Create/判断
+            var state = Volatile.Read(ref s_hiresState);
+            if (state == 0)
+            {
+                var handle = CreateWaitableTimerEx(nint.Zero, nint.Zero, HighResolutionFlag, TimerAllAccess);
+                if (handle != nint.Zero)
+                {
+                    Volatile.Write(ref s_hiresTimer, handle);
+                    state = 1;
+                }
+                else
+                {
+                    state = -1; // 旧 Windows（1803 前）——回退 Thread.Sleep
+                }
+                Volatile.Write(ref s_hiresState, state);
+            }
+
+            if (state == 1)
+            {
+                var due = -(long)milliseconds * 10_000; // 相对到期（100ns 单位，负值=相对当前时间）
+                if (SetWaitableTimer(s_hiresTimer, ref due, 0, nint.Zero, nint.Zero, false))
+                {
+                    WaitForSingleObject(s_hiresTimer, unchecked((uint)-1));
+                    return;
+                }
+                // SetWaitableTimer 失败（罕见）——落到 Thread.Sleep
+            }
+        }
+
+        Thread.Sleep(milliseconds);
+    }
+
     /// <summary>Windows 平台标志——类初始化时一次性检测，避免每次调用重复判断。</summary>
     private static readonly bool s_isWindows = OperatingSystem.IsWindows();
 

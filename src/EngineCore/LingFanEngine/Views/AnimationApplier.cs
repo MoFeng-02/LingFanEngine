@@ -30,12 +30,39 @@ internal sealed class AnimationApplier : IAnimationApplier
     /// <summary>每控件的 Transform 缓存，避免每帧创建新对象</summary>
     private readonly Dictionary<Control, TransformBundle> _transformCache = new();
 
-    /// <summary>新动画扫描节流计数器——每 N 帧才全量扫描 _state.Keys 发现新动画</summary>
+    /// <summary>新动画扫描节流计数器——无新动画事件时每 N 帧才全量扫描 _state.Keys 发现新动画</summary>
     private int _newAnimScanCounter;
+
+    /// <summary>新动画启动待处理标志——事件驱动（AnimateHandler 在后台线程 Set active=true 时置位），
+    /// 下一 UI 帧强制扫描，消除节流窗口内启动延迟（30 帧 ≈ 0.5s@60fps——短于该时长的动画曾完全不被应用）</summary>
+    private volatile bool _newAnimPending;
 
     public AnimationApplier(IStateContainer state)
     {
         _state = state;
+        // 事件驱动新动画发现：active=true 置 pending 标志（后台线程安全——仅 volatile 写）
+        _state.ValueChanged += OnStateChanged;
+    }
+
+    /// <summary>状态变更回调（可能在 GameLoop 后台线程触发）——仅置标志，不做任何字典操作</summary>
+    private void OnStateChanged(string key, object? value)
+    {
+        if (value is true
+            && key.StartsWith(StateKeys.Animation.Prefix)
+            && key.EndsWith(StateKeys.Animation.ActiveSuffix))
+        {
+            _newAnimPending = true;
+        }
+    }
+
+    /// <summary>
+    /// 注册/更新 Tag→Control 映射（运行时元素层重建后由 SceneView 调用——
+    /// runtime 控件每帧重建曾使 _controlMap 持有已离树旧引用，animate 对 show 元素失效）
+    /// </summary>
+    public void RegisterControl(string tag, Control control)
+    {
+        if (!string.IsNullOrEmpty(tag))
+            _controlMap[tag] = control;
     }
 
     /// <summary>
@@ -85,9 +112,11 @@ internal sealed class AnimationApplier : IAnimationApplier
                 _activeAnimCache.Remove(key);
         }
 
-        // 扫描新的活跃动画键——节流到每 30 帧（~0.25s @120fps）扫描一次
-        // 大部分帧没有新动画启动，跳过全量 _state.Keys 枚举可显著减少每帧开销
-        if (++_newAnimScanCounter < 30) return;
+        // 扫描新的活跃动画键——事件驱动：新动画启动（pending）时立即扫描；
+        // 否则节流到每 30 帧兜底扫描（覆盖非事件路径，如存档恢复批量注入）
+        var forceScan = _newAnimPending;
+        _newAnimPending = false;
+        if (!forceScan && ++_newAnimScanCounter < 30) return;
         _newAnimScanCounter = 0;
 
         foreach (var key in _state.Keys)

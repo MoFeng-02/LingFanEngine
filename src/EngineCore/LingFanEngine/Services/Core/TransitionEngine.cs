@@ -79,28 +79,28 @@ public class TransitionEngine : ITransitionEngine
                 _state.Set(StateKeys.Transition.Progress, 1.0 - eased);
                 break;
             case TransitionType.SlideLeftIn:
-                _state.Set(StateKeys.Transition.OffsetX, -_options.WindowWidth + _options.WindowWidth * eased);
+                _state.Set(StateKeys.Transition.OffsetX, -SlideW + SlideW * eased);
                 break;
             case TransitionType.SlideLeftOut:
-                _state.Set(StateKeys.Transition.OffsetX, -_options.WindowWidth * eased);
+                _state.Set(StateKeys.Transition.OffsetX, -SlideW * eased);
                 break;
             case TransitionType.SlideRightIn:
-                _state.Set(StateKeys.Transition.OffsetX, _options.WindowWidth - _options.WindowWidth * eased);
+                _state.Set(StateKeys.Transition.OffsetX, SlideW - SlideW * eased);
                 break;
             case TransitionType.SlideRightOut:
-                _state.Set(StateKeys.Transition.OffsetX, _options.WindowWidth * eased);
+                _state.Set(StateKeys.Transition.OffsetX, SlideW * eased);
                 break;
             case TransitionType.SlideUpIn:
-                _state.Set(StateKeys.Transition.OffsetY, -_options.WindowHeight + _options.WindowHeight * eased);
+                _state.Set(StateKeys.Transition.OffsetY, -SlideH + SlideH * eased);
                 break;
             case TransitionType.SlideUpOut:
-                _state.Set(StateKeys.Transition.OffsetY, -_options.WindowHeight * eased);
+                _state.Set(StateKeys.Transition.OffsetY, -SlideH * eased);
                 break;
             case TransitionType.SlideDownIn:
-                _state.Set(StateKeys.Transition.OffsetY, _options.WindowHeight - _options.WindowHeight * eased);
+                _state.Set(StateKeys.Transition.OffsetY, SlideH - SlideH * eased);
                 break;
             case TransitionType.SlideDownOut:
-                _state.Set(StateKeys.Transition.OffsetY, _options.WindowHeight * eased);
+                _state.Set(StateKeys.Transition.OffsetY, SlideH * eased);
                 break;
             case TransitionType.ZoomIn:
                 _state.Set(StateKeys.Transition.Scale, 0.5 + 0.5 * eased);
@@ -163,6 +163,32 @@ public class TransitionEngine : ITransitionEngine
         _state.Set(StateKeys.Transition.OffsetY, 0.0);
         _state.Set(StateKeys.Transition.Scale, 1.0);
         _state.Set(StateKeys.Transition.Elapsed, 0.0);
+    }
+
+    // ── slide 位移距离基准（2026-09 修复）──
+    // 旧实现用 _options.WindowWidth/Height（启动期静态配置）——过渡 Transform 实际作用在
+    // SceneView 的场景根（设计尺寸 _designWidth/_designHeight，随场景可变）上，
+    // 两者不一致时 slide 位移过冲/不足。现从状态键读场景设计尺寸（SceneView 构造时写入），
+    // 未写入时回退 options（headless/测试场景）。
+
+    /// <summary>slide 位移距离基准宽（场景根设计宽度，回退 WindowWidth）</summary>
+    private double SlideW
+    {
+        get
+        {
+            var w = _state.Get<double>(StateKeys.Scene.RenderWidth);
+            return w > 0 ? w : _options.WindowWidth;
+        }
+    }
+
+    /// <summary>slide 位移距离基准高（场景根设计高度，回退 WindowHeight）</summary>
+    private double SlideH
+    {
+        get
+        {
+            var h = _state.Get<double>(StateKeys.Scene.RenderHeight);
+            return h > 0 ? h : _options.WindowHeight;
+        }
     }
 
     private static double EaseOutBounce(double t)

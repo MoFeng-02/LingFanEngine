@@ -849,6 +849,7 @@ internal sealed class ControlFactory : IControlFactory
         if (cached != null)
         {
             img.Source = cached;
+            TrackBitmapLifetime(img, source);
             return;
         }
         if (source.StartsWith("avares://"))
@@ -858,10 +859,21 @@ internal sealed class ControlFactory : IControlFactory
                 var bmp = new Avalonia.Media.Imaging.Bitmap(Avalonia.Platform.AssetLoader.Open(new Uri(source)));
                 s_imageCache.Add(source, bmp);
                 img.Source = bmp;
+                TrackBitmapLifetime(img, source);
             }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[ControlFactory] LoadSource(avares) failed: {source} — {ex.Message}"); }
         }
         else _ = LoadImageAsync(img, source);
+    }
+
+    /// <summary>
+    /// 绑定缓存 Bitmap 的生命周期：控件使用时 Acquire（阻止 LRU 淘汰期间 Dispose），
+    /// 脱离视觉树时 Release——最后一个引用释放后已淘汰条目才真正 Dispose。
+    /// </summary>
+    private static void TrackBitmapLifetime(Image img, string key)
+    {
+        s_imageCache.Acquire(key);
+        img.DetachedFromVisualTree += (_, _) => s_imageCache.Release(key);
     }
 
     private static async Task LoadImageAsync(Image img, string path)
@@ -879,11 +891,13 @@ internal sealed class ControlFactory : IControlFactory
             if (cached != null)
             {
                 img.Source = cached;
+                TrackBitmapLifetime(img, fullPath);
                 return;
             }
             var bitmap = await Task.Run(() => new Avalonia.Media.Imaging.Bitmap(fullPath));
             s_imageCache.Add(fullPath, bitmap);
             img.Source = bitmap;
+            TrackBitmapLifetime(img, fullPath);
         }
         catch (Exception ex)
         {

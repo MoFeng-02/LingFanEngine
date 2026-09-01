@@ -17,4 +17,10 @@ public interface IAnimationApplier
     /// 场景重建后调用，重建 Tag→Control 查找表并清理缓存
     /// </summary>
     void RebuildControlMap(Panel? sceneRoot);
+
+    /// <summary>
+    /// 注册/更新 Tag→Control 映射（运行时元素层重建后由 SceneView 调用——
+    /// runtime 控件重建后旧引用失效，需同步更新映射使 animate 可作用于 show/sprite 元素）
+    /// </summary>
+    void RegisterControl(string tag, Control control);
 }

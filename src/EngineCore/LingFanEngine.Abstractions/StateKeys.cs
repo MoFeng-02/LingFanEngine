@@ -49,6 +49,12 @@ public static class StateKeys
         /// <summary>当前背景路径 (string)，由 background 命令写入</summary>
         public const string CurrentBackground = "__current_background";
 
+        /// <summary>场景渲染根设计宽度 (double)，SceneView 构造时写入——过渡 slide 位移距离以此为准（回退 WindowWidth）</summary>
+        public const string RenderWidth = "__scene_render_width";
+
+        /// <summary>场景渲染根设计高度 (double)，SceneView 构造时写入——过渡 slide 位移距离以此为准（回退 WindowHeight）</summary>
+        public const string RenderHeight = "__scene_render_height";
+
         /// <summary>当前语言代码 (string)，如 "zh-CN" / "en-US"</summary>
         public const string CurrentLanguage = "__current_language";
 

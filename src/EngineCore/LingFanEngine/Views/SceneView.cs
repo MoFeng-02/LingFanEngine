@@ -45,6 +45,14 @@ public partial class SceneView : UserControl, ISceneRenderer
     private string _lastSceneName = "";
     private string _lastDialogText = "";
 
+    // ── 运行时元素层（2026-09 修复）──
+    /// <summary>上次渲染的 runtime 元素列表（引用比较——handler 每次替换实例）</summary>
+    private List<UIElementEntity>? _lastRtElements;
+    /// <summary>runtime 层控件清单（移除依据——旧实现按 Tag=="__runtime" 判定，
+    /// 但控件 Tag 实为业务标签（立绘 ID/"background"），移除循环形同虚设，
+    /// 每帧重建叠加泄漏控件 / 立绘切换产生残影）</summary>
+    private readonly List<Control> _runtimeControls = new();
+
     /// <summary>前进点击兜底闸门——仅在对话框缺失时使用（正常路径走 IDialogBox.TryConsumeClick，
     /// 由 DialogEngine 统一防重入，C5 收敛 2026-09）。</summary>
     private bool _fallbackClickConsumed;
@@ -102,6 +110,10 @@ public partial class SceneView : UserControl, ISceneRenderer
         _designHeight = designHeight;
         _scaleMode = scaleMode;
         Background = Brushes.Transparent;
+
+        // 发布场景设计尺寸——TransitionEngine slide 位移距离以此为准（回退 WindowWidth/Height）
+        _state.Set(StateKeys.Scene.RenderWidth, designWidth);
+        _state.Set(StateKeys.Scene.RenderHeight, designHeight);
 
         SizeChanged += (_, _) => _layoutDirty = true;
 
@@ -236,6 +248,9 @@ public partial class SceneView : UserControl, ISceneRenderer
     {
         _controlFactory.ClearBoundTextBlocks();
         _lastDialogText = "";
+        // 场景根重建——runtime 层状态失效（旧控件随旧 root 丢弃，强制下次重建）
+        _runtimeControls.Clear();
+        _lastRtElements = null;
 
         // Phase 65: 场景切换时清理所有缓存模板的 NVL 状态 + 清空缓存
         foreach (var dlg in _dialogCache.Values)
@@ -627,22 +642,35 @@ public partial class SceneView : UserControl, ISceneRenderer
     {
         var rt = _state.Get<object>(StateKeys.Scene.RuntimeElements);
         if (rt is not List<UIElementEntity> elements) return;
+        // 变化检测（2026-09 修复）：show/hide/sprite/bg_switch 每次都替换列表实例，
+        // 引用相等即无变化——跳过重建（旧实现每帧移除+全量重建 runtime 控件，
+        // 每帧 new Image + 布局 + GC，且使 AnimationApplier 的 Tag→Control 表持有已离树旧引用，
+        // animate 作用于 show 元素时动画完全失效）
+        if (ReferenceEquals(elements, _lastRtElements)) return;
+        _lastRtElements = elements;
+
         var root = _sceneRoot;
         if (root == null) return;
-        for (int i = root.Children.Count - 1; i >= 0; i--)
-            if (root.Children[i] is Control c && c.Tag?.ToString() == StateKeys.UiTags.Runtime)
-                root.Children.RemoveAt(i);
+        // 按控件清单移除旧 runtime 控件（Tag 为业务标签，不能作移除依据）
+        foreach (var c in _runtimeControls)
+            root.Children.Remove(c);
+        _runtimeControls.Clear();
         var parentW = _designWidth;
         var parentH = _designHeight;
         foreach (var el in elements)
         {
             var ctrl = _controlFactory.ConvertToControl(el, parentW, parentH, _currentLayoutMode);
             if (ctrl == null) continue;
-            ctrl.Tag = el.Properties.TryGetValue(StateKeys.UiTags.Tag, out var tagVal) ? tagVal?.ToString() : StateKeys.UiTags.Runtime;
+            var tag = el.Properties.TryGetValue(StateKeys.UiTags.Tag, out var tagVal) ? tagVal?.ToString() : StateKeys.UiTags.Runtime;
+            ctrl.Tag = tag;
             ctrl.SetValue(Grid.ZIndexProperty, 50);
             _controlFactory.ApplyLayout(ctrl, el.Properties, parentW, parentH, _currentLayoutMode);
             _interactionBinder.ApplyInteraction(ctrl, el.Properties);
             root.Children.Add(ctrl);
+            _runtimeControls.Add(ctrl);
+            // 注册到动画映射——animate 作用于 runtime 元素（show/sprite）时可达
+            if (!string.IsNullOrEmpty(tag))
+                _animationApplier.RegisterControl(tag, ctrl);
         }
     }
 

@@ -133,7 +133,14 @@ internal static class DslFormatter
             // 真实体行（缩进深于块）标记 HasBody，供 ② 判定。
             while (stack.Count > 0 && stack.Peek().Indent == indent && stack.Peek().HasBody)
                 stack.Pop();
-            if (stack.Count > 0 && indent > stack.Peek().Indent)
+            // 真实体行标记：真实更深（indent > 块缩进）或被规则①修复进体（indent < 块缩进）
+            // 的行都是块的真实体行——都标记 HasBody，供规则②弹栈判定。
+            // 修复（2026-09，MessyComplexNesting 失败用例）：旧条件仅 indent > 块缩进，
+            // 规则①修复进体的行不标记 → 后续缩进恰好等于块缩进的行无法触发规则②弹栈
+            // （如 say "ready!" 被拉进 if 体后，同列的 say "done" 应关闭 if 块却仍被吞进体）。
+            // 缩进等于块缩进（规则③全平修复）不标记——保持全平脚本整体修复进体的语义。
+            // 注：弹栈后栈顶必为更浅块（弹栈仅发生于缩进相等时），!= 判定对弹后场景同样成立。
+            if (stack.Count > 0 && indent != stack.Peek().Indent)
                 MarkHasBody(stack);
             depth = stack.Count;
         }

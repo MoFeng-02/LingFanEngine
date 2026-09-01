@@ -49,7 +49,12 @@ public class DialogBox : UserControl, IDialogBox
                 try
                 {
                     var bmp = new Avalonia.Media.Imaging.Bitmap(value);
-                    Avalonia.Threading.Dispatcher.UIThread.Post(() => _bgImage.Source = bmp);
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    {
+                        // 独占创建（非共享缓存）——替换后释放旧 Bitmap 防泄漏
+                        (_bgImage.Source as Avalonia.Media.Imaging.Bitmap)?.Dispose();
+                        _bgImage.Source = bmp;
+                    });
                 }
                 catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[DialogBox] BackgroundImage load failed: {value} — {ex.Message}"); }
             }).ContinueWith(t =>
@@ -223,13 +228,17 @@ public class DialogBox : UserControl, IDialogBox
         if (string.IsNullOrEmpty(sidePath))
         {
             _sideImage.IsVisible = false;
+            // 独占创建（非共享缓存）——隐藏时释放旧 Bitmap 防泄漏
+            (_sideImage.Source as Avalonia.Media.Imaging.Bitmap)?.Dispose();
             _sideImage.Source = null;
             return;
         }
 
         try
         {
+            var old = _sideImage.Source as Avalonia.Media.Imaging.Bitmap;
             _sideImage.Source = new Avalonia.Media.Imaging.Bitmap(sidePath);
+            old?.Dispose(); // 替换成功后释放旧 Bitmap（独占创建，无共享风险）
             _sideImage.IsVisible = true;
         }
         catch (Exception ex)

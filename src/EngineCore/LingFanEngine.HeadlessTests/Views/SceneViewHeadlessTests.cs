@@ -54,6 +54,7 @@ public class SceneViewHeadlessTests
     {
         public void Apply(Panel? sceneRoot) { }
         public void RebuildControlMap(Panel? sceneRoot) { }
+        public void RegisterControl(string tag, Control control) { }
     }
 
     private sealed class FakeInteractionBinder : IInteractionBinder

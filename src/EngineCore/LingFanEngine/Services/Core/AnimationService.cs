@@ -46,9 +46,15 @@ public class AnimationService : IAnimationService
                 var remaining = state.Get<int>(baseKey + StateKeys.Animation.RepeatSuffix);
                 if (remaining != 0)
                 {
+                    // 往返（ping-pong）循环：交换 from/target——下一轮从目标回到起点。
+                    // 修复（2026-09）：原实现 From=Target 且 Target 不变，第二轮起
+                    // current 恒 = target（(target-target)*eased=0），repeat 动画静止。
+                    var from = state.Get<double>(baseKey + StateKeys.Animation.FromSuffix);
+                    var target = state.Get<double>(baseKey + StateKeys.Animation.TargetSuffix);
+                    state.Set(baseKey + StateKeys.Animation.FromSuffix, target);
+                    state.Set(baseKey + StateKeys.Animation.TargetSuffix, from);
+                    state.Set(baseKey + StateKeys.Animation.CurrentSuffix, target);
                     state.Set(baseKey + StateKeys.Animation.ElapsedSuffix, 0.0);
-                    state.Set(baseKey + StateKeys.Animation.FromSuffix, state.Get<double>(baseKey + StateKeys.Animation.TargetSuffix));
-                    state.Set(baseKey + StateKeys.Animation.CurrentSuffix, state.Get<double>(baseKey + StateKeys.Animation.TargetSuffix));
                     if (remaining > 0) state.Set(baseKey + StateKeys.Animation.RepeatSuffix, remaining - 1);
                 }
                 else
