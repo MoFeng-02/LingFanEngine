@@ -1,4 +1,4 @@
-﻿﻿using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using LingFanEngine.Abstractions;
 using LingFanEngine.Abstractions.Interfaces.Core;
@@ -125,14 +125,20 @@ public class AudioManager : IAudioManager
     public void PlayBgm(string filePath, float volume = 0.8f, bool loop = true)
     {
         var player = CreatePlayer();
-        _ = LoadAndPlayBgmAsync(player, filePath, EffectiveVolume(volume), loop);
+        _lastBgmEffectiveVolume = EffectiveVolume(volume);
+        _ = LoadAndPlayBgmAsync(player, filePath, _lastBgmEffectiveVolume, loop);
     }
 
     public async Task PlayBgmAsync(string filePath, float volume = 0.8f, bool loop = true)
     {
         var player = CreatePlayer();
-        await LoadAndPlayBgmAsync(player, filePath, EffectiveVolume(volume), loop);
+        _lastBgmEffectiveVolume = EffectiveVolume(volume);
+        await LoadAndPlayBgmAsync(player, filePath, _lastBgmEffectiveVolume, loop);
     }
+
+    /// <summary>当前 BGM 的实际生效音量（PlayBgm 时记录——QueueBgmAsync 淡出起点，
+    /// 修复前用全局 BgmVolume 属性，PlayBgm 传参音量不同时淡出起点跳变）</summary>
+    private float _lastBgmEffectiveVolume = 0.8f;
 
     private async Task LoadAndPlayBgmAsync(IAudioPlayer player, string filePath, float volume, bool loop)
     {
@@ -198,7 +204,9 @@ public class AudioManager : IAudioManager
 
         // 拍快照旧 BGM players
         var oldPlayers = _bgmPlayers;
-        var currentBgmVol = EffectiveVolume(BgmVolume);
+        // 淡出起点用当前 BGM 的实际生效音量（PlayBgm 时记录）——
+        // 修复前用全局 BgmVolume 属性，PlayBgm 传参音量不同时淡出起点跳变
+        var currentBgmVol = _lastBgmEffectiveVolume;
 
         // 淡出旧 BGM（逐步降低音量到 0）
         var steps = 10;
@@ -452,9 +460,12 @@ public class AudioManager : IAudioManager
         var bgmPlayers = _bgmPlayers;
         var sePlayers = _sePlayers;
         var voice = _voicePlayer;
+        var ambient = _ambientPlayer;
         foreach (var bgm in bgmPlayers) await bgm.PauseAsync();
         if (voice != null) await voice.PauseAsync();
         foreach (var se in sePlayers) await se.PauseAsync();
+        // 修复（2026-09）：Ambient 此前被遗漏——失焦暂停时环境音继续响
+        if (ambient != null) await ambient.PauseAsync();
     }
 
     /// <summary>
@@ -466,10 +477,12 @@ public class AudioManager : IAudioManager
         var bgmPlayers = _bgmPlayers;
         var sePlayers = _sePlayers;
         var voice = _voicePlayer;
+        var ambient = _ambientPlayer;
         // 使用 ResumeAsync 而非 PlayAsync——避免创建新 TCS 导致原 PlayAsync 的 Task 变孤儿
         foreach (var bgm in bgmPlayers) await bgm.ResumeAsync();
         if (voice != null) await voice.ResumeAsync();
         foreach (var se in sePlayers) await se.ResumeAsync();
+        if (ambient != null) await ambient.ResumeAsync();
     }
 
     /// <summary>

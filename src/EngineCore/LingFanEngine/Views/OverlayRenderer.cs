@@ -68,6 +68,13 @@ internal sealed class OverlayRenderer : IOverlayRenderer
         }
         _currentNotify = null;
 
+        // Toast 随视觉树移除（读档/场景重建走 Detach）——同步解除显示中标记，
+        // 否则 Notify.Active 残留 true 会让后续通知全部排队永不显示。
+        // 计时器归零使淡出状态机不再推进（重挂后由新通知重新驱动）。
+        _state.Set(StateKeys.Notify.Active, false);
+        _notifyRemainSeconds = 0;
+        _notifyFadeSeconds = 0;
+
         // 清理性能 HUD
         if (_perfHud != null)
         {
@@ -220,6 +227,8 @@ internal sealed class OverlayRenderer : IOverlayRenderer
             _state.Set(StateKeys.Notify.Text, (string?)null);
             _state.Set(StateKeys.Notify.Type, (string?)null);
             _state.Set(StateKeys.Notify.Duration, 0.0);
+            // 标记显示中——NotifyHandler 据此排队（仅凭 Text 判定的窗口只有一帧，曾致通知互相打断）
+            _state.Set(StateKeys.Notify.Active, true);
             _notifyRemainSeconds = duration;
             _notifyFadeSeconds = NotifyFadeDuration;
         }
@@ -259,6 +268,9 @@ internal sealed class OverlayRenderer : IOverlayRenderer
                 _currentNotify = null;
                 _notifyFadeSeconds = 0;
 
+                // Toast 已完全移除——解除显示中标记，再取下一条（写序保证 handler 不会误判）
+                _state.Set(StateKeys.Notify.Active, false);
+
                 // 通知队列：显示下一条
                 DequeueNextNotify();
             }
@@ -274,10 +286,10 @@ internal sealed class OverlayRenderer : IOverlayRenderer
         if (queue == null || queue.Count == 0) return;
 
         var next = queue[0];
-        queue.RemoveAt(0);
-        _state.Set(StateKeys.Notify.Queue, queue);
+        // copy-on-write：新 List 实例替换（防与 pipeline 线程 NotifyHandler 的 Add 就地竞争丢更新）
+        _state.Set(StateKeys.Notify.Queue, new List<NotificationItem>(queue.Skip(1)));
 
-        // 触发显示
+        // 触发显示（下一帧 UpdateNotifyToast 走 text!=null 分支并重置 Active=true）
         _state.Set(StateKeys.Notify.Text, next.Text);
         _state.Set(StateKeys.Notify.Type, next.Type);
         _state.Set(StateKeys.Notify.Duration, next.Duration);

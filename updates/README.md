@@ -11,9 +11,8 @@
 1. nuget.org 账户 → Trusted Publishing → 为本仓库创建策略（owner=MoFeng-02 / repo=LingFanEngine / workflow=publish-engine.yml / environment=production）
 2. 仓库 Secrets 配置 `NUGET_USER` = nuget.org 用户名（profile name，非邮箱）
 
-**开发期本地 feed**：仓库根 `nuget.config` 声明 `local-feed/` 本地源；先
-`dotnet pack src/EngineCore/LingFanEngine.Abstractions -o local-feed`（DslCore、LingFanEngine 同理），
-模板/SDK/Demo 即可还原当前开发版本。
+**本地开发**：SDK 链为 ProjectReference 源码编译，无需本地 feed 即可构建/发布；仓库根 `nuget.config` 仅含 nuget.org 源。
+模板/Demo 若需对标特定引擎版本，直接从 nuget.org 还原对应 `LingFanEngine` 包（或临时 `dotnet pack -o <本地目录>` 后还原）。
 
 ---
 # 模板更新（GitHub Release）

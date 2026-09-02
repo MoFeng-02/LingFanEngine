@@ -61,7 +61,7 @@
 			<PackTemplateScript>$(MSBuildThisFileDirectory)..\..\pack-template.ps1</PackTemplateScript>
 		</PropertyGroup>
 		<!-- 使用 PowerShell 脚本打包 ZIP（排除 bin/obj/.vs/.git） -->
-		<Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(PackTemplateScript)&quot; -SourceDir &quot;$(TemplateSourceDir)&quot; -OutputFile &quot;$(TemplateZipPath)&quot;" />
+		<Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(PackTemplateScript)&quot; -SourceDir &quot;$(TemplateSourceDir)&quot; -OutputFile &quot;$(TemplateZipPath)&quot;" />
 		<ItemGroup>
 			<EmbeddedResource Include="$(TemplateZipPath)" />
 		</ItemGroup>

@@ -105,6 +105,8 @@ public class SaveLoadPanel : UserControl
     /// <summary>刷新存档槽列表</summary>
     private async Task RefreshSlotsAsync()
     {
+        // 释放旧槽位控件的缩略图位图（Avalonia 不自动 Dispose——每次刷新泄漏 ~35KB×槽数）
+        DisposePanelImages(_slotsPanel);
         _slotsPanel.Children.Clear();
 
         if (_saveService == null)
@@ -305,6 +307,14 @@ public class SaveLoadPanel : UserControl
         _controller?.Save(slotId);
         await Task.Delay(300); // 等待保存完成
         await RefreshSlotsAsync();
+    }
+
+    /// <summary>释放面板内所有 Image 的位图（刷新/清空前调用——Avalonia 不自动 Dispose，防泄漏）</summary>
+    private static void DisposePanelImages(Panel panel)
+    {
+        foreach (var child in panel.Children)
+            if (child is Image { Source: Avalonia.Media.Imaging.Bitmap bmp })
+                bmp.Dispose();
     }
 
     /// <summary>执行读取</summary>

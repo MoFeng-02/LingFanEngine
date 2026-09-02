@@ -74,6 +74,64 @@ public class RollbackIntegrationTests
     }
 
     [Fact]
+    public async Task RollbackRollforward_Alternating_StepsOneByOne()
+    {
+        // 回归（2026-09 滚轮历史跳步 BUG）：用户报告"过了 1、2、3，上滚直接跳到 1，
+        // 下滚 2、3 进不去"。真实链路复现：3 个检查点 + frontier，交替 Rollback/Rollforward，
+        // 断言每步恰好移动一格且保持 replay 语义（重放等待，不重发命令）。
+        var state = new StateContainer();
+        state.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
+        var exe = MakeExecutor(state);
+
+        RollbackCheckpoint Cp(int i, string txt) => new()
+        {
+            CommandIndex = i,
+            InteractionType = "dialog",
+            StateSnapshot = new Dictionary<string, object?> { ["txt"] = txt }
+        };
+        var cps = new List<RollbackCheckpoint> { Cp(0, "句1"), Cp(1, "句2"), Cp(2, "句3") };
+        state.Set(StateKeys.Rollback.Checkpoints, cps);
+        state.Set(StateKeys.Rollback.CurrentIndex, 3); // frontier
+
+        // 上滚 1：3 → 2（跳过"当前可见"的末位检查点）
+        exe.Rollback().Should().BeTrue();
+        state.Get<string>("txt").Should().Be("句2");
+        state.Get<int>(StateKeys.Rollback.CurrentIndex).Should().Be(1);
+        state.Get<bool>(StateKeys.Rollback.IsReplay).Should().BeTrue("回退浏览历史应处于重放模式");
+
+        // 上滚 2：2 → 1
+        exe.Rollback().Should().BeTrue();
+        state.Get<string>("txt").Should().Be("句1");
+        state.Get<int>(StateKeys.Rollback.CurrentIndex).Should().Be(0);
+
+        // 下滚 1：1 → 2
+        exe.Rollforward().Should().BeTrue();
+        state.Get<string>("txt").Should().Be("句2");
+        state.Get<int>(StateKeys.Rollback.CurrentIndex).Should().Be(1);
+        state.Get<bool>(StateKeys.Rollback.IsReplay).Should().BeTrue();
+
+        // 下滚 2：2 → 3（最后一个检查点）——BUG 实证点：
+        // 旧实现 IsReplay = targetPos < total-1 → 2 < 2 = false → 误入"正常执行"路径：
+        // say 被重发（ADV 重打字/NVL 追加重复行）+ CreateCheckpoint append 污染时间线。
+        exe.Rollforward().Should().BeTrue();
+        state.Get<string>("txt").Should().Be("句3");
+        state.Get<int>(StateKeys.Rollback.CurrentIndex).Should().Be(2);
+        state.Get<bool>(StateKeys.Rollback.IsReplay).Should().BeTrue("前进到最后一个检查点仍是历史浏览，不应转入正常执行");
+
+        // 给误入的正常执行路径一点时间，证明时间线不再被污染（修复后检查点数不变）
+        await Task.Delay(100);
+        state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints)!.Count.Should().Be(3,
+            "重放浏览不得 append 新检查点（旧实现 IsReplay=false 会重发命令并污染时间线）");
+
+        // 下滚 3：3 → frontier（回到 live，显示末位检查点状态）
+        exe.Rollforward().Should().BeTrue();
+        state.Get<int>(StateKeys.Rollback.CurrentIndex).Should().Be(3);
+        state.Get<bool>(StateKeys.Rollback.IsReplay).Should().BeFalse("回到前沿 = 退出重放，继续正常执行");
+        // 回到 live 后不应再有可前进项
+        exe.CanRollforward().Should().BeFalse();
+    }
+
+    [Fact]
     public async Task WorldMode_DisablesCheckpointCreation()
     {
         var host = new EngineTestHost(enableTimeSystem: true);

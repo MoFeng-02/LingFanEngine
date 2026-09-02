@@ -163,24 +163,32 @@ public class MainView : UserControl
         if ((SceneType)_state.Get<int>(StateKeys.Scene.CurrentType) != SceneType.Game)
             return;
 
-        // 节流：50ms
+        // 累积刻度：小 delta（触摸板/高精度滚轮）累积到 1 才走一步；
+        // 普通滚轮一格 delta=1 立即触发。300ms 无事件视为新手势，重置累积。
+        // （旧 50ms 节流挡不住连发，曾致一次上滚连跳多步——中间句一闪而过）
         var now = Environment.TickCount64;
-        if (now - _lastWheelTicks < 50) return;
+        if (now - _lastWheelTicks > 300) _wheelAccum = 0;
+        _lastWheelTicks = now;
+        _wheelAccum += e.Delta.Y;
 
-        if (e.Delta.Y > 0)
+        if (_wheelAccum >= 1.0)
         {
-            _lastWheelTicks = now;
+            // 滚轮向上 = 时间线回退（一步）
+            _wheelAccum = 0;
             await _gameController.RollbackAsync();
             e.Handled = true;
         }
-        else if (e.Delta.Y < 0)
+        else if (_wheelAccum <= -1.0)
         {
-            _lastWheelTicks = now;
+            // 滚轮向下 = 时间线前进（一步）
+            _wheelAccum = 0;
             await _gameController.RollforwardAsync();
             e.Handled = true;
         }
     }
 
+    // 鼠标滚轮累积器：delta 累积到 1 个刻度才触发一步回溯/前进（见 HandlePointerWheelChangedAsync）
+    private double _wheelAccum;
     private long _lastWheelTicks;
 
     /// <summary>关闭时清理资源</summary>

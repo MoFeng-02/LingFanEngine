@@ -19,7 +19,10 @@ public partial class MainWindow : Window
     private LingFanEngine.Views.SceneView? _sceneView;
     private Entry.UI.OverlayManager? _overlay;
 
-    // 鼠标滚轮节流：防止高精度滚轮连续触发回溯/前进
+    // 鼠标滚轮累积器：delta 累积到 1 个刻度才触发一步回溯/前进——
+    // 高精度滚轮/触摸板一次拨动产生大量小 delta 事件，旧 50ms 节流挡不住连发，
+    // 曾致一次上滚连跳多步（用户感知"直接跳到第 1 句"，中间句一闪而过）
+    private double _wheelAccum;
     private long _lastWheelTicks;
     // 缓存引用，避免每次滚轮事件都查 DI
     private IStateContainer? _state;
@@ -191,21 +194,24 @@ public partial class MainWindow : Window
         if ((SceneType)_state.Get<int>(StateKeys.Scene.CurrentType) != SceneType.Game)
             return;
 
-        // 节流：高精度滚轮一次拨动可能产生多个事件
+        // 累积刻度：小 delta（触摸板/高精度滚轮）累积到 1 才走一步；
+        // 普通滚轮一格 delta=1 立即触发。300ms 无事件视为新手势，重置累积。
         var now = Environment.TickCount64;
-        if (now - _lastWheelTicks < 50) return;
+        if (now - _lastWheelTicks > 300) _wheelAccum = 0;
+        _lastWheelTicks = now;
+        _wheelAccum += e.Delta.Y;
 
-        if (e.Delta.Y > 0)
+        if (_wheelAccum >= 1.0)
         {
-            // 滚轮向上 = 时间线回退
-            _lastWheelTicks = now;
+            // 滚轮向上 = 时间线回退（一步）
+            _wheelAccum = 0;
             await _gameController.RollbackAsync();
             e.Handled = true;
         }
-        else if (e.Delta.Y < 0)
+        else if (_wheelAccum <= -1.0)
         {
-            // 滚轮向下 = 时间线前进
-            _lastWheelTicks = now;
+            // 滚轮向下 = 时间线前进（一步）
+            _wheelAccum = 0;
             await _gameController.RollforwardAsync();
             e.Handled = true;
         }

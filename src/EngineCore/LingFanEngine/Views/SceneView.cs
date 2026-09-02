@@ -187,6 +187,10 @@ public partial class SceneView : UserControl, ISceneRenderer
         {
             if (!string.IsNullOrEmpty(curLang)) _i18n.SwitchLanguage(curLang);
             _lastLanguage = curLang;
+            // 2026-09 修复：切换语言后强制场景重建——静态元素（text/button 等
+            // ControlFactory 创建时已翻译的文本）此前不会刷新，需重建才会用新语言重译。
+            // 动态文本（对话/绑定表达式）不受影响（Translate 实时查缓存）。
+            _state.Set(StateKeys.Scene.Dirty, true);
         }
 
         // === 场景重建检测 ===

@@ -6,6 +6,9 @@
 		<Nullable>enable</Nullable>
 		<LangVersion>latest</LangVersion>
 
+		<!-- [LibraryImport] 源生成式 P/Invoke 需要 unsafe 代码块（SYSLIB1062） -->
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
 		<!-- Native AOT 兼容声明（库项目，实际 AOT 编译在可执行项目上） -->
 		<IsAotCompatible>true</IsAotCompatible>
 

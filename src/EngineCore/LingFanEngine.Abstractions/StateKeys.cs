@@ -504,6 +504,11 @@ public const string AmbientPath = "__ambient_path";
 
         /// <summary>当前通知的显示时长秒数 (double)，由 NotifyHandler 写入</summary>
         public const string Duration = "__notify_duration";
+
+        /// <summary>Toast 显示中 (bool)，由 OverlayRenderer 维护——显示期间 true，完全淡出移除后 false。
+        /// NotifyHandler 据此决定「立即显示」还是「排队」：仅凭 Text 非空判定的窗口只有一帧
+        /// （renderer 消费即置空），Toast 显示中的后续通知曾全部互相打断、队列永不生效。</summary>
+        public const string Active = "__notify_active";
     }
 
     // ==================== call/return 调用栈 ====================

@@ -158,6 +158,8 @@ public class GalleryPanel : UserControl
     public void RefreshGallery()
     {
         if (_cgWrapPanel == null) return;
+        // 释放旧 CG 卡片的位图（Avalonia 不自动 Dispose——每张可达数 MB，解锁后刷新泄漏）
+        DisposePanelImages(_cgWrapPanel);
         _cgWrapPanel.Children.Clear();
 
         var entries = _state.Get<List<GalleryEntry>>(StateKeys.Gallery.Unlocked) ?? [];
@@ -237,7 +239,11 @@ public class GalleryPanel : UserControl
                 try
                 {
                     if (System.IO.File.Exists(entry.ImagePath))
+                    {
+                        // 替换前释放旧大图位图（每次点击换图可达数 MB，旧版泄漏）
+                        (_fullViewImage.Source as Avalonia.Media.Imaging.Bitmap)?.Dispose();
                         _fullViewImage.Source = new Bitmap(entry.ImagePath);
+                    }
                 }
                 catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[GalleryPanel] Load image failed: {entry.ImagePath} — {ex.Message}"); }
                 _fullViewBorder.IsVisible = true;
@@ -245,5 +251,13 @@ public class GalleryPanel : UserControl
         };
 
         return card;
+    }
+
+    /// <summary>释放面板内所有 Image 的位图（刷新/清空前调用——Avalonia 不自动 Dispose，防泄漏）</summary>
+    private static void DisposePanelImages(Panel panel)
+    {
+        foreach (var child in panel.Children)
+            if (child is Image { Source: Avalonia.Media.Imaging.Bitmap bmp })
+                bmp.Dispose();
     }
 }

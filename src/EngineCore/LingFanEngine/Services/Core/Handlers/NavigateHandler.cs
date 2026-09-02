@@ -219,7 +219,12 @@ public class NavigateHandler : ICommandHandler<NavigateCommand>, IDefaultCommand
 
         if (targetSceneType == SceneType.Game)
         {
-            if (curType == SceneType.Menu && !string.IsNullOrEmpty(menuReturnTo) && navScName == menuReturnTo)
+            // 是否为「Menu→Game 返回原游戏」——只有此路径才恢复保存的游戏画面
+            var isMenuReturnNav = curType == SceneType.Menu
+                && !string.IsNullOrEmpty(menuReturnTo)
+                && navScName == menuReturnTo;
+
+            if (isMenuReturnNav)
             {
                 // Menu → Game（返回）：保留一切（检查点 + 局部变量），只重置交互状态
                 ctx.ResetInteractionState();
@@ -244,19 +249,29 @@ public class NavigateHandler : ICommandHandler<NavigateCommand>, IDefaultCommand
             // 清除 Menu/UI 来源标记
             ctx.State.Set(StateKeys.Scene.MenuReturnTo, (string?)null);
             // GameDslIndex/GameDslWaitingType 由调用方（NavigateHandler）使用后再清除
-            // 恢复游戏场景元素（深拷贝——避免引用共享导致后续 DSL 修改影响 __game_scene_elements）
-            var savedElements = ctx.State.Get<List<UIElementEntity>>(StateKeys.Scene.GameSceneElements);
-            if (savedElements != null)
+
+            // 恢复游戏画面（2026-09 修复：仅限「返回」路径——旧实现对所有进入 Game 的导航生效，
+            // Menu→不同 Game 场景（新游戏）时：清空分支先清 RuntimeElements，恢复块又把旧游戏的
+            // 立绘/背景填回来（Scene.Elements 会被调用方清空，RuntimeElements 不会）→ 新游戏
+            // 带着旧游戏画面开场。非返回路径的备份已无意义（检查点已清，游戏全新开始），直接丢弃。
+            if (isMenuReturnNav)
             {
-                ctx.State.Set(StateKeys.Scene.Elements, new List<UIElementEntity>(savedElements));
-                ctx.State.Set(StateKeys.Scene.Dirty, true);
+                // 恢复游戏场景元素（深拷贝——避免引用共享导致后续 DSL 修改影响 __game_scene_elements）
+                var savedElements = ctx.State.Get<List<UIElementEntity>>(StateKeys.Scene.GameSceneElements);
+                if (savedElements != null)
+                {
+                    ctx.State.Set(StateKeys.Scene.Elements, new List<UIElementEntity>(savedElements));
+                    ctx.State.Set(StateKeys.Scene.Dirty, true);
+                }
+                var savedRuntime = ctx.State.Get<List<UIElementEntity>>(StateKeys.Scene.GameRuntimeElements);
+                if (savedRuntime != null)
+                    ctx.State.Set(StateKeys.Scene.RuntimeElements, new List<UIElementEntity>(savedRuntime));
+                var savedBg = ctx.State.Get<string>(StateKeys.Scene.GameCurrentBackground);
+                if (savedBg != null)
+                    ctx.State.Set(StateKeys.Scene.CurrentBackground, savedBg);
             }
-            var savedRuntime = ctx.State.Get<List<UIElementEntity>>(StateKeys.Scene.GameRuntimeElements);
-            if (savedRuntime != null)
-                ctx.State.Set(StateKeys.Scene.RuntimeElements, new List<UIElementEntity>(savedRuntime));
-            var savedBg = ctx.State.Get<string>(StateKeys.Scene.GameCurrentBackground);
-            if (savedBg != null)
-                ctx.State.Set(StateKeys.Scene.CurrentBackground, savedBg);
+
+            // 两种路径都清备份键（返回=已恢复；非返回=丢弃旧画面），防残留泄漏到下一次导航
             ctx.State.Set(StateKeys.Scene.GameSceneElements, (List<UIElementEntity>?)null);
             ctx.State.Set(StateKeys.Scene.GameRuntimeElements, (List<UIElementEntity>?)null);
             ctx.State.Set(StateKeys.Scene.GameCurrentBackground, (string?)null);

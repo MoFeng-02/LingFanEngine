@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Documents;
 using Avalonia.Layout;
 using Avalonia.Media;
 using LingFanEngine.Abstractions;
@@ -10,13 +9,20 @@ using LingFanEngine.Views;
 namespace _LingFanEngineTemplateTitle_.UI.Dialogs;
 
 /// <summary>
-/// 中央气泡对话框模板——圆角白色半透明背景，居中显示
+/// 中央气泡对话框模板——圆角半透明背景，居中显示
 /// <para>适用：内心独白 / OS / 旁白</para>
-/// <para>Phase 65：独立 Control，委托 DialogEngine 共享打字机/内联标记逻辑</para>
+/// <para>独立 Control，委托 DialogEngine 共享打字机/内联标记逻辑</para>
+/// <para>2026-09（B1/C4/C5 对齐）：改用 DialogTextRenderer 增量渲染（O(新增)），修复四个旧缺陷——
+/// ① 每帧 ApplyInlineMarkup 全量重建（O(全文)）；
+/// ② NVL 路径缺失（NVL 模式下 template="center" 会丢失累积语义——教程约定非 fullscreen
+///    模板在 NVL 下也应累积显示）；
+/// ③ TryConsumeClick 未委托（接口默认恒 true，防重入闸门失效——完成后的穿透点击重复触发 Complete）；
+/// ④ {w}/{p} 暂停时点击 SkipToEnd 而非 ResumeFromPause（与内置/全屏模板行为不一致）。</para>
 /// </summary>
 public class CenterBubbleDialogBox : UserControl, IDialogBox
 {
     private readonly DialogEngine _engine;
+    private readonly DialogTextRenderer _renderer;
     private readonly TextBlock _contentText;
     private readonly Border _bubble;
     private readonly IStateContainer _state;
@@ -38,6 +44,8 @@ public class CenterBubbleDialogBox : UserControl, IDialogBox
             Margin = new Thickness(24, 16, 24, 16),
             Foreground = Brushes.White
         };
+        _renderer = new DialogTextRenderer(_contentText);
+
         _bubble = new Border
         {
             Background = new SolidColorBrush(Color.FromArgb(224, 30, 30, 40)),
@@ -56,40 +64,55 @@ public class CenterBubbleDialogBox : UserControl, IDialogBox
         _bubble.PointerPressed += (_, _) =>
         {
             if (!_bubble.IsVisible) return;
-            if (IsPausedByTag && !IsComplete)
-            {
-                //_engine.ResumeFromPause();
-                SkipToEnd();
-                return;
-            }
+            if (IsPausedByTag && !IsComplete) { _engine.ResumeFromPause(); return; }
             if (!IsComplete) { SkipToEnd(); }
-            else { _state.Set(StateKeys.Dialog.Complete, true); _state.Set(StateKeys.Dialog.WaitingSayComplete, true); }
+            else if (_engine.TryConsumeClick())
+            {
+                _state.Set(StateKeys.Dialog.Complete, true);
+                _state.Set(StateKeys.Dialog.WaitingSayComplete, true);
+            }
         };
     }
 
     public void SetText(string text, string? speaker = null)
     {
-        _engine.SetText(text);
-        DialogEngine.ApplyInlineMarkup(_contentText.Inlines!, "");
+        if (_state.Get<bool>(StateKeys.Nvl.Active))
+        {
+            // NVL 累积（含溢出裁剪 SkipHint——与内置 DialogBox 同路径，C4）
+            var skipHint = _state.Get<int>(StateKeys.Nvl.SkipHint);
+            _state.Set(StateKeys.Nvl.SkipHint, -1);
+            _engine.SetNvlText(text, skipHint);
+            if (_state.Get<bool>(StateKeys.Rollback.IsReplay))
+                _engine.SkipToEnd();
+        }
+        else
+        {
+            _engine.SetText(text);
+        }
+
+        _renderer.Reset(_engine.Segments);
+        _renderer.RenderUpTo(_engine.CharIndex);
         _bubble.IsVisible = true;
     }
 
     public void Advance(double deltaSeconds)
     {
         if (!_bubble.IsVisible || IsComplete) return;
-        var raw = _engine.Advance(deltaSeconds);
-        if (raw != null)
-            DialogEngine.ApplyInlineMarkup(_contentText.Inlines!, raw);
+        var before = _engine.CharIndex;
+        _engine.Advance(deltaSeconds);
+        if (_engine.CharIndex != before)
+            _renderer.RenderUpTo(_engine.CharIndex);
     }
 
     public void SkipToEnd()
     {
-        var full = _engine.SkipToEnd();
-        DialogEngine.ApplyInlineMarkup(_contentText.Inlines!, full);
+        _engine.SkipToEnd();
+        _renderer.RenderUpTo(_engine.CharIndex);
     }
 
     public void Hide() => _bubble.IsVisible = false;
     public void ResetNvlState() => _engine.ResetNvlState();
+    public bool TryConsumeClick() => _engine.TryConsumeClick();
     public Control AsControl() => this;
 }
 

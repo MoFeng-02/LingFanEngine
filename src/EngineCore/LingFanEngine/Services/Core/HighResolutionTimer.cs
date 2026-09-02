@@ -9,16 +9,16 @@ namespace LingFanEngine.Services.Core;
 /// <para>Android/iOS: 原生定时器已 ~1ms，Activate/Deactivate 为 no-op。自旋策略更保守（SpinMarginMs=1, SpinYieldInterval=4）以省电减发热。</para>
 /// <para>WASM/Browser: setTimeout 精度 ~4ms，Activate/Deactivate 为 no-op。</para>
 /// <para>DelayPrecisionMs/SpinMarginMs/SpinYieldInterval 为所有平台提供正确的节流参数，GameLoop 据此决定何时让出 CPU。</para>
-/// <para>AOT 安全：[DllImport] 是编译期解析的原生调用，OperatingSystem.IsWindows() 运行时守卫，零反射。</para>
+/// <para>AOT 安全：[LibraryImport] 源生成式 P/Invoke，编译期生成确定性封送代码，OperatingSystem.IsWindows() 运行时守卫，零反射、NativeAOT 兼容。</para>
 /// <para>副作用：timeBeginPeriod(1) 会提高系统定时器中断频率。Windows 10 v2004+ 已限制为进程级影响。</para>
 /// </summary>
-public static class HighResolutionTimer
+public static partial class HighResolutionTimer
 {
-    [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
-    private static extern uint TimeBeginPeriod(uint uPeriod);
+    [LibraryImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
+    private static partial uint TimeBeginPeriod(uint uPeriod);
 
-    [DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
-    private static extern uint TimeEndPeriod(uint uPeriod);
+    [LibraryImport("winmm.dll", EntryPoint = "timeEndPeriod")]
+    private static partial uint TimeEndPeriod(uint uPeriod);
 
     // ── 高分辨率可等待定时器（2026-09，AOT 帧率修复）──
     // NativeAOT 下 await Task.Delay 的唤醒精度退化为 ~15.6ms（即使 timeBeginPeriod(1) 已生效，
@@ -26,15 +26,17 @@ public static class HighResolutionTimer
     // CreateWaitableTimerExW(HIGH_RESOLUTION)（Win10 1803+）提供 ~1ms 精度且不依赖
     // timeBeginPeriod，JIT/AOT 实测均稳定 60fps。非 Windows / 旧系统回退 Thread.Sleep
     // （Linux/macOS 原生 ~1ms；旧 Windows 靠 timeBeginPeriod）。
-    [DllImport("kernel32.dll", SetLastError = true, EntryPoint = "CreateWaitableTimerExW")]
-    private static extern nint CreateWaitableTimerEx(nint attrs, nint name, uint flags, uint access);
+    [LibraryImport("kernel32.dll", SetLastError = true, EntryPoint = "CreateWaitableTimerExW")]
+    private static partial nint CreateWaitableTimerEx(nint attrs, nint name, uint flags, uint access);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool SetWaitableTimer(nint timer, ref long dueTime, int period,
-        nint completionRoutine, nint argToCompletion, bool resume);
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetWaitableTimer(nint timer, ref long dueTime, int period,
+        nint completionRoutine, nint argToCompletion, [MarshalAs(UnmanagedType.Bool)] bool resume);
 
-    [DllImport("kernel32.dll")]
-    private static extern bool WaitForSingleObject(nint handle, uint milliseconds);
+    [LibraryImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool WaitForSingleObject(nint handle, uint milliseconds);
 
     /// <summary>CREATE_WAITABLE_TIMER_HIGH_RESOLUTION——Win10 1803+ 高精度定时器标志</summary>
     private const uint HighResolutionFlag = 0x00000002;

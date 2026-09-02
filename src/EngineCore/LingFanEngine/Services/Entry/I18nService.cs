@@ -23,7 +23,9 @@ public class I18nService : II18nService
     private readonly IStateContainer _state;
     private readonly IEncryptedFileReader? _fileReader;
     private readonly ConcurrentDictionary<string, string> _translations = new();
-    private string _loadedLang = "";
+    // volatile：SwitchLanguage（UI/设置线程）与 Translate（pipeline 线程）跨线程读写——
+    // string 引用赋值原子，但无 happens-before 时 Translate 可能读到旧语言引用
+    private volatile string _loadedLang = "";
     private volatile bool _loaded;
 
     /// <summary>翻译文件根目录下的语言子目录（如 Lang/en-US/）</summary>

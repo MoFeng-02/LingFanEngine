@@ -62,6 +62,13 @@ public class DslExecutor : IDslExecutor
         StateKeys.Playback.AutoTimer,
         // 「nvl auto」作用域标记同样是播放模式状态，回溯不应恢复（与 AutoActive 同列）
         StateKeys.Nvl.AutoScoped,
+        // 通知瞬时态：回溯到 Toast 显示中的检查点会令 Notify.Active 残留 true
+        // （renderer 无对应 Toast）→ 后续通知全部排队永不显示
+        StateKeys.Notify.Text,
+        StateKeys.Notify.Type,
+        StateKeys.Notify.Duration,
+        StateKeys.Notify.Active,
+        StateKeys.Notify.Queue,
     };
 
     /// <summary>C# 场景回溯回调（由 GameLoop 设置，回溯到 C# 场景时调用）</summary>
@@ -1265,7 +1272,19 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
 
             if (targetPos >= checkpoints.Count)
             {
-                RestoreAndRestart(checkpoints[^1], checkpoints.Count, checkpoints.Count);
+                // 回到前沿（live）：恢复末位检查点（用户离开 live 时的可见状态），
+                // 跳过其交互命令、从下一条命令继续正常执行（exitReplay）。
+                // 修复（2026-09 滚轮历史"前进进不去"BUG）：旧实现 IsReplay 恒 true——
+                // 末句以重放模式等待点击且 CanRollforward 恒 false，滚轮下无响应，
+                // 用户必须额外点击一次才能回 live（感知为"2、3 进不去/卡住"）。
+                var last = checkpoints[^1];
+                if (last.CommandIndex >= 0)
+                {
+                    RestoreAndRestart(last, checkpoints.Count, checkpoints.Count, exitReplay: true);
+                    return true;
+                }
+                // csharp_scene 检查点（CommandIndex<0）：保持场景级重放语义
+                RestoreAndRestart(last, checkpoints.Count, checkpoints.Count);
                 return true;
             }
 
@@ -1309,7 +1328,7 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
         }
     }
 
-    private void RestoreAndRestart(RollbackCheckpoint cp, int targetPos, int totalCheckpoints)
+    private void RestoreAndRestart(RollbackCheckpoint cp, int targetPos, int totalCheckpoints, bool exitReplay = false)
     {
         // 递增 C# 场景回放代次——使过期的 C# 场景 Runner 中的 SayAsync 等阻塞调用提前返回
         var gen = _state.Get<int>(StateKeys.Dsl.CSharpReplayGeneration) + 1;
@@ -1340,14 +1359,18 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
         _state.Set(StateKeys.Dialog.WaitingSayComplete, true);
         _state.Set(StateKeys.Transition.Active, false);
 
-        _state.Set(StateKeys.Dsl.CurrentIndex, cp.CommandIndex);
+        // exitReplay（Rollforward 回到前沿）：跳过该检查点的交互命令（已完整展示），从下一条继续正常执行
+        _state.Set(StateKeys.Dsl.CurrentIndex, exitReplay ? cp.CommandIndex + 1 : cp.CommandIndex);
         _state.Set(StateKeys.Dsl.WaitingType, "");
         _state.Set(StateKeys.Dsl.Executing, true);
         _state.Set(StateKeys.Scene.Dirty, true);
 
         _state.Set(StateKeys.Rollback.CurrentIndex, targetPos);
-        _state.Set(StateKeys.Rollback.IsActive, targetPos < totalCheckpoints - 1);
-        _state.Set(StateKeys.Rollback.IsReplay, true);
+        // IsActive 语义 = 回溯浏览中（可前进）——与 CanRollforward 的 currentPos < count 对齐。
+        // 旧公式 targetPos < total-1 在最后一个检查点误报 false（明明可前进）。
+        _state.Set(StateKeys.Rollback.IsActive, targetPos < totalCheckpoints);
+        // IsReplay = 重放模式（恢复后不重发命令、等待点击前进）；exitReplay 例外——直接回 live
+        _state.Set(StateKeys.Rollback.IsReplay, !exitReplay);
 
         // 清除脏键：RestoreCheckpointState 的 Set 已标记所有恢复键为脏，
         // 但恢复后的值与目标检查点的快照一致（RestoreCheckpointState 从该检查点深拷贝而来）。

@@ -540,6 +540,11 @@ private readonly ITimeEventRegistry? _timeEventRegistry;
         or StateKeys.Nvl.Active or StateKeys.Nvl.Text
         or StateKeys.Nvl.Speakers or StateKeys.Nvl.Count
         or StateKeys.Nvl.AutoScoped
+        // 通知瞬时态：Toast 显示/排队是播放层瞬时状态——保存进存档会在读档后
+        // 令 Notify.Active 残留 true（renderer 无对应 Toast）→ 后续通知全部排队永不显示
+        or StateKeys.Notify.Text or StateKeys.Notify.Type
+        or StateKeys.Notify.Duration or StateKeys.Notify.Active
+        or StateKeys.Notify.Queue
         => true,
         _ => key.Contains(StateKeys.Animation.Prefix),
     };
