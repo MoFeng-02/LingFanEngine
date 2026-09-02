@@ -8,7 +8,10 @@
 #   3. publish-sdk-windows: 在 windows-latest 上 AOT 发布 SDK.Desktop (win-x64, WinExe 无控制台)
 #   4. publish-sdk-linux  : 在 ubuntu-latest 上 AOT 发布 SDK.Desktop (linux-x64, 需 clang)
 #   5. publish-sdk-macos  : 在 macos-latest 上 AOT 发布 SDK.Desktop (osx-arm64)
-#   6. release            : 汇总所有产物，创建 GitHub Release 并上传 asset
+#   6. publish-lsp-windows: 在 windows-latest 上 AOT 发布 LSP 服务进程 (win-x64, 单文件原生)
+#   7. publish-lsp-linux  : 在 ubuntu-latest 上 AOT 发布 LSP 服务进程 (linux-x64, 需 clang)
+#   8. publish-lsp-macos  : 在 macos-latest 上 AOT 发布 LSP 服务进程 (osx-arm64)
+#   9. release            : 汇总所有产物，创建 GitHub Release 并上传 asset
 #
 # 版本全部由 tag 自动校准（-p:Version），不再写死。
 #
@@ -24,7 +27,7 @@
 #   - SDK/模板经 NuGet 引擎依赖（ProjectReference / PackageReference），无需预构建引擎
 #     种子 DLL（原 SyncEngineDlls 机制已退役）。
 # =============================================================================
-name: Publish Engine + SDK
+name: Publish Engine + SDK + LSP
 
 on:
   push:
@@ -353,8 +356,109 @@ jobs:
           name: sdk-macos
           path: LingFanEngine.SDK.Desktop-osx-arm64.zip
 
+  publish-lsp-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compute version
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # LSP 独立服务进程：csproj 已置 IsAotCompatible + PublishAot；单文件原生便于作为语言服务器分发
+      - name: AOT publish LSP (win-x64)
+        run: dotnet publish src/EngineCore/LingFanEngine.Dsl.LanguageServer/LingFanEngine.Dsl.LanguageServer.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.VERSION }}
+
+      # Windows runner 默认无 Unix 版 zip 命令，改用 PowerShell 原生 Compress-Archive
+      - name: Package
+        shell: pwsh
+        run: |
+          $publishDir = "src/EngineCore/LingFanEngine.Dsl.LanguageServer/bin/Release/net10.0/win-x64/publish"
+          $zipPath = "${{ github.workspace }}/LingFan.Dsl.LanguageServer-win-x64.zip"
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          Compress-Archive -Path "$publishDir/*" -DestinationPath $zipPath -Force
+
+      - name: Upload LSP windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lsp-windows
+          path: LingFan.Dsl.LanguageServer-win-x64.zip
+
+  publish-lsp-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compute version
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # NativeAOT 在 Linux 需要 clang + zlib 开发头文件
+      - name: Install NativeAOT dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      - name: AOT publish LSP (linux-x64)
+        run: dotnet publish src/EngineCore/LingFanEngine.Dsl.LanguageServer/LingFanEngine.Dsl.LanguageServer.csproj -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.VERSION }}
+
+      - name: Package
+        shell: bash
+        run: |
+          cd src/EngineCore/LingFanEngine.Dsl.LanguageServer/bin/Release/net10.0/linux-x64/publish
+          zip -r "${{ github.workspace }}/LingFan.Dsl.LanguageServer-linux-x64.zip" .
+
+      - name: Upload LSP linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lsp-linux
+          path: LingFan.Dsl.LanguageServer-linux-x64.zip
+
+  publish-lsp-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compute version
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: AOT publish LSP (osx-arm64)
+        run: dotnet publish src/EngineCore/LingFanEngine.Dsl.LanguageServer/LingFanEngine.Dsl.LanguageServer.csproj -c Release -r osx-arm64 --self-contained true -p:PublishAot=true -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.VERSION }}
+
+      - name: Package
+        shell: bash
+        run: |
+          cd src/EngineCore/LingFanEngine.Dsl.LanguageServer/bin/Release/net10.0/osx-arm64/publish
+          zip -r "${{ github.workspace }}/LingFan.Dsl.LanguageServer-osx-arm64.zip" .
+
+      - name: Upload LSP macos artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lsp-macos
+          path: LingFan.Dsl.LanguageServer-osx-arm64.zip
+
   release:
-    needs: [publish-engine, publish-template, publish-sdk-windows, publish-sdk-linux, publish-sdk-macos]
+    needs: [publish-engine, publish-template, publish-sdk-windows, publish-sdk-linux, publish-sdk-macos, publish-lsp-windows, publish-lsp-linux, publish-lsp-macos]
     runs-on: ubuntu-latest
     # 仅 release job 需要写权限创建 Release；其余 job 继承仓库默认 token（含 actions 作用域，
     # 供 upload/download-artifact 正常调 API）。
@@ -381,4 +485,7 @@ jobs:
             artifacts/sdk-windows/LingFanEngine.SDK.Desktop-win-x64.zip
             artifacts/sdk-linux/LingFanEngine.SDK.Desktop-linux-x64.zip
             artifacts/sdk-macos/LingFanEngine.SDK.Desktop-osx-arm64.zip
+            artifacts/lsp-windows/LingFan.Dsl.LanguageServer-win-x64.zip
+            artifacts/lsp-linux/LingFan.Dsl.LanguageServer-linux-x64.zip
+            artifacts/lsp-macos/LingFan.Dsl.LanguageServer-osx-arm64.zip
           generate_release_notes: true
