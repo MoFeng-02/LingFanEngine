@@ -69,6 +69,8 @@ public class DslExecutor : IDslExecutor
         StateKeys.Notify.Duration,
         StateKeys.Notify.Active,
         StateKeys.Notify.Queue,
+        // 时间线消歧标志（live 是否已入档）——回溯元状态，各交互路径显式维护，不入快照
+        StateKeys.Rollback.LiveCheckpointed,
     };
 
     /// <summary>C# 场景回溯回调（由 GameLoop 设置，回溯到 C# 场景时调用）</summary>
@@ -286,6 +288,8 @@ public class DslExecutor : IDslExecutor
                             if (IsNvlSceneIdleRedundant(cps))
                             {
                                 AdvanceRollbackFrontier();
+                                // NVL 冗余抑制：末句检查点已代表"全展示"场景——live == cp[^1]，已入档
+                                _state.Set(StateKeys.Rollback.LiveCheckpointed, true);
                             }
                             else
                             {
@@ -293,6 +297,8 @@ public class DslExecutor : IDslExecutor
                                 _state.Set(StateKeys.Dialog.Speaker, "");
                                 _state.Set(StateKeys.Dialog.Complete, false);
                                 CreateCheckpoint(currentIndex, "scene_idle");
+                                // idle 检查点捕获当前完整场景——live == cp[^1]，已入档
+                                _state.Set(StateKeys.Rollback.LiveCheckpointed, true);
                                 AdvanceRollbackFrontier();
                             }
                         }
@@ -336,7 +342,9 @@ public class DslExecutor : IDslExecutor
                         }
                         else
                         {
-                            // 正常执行：发送命令 → handler 累积 → 等待点击
+                            // 正常执行：发送命令 → handler 累积 → 等待点击。
+                            // 新交互上屏且尚未建检查点——live ≠ cp[^1]（时间线消歧，见 ComputeRollbackTarget）
+                            _state.Set(StateKeys.Rollback.LiveCheckpointed, false);
                             await _pipeline.SendAsync(cmd, ct);
                             _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Dialog);
 
@@ -358,6 +366,8 @@ public class DslExecutor : IDslExecutor
                             // 检查点创建移到用户点击后（捕获用户所见状态）
                             // 而非命令执行前——NVL 累积模式下执行前状态缺少本次文本。
                             CreateCheckpoint(currentIndex, StateKeys.Dsl.WaitingTypes.Dialog);
+                            // 点击后 live 画面 == 刚建的 cp[^1]（对话框仍显示本句）——已入档
+                            _state.Set(StateKeys.Rollback.LiveCheckpointed, true);
                         }
 
                         _state.Set(StateKeys.Rollback.IsActive, false);
@@ -374,7 +384,11 @@ public class DslExecutor : IDslExecutor
                             : StateKeys.Dsl.WaitingTypes.Wait;
 
                         if (!_state.Get<bool>(StateKeys.Rollback.IsReplay))
+                        {
                             CreateCheckpoint(currentIndex, waitType);
+                            // 等待中 live 画面 == 刚建的 cp[^1]（wait 不改变世界状态）——已入档
+                            _state.Set(StateKeys.Rollback.LiveCheckpointed, true);
+                        }
 
                         _state.Set(StateKeys.Dsl.WaitingType, waitType);
                         _state.Set(StateKeys.Dsl.WaitUntil, Environment.TickCount64 / 1000.0 + wait.Seconds);
@@ -422,7 +436,11 @@ public class DslExecutor : IDslExecutor
                     case HardPauseCommand:
                     {
                         if (!_state.Get<bool>(StateKeys.Rollback.IsReplay))
+                        {
                             CreateCheckpoint(currentIndex, StateKeys.Dsl.WaitingTypes.Pause);
+                            // 暂停中 live 画面 == 刚建的 cp[^1]——已入档
+                            _state.Set(StateKeys.Rollback.LiveCheckpointed, true);
+                        }
 
                         _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Pause);
                         _state.Set(StateKeys.Dialog.Text, "");
@@ -463,7 +481,11 @@ public class DslExecutor : IDslExecutor
                         _state.Set(StateKeys.Menu.DslTexts, string.Join(",", menu.Options.Select(o => o.Text)));
 
                         if (!_state.Get<bool>(StateKeys.Rollback.IsReplay))
+                        {
                             CreateCheckpoint(currentIndex, StateKeys.Dsl.WaitingTypes.Menu);
+                            // 菜单展示中 live 画面 == 刚建的 cp[^1]——已入档
+                            _state.Set(StateKeys.Rollback.LiveCheckpointed, true);
+                        }
 
                         _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Menu);
 
@@ -476,6 +498,10 @@ public class DslExecutor : IDslExecutor
                         _state.Set(StateKeys.Menu.Selected, -1);
                         _state.Set(StateKeys.Menu.DslTargets, "");
                         _state.Set(StateKeys.Menu.DslTexts, "");
+
+                        // 选择完成后 live（菜单已清空）≠ cp[^1]（菜单展示中）——未入档。
+                        // 此后 wheel-up 应落回菜单本身（重新选择），而非跳过它。
+                        _state.Set(StateKeys.Rollback.LiveCheckpointed, false);
 
                         // menu 是分支决策命令：回溯重放中玩家重新选择必须开辟新时间线。
                         // 绝不能走 Rollforward()——那会沿"第一次选择"的旧时间线前进、
@@ -516,7 +542,11 @@ public class DslExecutor : IDslExecutor
                         _state.Set<object?>(StateKeys.Input.Result, null);
 
                         if (!_state.Get<bool>(StateKeys.Rollback.IsReplay))
+                        {
                             CreateCheckpoint(currentIndex, StateKeys.Dsl.WaitingTypes.Input);
+                            // 输入框展示中 live 画面 == 刚建的 cp[^1]——已入档
+                            _state.Set(StateKeys.Rollback.LiveCheckpointed, true);
+                        }
 
                         _state.Set(StateKeys.Dsl.WaitingType, StateKeys.Dsl.WaitingTypes.Input);
 
@@ -527,6 +557,9 @@ public class DslExecutor : IDslExecutor
                         _state.Set(StateKeys.Input.Prompt, "");
                         _state.Set(StateKeys.Input.DslStore, "");
                         _state.Set<object>(StateKeys.Input.Options, Array.Empty<string>());
+
+                        // 输入完成后 live（输入框已清空）≠ cp[^1]（输入展示中）——未入档
+                        _state.Set(StateKeys.Rollback.LiveCheckpointed, false);
 
                         // input 与 menu 同理是决策命令：回溯重放中玩家的新输入必须开辟新时间线，
                         // 不能 Rollforward() 沿旧时间线前进而丢弃新输入。
@@ -556,6 +589,7 @@ public class DslExecutor : IDslExecutor
                                 _state.Set(StateKeys.Dialog.Speaker, "");
                                 _state.Set(StateKeys.Dialog.Complete, false);
                                 CreateCheckpoint(currentIndex, "scene_idle");
+                                _state.Set(StateKeys.Rollback.LiveCheckpointed, true);
                                 AdvanceRollbackFrontier();
                             }
                         }
@@ -1191,19 +1225,29 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
         var currentPos = _state.Get<int>(StateKeys.Rollback.CurrentIndex);
         if (currentPos <= 0) return -1;
 
-        var targetPos = currentPos - 1;
-        // 当前位于 frontier 末端：末位检查点存储的是"当前可见状态"，需再跳过它一步。
+        int targetPos;
         if (currentPos >= checkpoints.Count)
-            targetPos--;
+        {
+            // frontier：是否跳过末位检查点由 LiveCheckpointed 显式决定——
+            // true = live 画面 == cp[^1]（say 点击后/wait 等待中）→ 跳过它回退到再前一个；
+            // false = live 是尚未建检查点的新交互（正在阅读的 say/已选择的 menu）→
+            //         cp[^1] 即为上一句，正常落在它上面。
+            // 修复（2026-09 治根）：旧「frontier 即盲目跳过」在「正在阅读未点击的 say」时
+            // 一步跨过两个检查点（阅读句3 → 直落句1，跳过句2——用户报告的滚轮跳步根因）。
+            targetPos = _state.Get<bool>(StateKeys.Rollback.LiveCheckpointed)
+                ? checkpoints.Count - 2
+                : checkpoints.Count - 1;
+        }
+        else
+        {
+            // 回溯浏览中：正常前移一步
+            targetPos = currentPos - 1;
+        }
 
         if (targetPos < 0) return -1;
 
         // C# 场景检查点（csharp_scene）允许回退——回退到此 = 场景级回溯（重跑整个 StoryScript.RunAsync）。
         // C# 场景内部的 SayAsync/ShowMenuAsync 不创建逐句检查点，故其回溯精度天然为场景级，符合设计。
-        // 【历史】曾在此拒绝回退到 csharp_scene 以防"NVL 逐句回退击穿到场景级"，但那是误判：
-        // NVL 是 DSL 脚本场景，根本不产生 csharp_scene 检查点（仅 C# StoryScript 场景入口才创建，
-        // 见 NavigateHandler.HandleScriptEntry）；NVL 尾部冗余的真正修复是 IsNvlSceneIdleRedundant
-        // 创建期抑制。该护栏纯属过度防御，反而掐死了 C# 场景的合法回溯，现移除。
         return targetPos;
     }
 
@@ -1371,6 +1415,9 @@ _logger.LogError($"时间事件执行异常 [{evt.Id}]", ex);
         _state.Set(StateKeys.Rollback.IsActive, targetPos < totalCheckpoints);
         // IsReplay = 重放模式（恢复后不重发命令、等待点击前进）；exitReplay 例外——直接回 live
         _state.Set(StateKeys.Rollback.IsReplay, !exitReplay);
+        // 时间线消歧标志复位：回溯浏览中 P<count（标志只在 frontier 使用）；
+        // exitReplay 回 live 后由后续交互（say 发送置 false / cp 创建置 true）重新建立
+        _state.Set(StateKeys.Rollback.LiveCheckpointed, false);
 
         // 清除脏键：RestoreCheckpointState 的 Set 已标记所有恢复键为脏，
         // 但恢复后的值与目标检查点的快照一致（RestoreCheckpointState 从该检查点深拷贝而来）。

@@ -76,9 +76,9 @@ public class RollbackIntegrationTests
     [Fact]
     public async Task RollbackRollforward_Alternating_StepsOneByOne()
     {
-        // 回归（2026-09 滚轮历史跳步 BUG）：用户报告"过了 1、2、3，上滚直接跳到 1，
-        // 下滚 2、3 进不去"。真实链路复现：3 个检查点 + frontier，交替 Rollback/Rollforward，
-        // 断言每步恰好移动一格且保持 replay 语义（重放等待，不重发命令）。
+        // 回归（2026-09 滚轮历史跳步 BUG 治根）：场景 = 正在阅读 live 句（say 未点击、未建 cp）——
+        // LiveCheckpointed=false。此时 frontier 的末位检查点是「上一句」，回退应落在它上面。
+        // 旧「frontier 即盲目跳过」一步跨两个检查点（阅读句3 → 直落句1，跳过句2）。
         var state = new StateContainer();
         state.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
         var exe = MakeExecutor(state);
@@ -92,43 +92,144 @@ public class RollbackIntegrationTests
         var cps = new List<RollbackCheckpoint> { Cp(0, "句1"), Cp(1, "句2"), Cp(2, "句3") };
         state.Set(StateKeys.Rollback.Checkpoints, cps);
         state.Set(StateKeys.Rollback.CurrentIndex, 3); // frontier
+        state.Set(StateKeys.Rollback.LiveCheckpointed, false); // 正在阅读未入档的 live 句
 
-        // 上滚 1：3 → 2（跳过"当前可见"的末位检查点）
+        // 上滚 1（阅读句4 中）：落句3（上一句）——不再盲目跳过
+        exe.Rollback().Should().BeTrue();
+        state.Get<string>("txt").Should().Be("句3");
+        state.Get<int>(StateKeys.Rollback.CurrentIndex).Should().Be(2);
+        state.Get<bool>(StateKeys.Rollback.IsReplay).Should().BeTrue("回退浏览历史应处于重放模式");
+
+        // 上滚 2：句3 → 句2
         exe.Rollback().Should().BeTrue();
         state.Get<string>("txt").Should().Be("句2");
         state.Get<int>(StateKeys.Rollback.CurrentIndex).Should().Be(1);
-        state.Get<bool>(StateKeys.Rollback.IsReplay).Should().BeTrue("回退浏览历史应处于重放模式");
 
-        // 上滚 2：2 → 1
+        // 上滚 3：句2 → 句1
         exe.Rollback().Should().BeTrue();
         state.Get<string>("txt").Should().Be("句1");
         state.Get<int>(StateKeys.Rollback.CurrentIndex).Should().Be(0);
 
-        // 下滚 1：1 → 2
+        // 下滚：句1 → 句2 → 句3 逐级可进（用户报告的"下滚 2、3 进不去"）
         exe.Rollforward().Should().BeTrue();
         state.Get<string>("txt").Should().Be("句2");
-        state.Get<int>(StateKeys.Rollback.CurrentIndex).Should().Be(1);
-        state.Get<bool>(StateKeys.Rollback.IsReplay).Should().BeTrue();
-
-        // 下滚 2：2 → 3（最后一个检查点）——BUG 实证点：
-        // 旧实现 IsReplay = targetPos < total-1 → 2 < 2 = false → 误入"正常执行"路径：
-        // say 被重发（ADV 重打字/NVL 追加重复行）+ CreateCheckpoint append 污染时间线。
         exe.Rollforward().Should().BeTrue();
         state.Get<string>("txt").Should().Be("句3");
-        state.Get<int>(StateKeys.Rollback.CurrentIndex).Should().Be(2);
-        state.Get<bool>(StateKeys.Rollback.IsReplay).Should().BeTrue("前进到最后一个检查点仍是历史浏览，不应转入正常执行");
+        state.Get<bool>(StateKeys.Rollback.IsReplay).Should().BeTrue();
 
-        // 给误入的正常执行路径一点时间，证明时间线不再被污染（修复后检查点数不变）
-        await Task.Delay(100);
-        state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints)!.Count.Should().Be(3,
-            "重放浏览不得 append 新检查点（旧实现 IsReplay=false 会重发命令并污染时间线）");
-
-        // 下滚 3：3 → frontier（回到 live，显示末位检查点状态）
+        // 下滚到 frontier：退出重放回 live（旧实现 IsReplay 恒 true——滚轮下无响应）
         exe.Rollforward().Should().BeTrue();
         state.Get<int>(StateKeys.Rollback.CurrentIndex).Should().Be(3);
         state.Get<bool>(StateKeys.Rollback.IsReplay).Should().BeFalse("回到前沿 = 退出重放，继续正常执行");
-        // 回到 live 后不应再有可前进项
         exe.CanRollforward().Should().BeFalse();
+
+        // 重放浏览不得污染时间线
+        await Task.Delay(50);
+        state.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints)!.Count.Should().Be(3);
+    }
+
+    [Fact]
+    public void Rollback_LiveCheckpointed_SkipsRedundantLastCheckpoint()
+    {
+        // 场景 = say 点击后（cp 刚建，live 画面 == cp[^1]）——LiveCheckpointed=true。
+        // 此时末位检查点与当前画面相同，回退应跳过它落再前一个（一句一格，无视觉空步）。
+        var state = new StateContainer();
+        state.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
+        var exe = MakeExecutor(state);
+
+        RollbackCheckpoint Cp(int i, string txt) => new()
+        {
+            CommandIndex = i,
+            InteractionType = "dialog",
+            StateSnapshot = new Dictionary<string, object?> { ["txt"] = txt }
+        };
+        var cps = new List<RollbackCheckpoint> { Cp(0, "句1"), Cp(1, "句2"), Cp(2, "句3") };
+        state.Set(StateKeys.Rollback.Checkpoints, cps);
+        state.Set(StateKeys.Rollback.CurrentIndex, 3); // frontier
+        state.Set(StateKeys.Rollback.LiveCheckpointed, true); // 点击刚过句3，画面==cp[2]
+
+        // 上滚 1：跳过 ==live 的句3，落句2（NVL 尾部冗余同语义）
+        exe.Rollback().Should().BeTrue();
+        state.Get<string>("txt").Should().Be("句2");
+        state.Get<int>(StateKeys.Rollback.CurrentIndex).Should().Be(1);
+
+        // 上滚 2：句1
+        exe.Rollback().Should().BeTrue();
+        state.Get<string>("txt").Should().Be("句1");
+
+        // 下滚经过被跳过的句3（前进完整可回）
+        exe.Rollforward().Should().BeTrue();
+        state.Get<string>("txt").Should().Be("句2");
+        exe.Rollforward().Should().BeTrue();
+        state.Get<string>("txt").Should().Be("句3");
+    }
+
+    [Fact]
+    public async Task Rollback_WhileReadingLiveSay_LandsOnPreviousLine()
+    {
+        // 真实链路复现（用户原始报告）：真实编译 3 句 say，前两句点击通过，
+        // 第 3 句展示中（未点击、未建检查点）时滚轮上滚一次——必须落句2（上一句），
+        // 而非旧「frontier 盲目跳过」的句1（一步跨两个检查点）。
+        var host = new EngineTestHost(enableTimeSystem: false);
+        host.State.Set(StateKeys.Scene.CurrentType, (int)SceneType.Game);
+        host.State.Set(StateKeys.Rollback.BlockedUntil, -1);
+
+        var script = "say \"句1\"\nsay \"句2\"\nsay \"句3\"\nsay \"句4\"";
+        var cmds = new LingFanDslEngine().Compile(script).Commands;
+        host.DslExecutor.LoadCommands(cmds);
+        host.DslExecutor.Start();
+
+        // 手动充当 GameLoop：消费管道命令并 dispatch 到真实 ShowDialogHandler
+        var ctx = new LingFanEngine.Tests.Handlers.FakeCommandContext(host.State);
+        var dialogHandler = new LingFanEngine.Services.Core.Handlers.ShowDialogHandler();
+
+        async Task PumpAsync()
+        {
+            while (host.Pipeline.TryRead(out var c))
+            {
+                if (c is ShowDialogCommand sd)
+                    dialogHandler.Handle(sd, ctx);
+                await Task.Delay(1);
+            }
+        }
+
+        // 句1 展示 → 点击 → 句2 展示 → 点击 → 句3 展示（停止，保持阅读中状态）
+        for (var line = 1; line <= 2; line++)
+        {
+            await Task.Run(() => SpinWaitUntil(() => host.State.Get<string>(StateKeys.Dialog.Text) == $"句{line}"));
+            await PumpAsync();
+            host.CompleteDialog(); // 点击通过
+            await Task.Delay(20);
+        }
+        await Task.Run(() => SpinWaitUntil(() => host.State.Get<string>(StateKeys.Dialog.Text) == "句3"));
+        await PumpAsync();
+
+        // 前置确认：此刻检查点应为 [句1, 句2]（句3 未点击未入档），frontier P=2
+        var cpsBefore = host.State.Get<List<RollbackCheckpoint>>(StateKeys.Rollback.Checkpoints);
+        cpsBefore!.Count.Should().Be(2, "句3 正在阅读（未点击），只应有前两句的检查点");
+        host.State.Get<bool>(StateKeys.Rollback.LiveCheckpointed).Should().BeFalse(
+            "正在阅读的 say 尚未入档（时间线消歧标志）");
+
+        // 滚轮上滚一次（模拟 RollbackCommand 处理）
+        host.DslExecutor.Rollback().Should().BeTrue("阅读中回退应有效");
+
+        // 治根断言：落在句2（上一句），而非句1（旧 BUG：frontier 盲目跳过跨两步）
+        host.State.Get<string>(StateKeys.Dialog.Text).Should().Be("句2",
+            "阅读句3 时上滚必须落句2——旧实现盲目跳过末位检查点直落句1（用户报告的跳步）");
+        host.State.Get<int>(StateKeys.Rollback.CurrentIndex).Should().Be(1);
+        host.State.Get<bool>(StateKeys.Rollback.IsReplay).Should().BeTrue();
+    }
+
+    /// <summary>自旋等待谓词为真（5s 超时返回 false）</summary>
+    private static bool SpinWaitUntil(Func<bool> predicate, int timeoutMs = 5000)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < timeoutMs)
+        {
+            if (predicate()) return true;
+            Thread.Sleep(5);
+        }
+        return predicate();
     }
 
     [Fact]
@@ -204,6 +305,8 @@ public class RollbackIntegrationTests
         };
         state.Set(StateKeys.Rollback.Checkpoints, new List<RollbackCheckpoint> { csharp, cp0, cp1, cp2 });
         state.Set(StateKeys.Rollback.CurrentIndex, 4); // 播放结束 frontier 指向末位之后
+        // 场景 = 刚点击过末句（live == cp2 全展示已入档）——首下回退跳过冗余末位
+        state.Set(StateKeys.Rollback.LiveCheckpointed, true);
 
         // 首下回退：应落到 CP1（2 行），而非"全展示"的 CP2
         exe.Rollback().Should().BeTrue();
@@ -296,6 +399,8 @@ say ""F""";
         };
         state.Set(StateKeys.Rollback.Checkpoints, new List<RollbackCheckpoint> { cp0, cp1, cp2 });
         state.Set(StateKeys.Rollback.CurrentIndex, 3);
+        // 场景 = 刚完成末位交互（live == cp2 已入档）——回退跳过冗余末位（见 ComputeRollbackTarget）
+        state.Set(StateKeys.Rollback.LiveCheckpointed, true);
 
         // 回退两步定位到 menu 检查点 cp0
         exe.Rollback().Should().BeTrue(); // → cp1

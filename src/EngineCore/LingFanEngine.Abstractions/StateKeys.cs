@@ -889,5 +889,15 @@ public const string ScreenResult = Screen.Result;
         /// 后续 CreateCheckpoint 检查并跳过。fix_rollback 清除此键。</para>
         /// </summary>
         public const string BlockedUntil = "__rollback_blocked_until";
+
+        /// <summary>
+        /// live 视图已入档 (bool)：frontier（CurrentIndex == 检查点数）处的显式消歧——
+        /// true = 当前画面与末位检查点快照一致（如 say 点击后、wait 等待中），
+        /// false = live 是尚未建检查点的新交互（如正在阅读的 say、已选择的 menu）。
+        /// <para>Rollback 据此决定是否跳过末位检查点（跳过 ==live 的；不跳未入档的）。
+        /// 替代旧的「frontier 即盲目跳过」启发式——该启发式在「正在阅读未点击的 say」时
+        /// 一步跨过两个检查点（用户感知为"上滚直接跳到第 1 句"）。</para>
+        /// </summary>
+        public const string LiveCheckpointed = "__rollback_live_checkpointed";
     }
 }
