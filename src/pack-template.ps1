@@ -1,11 +1,16 @@
 # pack-template.ps1 — 打包模板目录为 ZIP（排除 bin/obj/.vs/.git）
-# 用法: powershell -File pack-template.ps1 -SourceDir "path/to/V1" -OutputFile "path/to/template.zip"
+# 跨平台：PowerShell 7（pwsh）在 Windows / Linux / macOS 均可用。
+# 用法: pwsh -File pack-template.ps1 -SourceDir "path/to/V1" -OutputFile "path/to/template.zip"
 param(
     [Parameter(Mandatory=$true)]
     [string]$SourceDir,
     [Parameter(Mandatory=$true)]
     [string]$OutputFile
 )
+
+# 跨平台路径分隔符归一（MSBuild 在 Linux/macOS 传入的 $(TemplateSourceDir) 可能含反斜杠）
+$SourceDir  = $SourceDir -replace '\\', '/'
+$OutputFile = $OutputFile -replace '\\', '/'
 
 $excludeDirs = @('bin', 'obj', '.vs', '.git')
 
@@ -20,14 +25,20 @@ if (Test-Path $OutputFile) {
     Remove-Item $OutputFile -Force
 }
 
-# 创建临时目录用于打包（排除 bin/obj 等）
-$tempDir = Join-Path $env:TEMP "lingfan_template_$(Get-Random)"
-try {
-    # 复制目录（排除指定子目录）
-    $sourcePath = Resolve-Path $SourceDir -ErrorAction Stop
+# 跨平台临时目录：Windows $env:TEMP / Linux·macOS $env:TMPDIR 可能缺失，
+# 用 [System.IO.Path]::GetTempPath() 兜底（三平台均返回合法临时根）
+$tempBase = if ($env:TEMP) { $env:TEMP }
+            elseif ($env:TMPDIR) { $env:TMPDIR }
+            else { [System.IO.Path]::GetTempPath() }
+$tempDir = Join-Path $tempBase "lingfan_template_$(Get-Random)"
 
-    Get-ChildItem -Path $sourcePath.Path -Recurse | ForEach-Object {
-        $relativePath = $_.FullName.Substring($sourcePath.Path.Length).TrimStart('\', '/')
+try {
+    # 解析源目录（路径已归一为前置斜杠，跨平台可解析；-ErrorAction Stop 确保不存在时明确报错）
+    $sourcePath = Resolve-Path $SourceDir -ErrorAction Stop
+    $sourceRoot = $sourcePath.Path
+
+    Get-ChildItem -Path $sourceRoot -Recurse | ForEach-Object {
+        $relativePath = $_.FullName.Substring($sourceRoot.Length).TrimStart('\', '/')
 
         # 检查是否在排除目录中
         $shouldExclude = $false
